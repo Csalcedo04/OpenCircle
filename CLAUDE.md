@@ -51,6 +51,10 @@ Las copias en `.claude/skills/*/references/invariants.md` derivan de esta secci�
 - Compose solo para servicios auxiliares (Postgres, Redis, Rafiki local), con redes bridge explícitas y secretos desde el entorno.
 - Mantener `infra/.env.example` con valores seguros de prueba.
 
+## Marca / UI
+
+Toda la marca (paleta, tipografía Poppins, logo, tokens y contraste) está en `.claude/skills/brand/SKILL.md`. Úsala en cualquier cambio visual.
+
 ## Definition of Done
 
 - `tsc --noEmit` sin errores.
