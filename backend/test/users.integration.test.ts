@@ -13,7 +13,7 @@ import { createWalletAddressService } from "../src/services/open-payments/wallet
 import { createUserService } from "../src/services/user.service";
 import { createWalletService, linkWalletInTx, walletInUse } from "../src/services/wallet.service";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
-import { fakeOpenPayments, TEST_WALLET_HOST } from "./helpers/fakes";
+import { fakeOpenPayments, fakeServices, TEST_WALLET_HOST } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
 
 // Runs against the database in DATABASE_URL (Supabase). Every row it creates uses the
@@ -126,6 +126,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
         frontendUrl: "http://localhost:3001",
       }),
       kyc: createKycService({ db, didit: unusedDidit, frontendUrl: "http://localhost:3001" }),
+      circles: fakeServices().circles,
     });
   });
 

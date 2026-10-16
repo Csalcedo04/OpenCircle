@@ -1,6 +1,7 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
+import { createCircleService } from "./services/circle.service";
 import { createDiditClient } from "./services/didit/client";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
@@ -21,17 +22,23 @@ async function main(): Promise<void> {
   });
 
   const users = createUserService(db);
+  const walletAddresses = createWalletAddressService(openPayments);
   const app = createApp(
     {
       users,
       wallets: createWalletService(db),
-      walletAddresses: createWalletAddressService(openPayments),
+      walletAddresses,
       walletConsent: createWalletConsentService({
         db,
         client: openPaymentsAuth,
         cipher: createTokenCipher(env.GRANT_TOKEN_KEY),
         users,
         frontendUrl: env.FRONTEND_URL,
+      }),
+      circles: createCircleService({
+        db,
+        // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
+        resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
       }),
       kyc: createKycService({
         db,
