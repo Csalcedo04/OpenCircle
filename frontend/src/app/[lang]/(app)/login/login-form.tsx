@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useTransition, useActionState } from "react"
-import { CheckCircle2, KeyRound, Mail, Sparkles, UserPlus } from "lucide-react"
+import { useState, useActionState } from "react"
+import { CheckCircle2, KeyRound, Lock, Mail, UserPlus } from "lucide-react"
 import { FormField } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,7 +9,6 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import {
   sendMagicLink,
-  signInAsDemoUser,
   signInWithPassword,
   signUpWithPassword,
   type AuthMode,
@@ -27,7 +26,6 @@ type Props = {
 
 export function LoginForm({ locale, t, linkError, next }: Props) {
   const [mode, setMode] = useState<AuthMode>("password")
-  const [isDemoPending, startDemoTransition] = useTransition()
 
   // State and action handlers for the active tab mode
   const [passwordState, passwordAction, passwordPending] = useActionState<LoginState, FormData>(
@@ -49,26 +47,21 @@ export function LoginForm({ locale, t, linkError, next }: Props) {
   const activeAction = mode === "password" ? passwordAction : mode === "signup" ? signUpAction : magicAction
   const isPending = mode === "password" ? passwordPending : mode === "signup" ? signUpPending : magicPending
 
-  // Handle demo one-click evaluation login
-  const handleDemoLogin = () => {
-    startDemoTransition(async () => {
-      await signInAsDemoUser(locale, next)
-    })
-  }
-
   // Magic Link or Signup Confirmation Success
   if (activeState.status === "sent") {
     return (
       <div className="rounded-[28px] border border-brand-mint bg-brand-mint/30 p-6 text-center text-brand-navy shadow-xs animate-in fade-in zoom-in-95 duration-200">
-        <CheckCircle2 className="mx-auto size-10 text-brand-navy" aria-hidden="true" />
-        <h3 className="mt-3 text-lg font-semibold tracking-tight">{t.sent.split(":")[0]}</h3>
+        <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-brand-white text-brand-navy shadow-2xs">
+          <CheckCircle2 className="size-6 text-brand-navy" aria-hidden="true" />
+        </div>
+        <h3 className="mt-4 text-lg font-semibold tracking-tight">{t.sent.split(":")[0]}</h3>
         <p className="mt-2 text-sm leading-relaxed text-brand-navy/90">
           {fill(t.sent, { email: activeState.email })}
         </p>
         <button
           type="button"
           onClick={() => setMode("password")}
-          className="mt-5 inline-flex h-9 items-center justify-center rounded-full bg-brand-navy px-4 text-xs font-semibold text-brand-white outline-none hover:bg-brand-navy/90"
+          className="mt-6 inline-flex h-10 items-center justify-center rounded-full bg-brand-navy px-5 text-xs font-semibold text-brand-white outline-none transition-transform hover:bg-brand-navy/90 active:scale-95"
         >
           {t.signIn}
         </button>
@@ -85,20 +78,6 @@ export function LoginForm({ locale, t, linkError, next }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Demo Evaluator One-Click Button */}
-      <div className="rounded-2xl border border-brand-violet/20 bg-brand-violet/5 p-4 text-center">
-        <Button
-          type="button"
-          onClick={handleDemoLogin}
-          disabled={isDemoPending || isPending}
-          className="h-11 w-full rounded-full bg-brand-violet px-5 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] duration-150 hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
-        >
-          <Sparkles className="size-4 shrink-0" aria-hidden="true" />
-          <span>{isDemoPending ? t.signingIn : t.demoUserButton}</span>
-        </Button>
-        <p className="mt-2 text-xs text-brand-slate">{t.demoUserSubtext}</p>
-      </div>
-
       {/* Mode Switcher Tabs */}
       <div className="grid grid-cols-3 gap-1 rounded-full bg-brand-canvas p-1 border border-brand-line">
         <button
@@ -149,15 +128,18 @@ export function LoginForm({ locale, t, linkError, next }: Props) {
         {next && <input type="hidden" name="next" value={next} />}
 
         <FormField id="email" label={t.email} error={activeState.status === "error" && activeState.error === "email" ? t.errors.email : undefined}>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            placeholder={t.emailPlaceholder}
-            className="h-11 rounded-xl text-base"
-          />
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-brand-slate" aria-hidden="true" />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              placeholder={t.emailPlaceholder}
+              className="h-11 rounded-xl pl-10 text-base"
+            />
+          </div>
         </FormField>
 
         {mode !== "magic" && (
@@ -170,15 +152,18 @@ export function LoginForm({ locale, t, linkError, next }: Props) {
                 : undefined
             }
           >
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
-              required
-              placeholder={t.passwordPlaceholder}
-              className="h-11 rounded-xl text-base"
-            />
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-brand-slate" aria-hidden="true" />
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                required
+                placeholder={t.passwordPlaceholder}
+                className="h-11 rounded-xl pl-10 text-base"
+              />
+            </div>
           </FormField>
         )}
 
@@ -192,15 +177,18 @@ export function LoginForm({ locale, t, linkError, next }: Props) {
                 : undefined
             }
           >
-            <Input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              required
-              placeholder={t.passwordPlaceholder}
-              className="h-11 rounded-xl text-base"
-            />
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-brand-slate" aria-hidden="true" />
+              <Input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                placeholder={t.passwordPlaceholder}
+                className="h-11 rounded-xl pl-10 text-base"
+              />
+            </div>
           </FormField>
         )}
 
@@ -215,8 +203,8 @@ export function LoginForm({ locale, t, linkError, next }: Props) {
 
         <Button
           type="submit"
-          disabled={isPending || isDemoPending}
-          className="h-11 w-full rounded-full bg-brand-navy px-5 text-sm font-semibold text-brand-white outline-none transition-[background-color,transform] hover:bg-brand-navy/90 focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:scale-[0.99]"
+          disabled={isPending}
+          className="mt-2 h-12 w-full rounded-full bg-brand-violet px-5 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
         >
           {isPending
             ? mode === "signup"

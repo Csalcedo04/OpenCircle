@@ -179,8 +179,6 @@ const en = {
     send: "Email me a link",
     sending: "Sending…",
     sent: "Check your inbox: we sent a sign-in link to {email}.",
-    demoUserButton: "⚡ Enter as Demo Evaluator",
-    demoUserSubtext: "One-click access with test credentials",
     noAccount: "Don't have an account?",
     alreadyAccount: "Already have an account?",
     errors: {

@@ -180,8 +180,6 @@ const es: Dictionary = {
     send: "Enviarme un enlace",
     sending: "Enviando…",
     sent: "Revisa tu correo: enviamos un enlace de acceso a {email}.",
-    demoUserButton: "⚡ Entrar como Usuario Demo",
-    demoUserSubtext: "Acceso con un clic con credenciales de prueba",
     noAccount: "¿No tienes una cuenta?",
     alreadyAccount: "¿Ya tienes una cuenta?",
     errors: {
