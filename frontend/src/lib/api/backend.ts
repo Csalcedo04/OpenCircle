@@ -3,6 +3,7 @@ import "server-only"
 import { z } from "zod"
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 import { createClient } from "@/lib/supabase/server"
+import { apiCircleSchema, testClockSchema, type ApiCircle, type NewCircle, type TestClock } from "@/lib/api/test-clocks"
 
 /**
  * Server-only client for the Express API. Forwards the signed-in user's
@@ -154,4 +155,31 @@ export function getMyKyc(): Promise<Kyc> {
 /** Starts (or resumes) Didit verification; send the user to `url`. */
 export function startKyc(input: { locale: "en" | "es"; returnPath: string }): Promise<{ url: string }> {
   return backendFetch("/users/me/kyc/session", z.object({ url: z.url() }), { method: "POST", body: JSON.stringify(input) })
+}
+
+// ── Dev only: test clocks (backend TEST_CLOCKS_ENABLED) ─────────────────────
+
+export function createTestClock(input: { name: string; frozenTime: string }): Promise<TestClock> {
+  return backendFetch("/test-clocks", testClockSchema, { method: "POST", body: JSON.stringify(input) })
+}
+
+export function getTestClock(id: string): Promise<TestClock> {
+  return backendFetch(`/test-clocks/${encodeURIComponent(id)}`, testClockSchema)
+}
+
+/** Moves the clock to `to` (ISO); the current frozen time only re-reads payments. */
+export function advanceTestClock(id: string, to: string): Promise<TestClock> {
+  return backendFetch(`/test-clocks/${encodeURIComponent(id)}/advance`, testClockSchema, { method: "POST", body: JSON.stringify({ to }) })
+}
+
+export function createCircle(input: NewCircle): Promise<ApiCircle> {
+  return backendFetch("/circles", apiCircleSchema, { method: "POST", body: JSON.stringify(input) })
+}
+
+export function getApiCircle(id: string): Promise<ApiCircle> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}`, apiCircleSchema)
+}
+
+export function joinCircle(id: string, payoutRound: number): Promise<ApiCircle> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/join`, apiCircleSchema, { method: "POST", body: JSON.stringify({ payoutRound }) })
 }
