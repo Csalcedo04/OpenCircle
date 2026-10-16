@@ -1408,3 +1408,149 @@
 
 **2026-10-16 12:03 · Claude Code**
 > y
+
+**2026-10-16 12:29 · Claude Code**
+> lets work on an algorithm that can measure the capability that a user could have for a micro loan with 
+>
+>
+>
+> <pasted_content id="ce8f">
+> export interface RoundPaymentSummary {
+>   expectedPayments: number;
+>   paidOnTime: number;
+>   paidLate: number;
+>   missedPayments: number;
+> }
+>
+> export interface ScoreConfig {
+>   initialScore: number;
+>   perfectRoundBonus: number;
+>   baseFailurePenalty: number;
+>   missedPaymentPenalty: number;
+>   latePaymentPenalty: number;
+>   minScore: number;
+>   maxScore: number;
+> }
+>
+> export interface ScoreResult {
+>   previousScore: number;
+>   newScore: number;
+>   change: number;
+>   paymentRate: number;
+>   status: "excellent" | "good" | "fair" | "poor";
+> }
+>
+> export const DEFAULT_SCORE_CONFIG: ScoreConfig = {
+>   initialScore: 50,
+>   perfectRoundBonus: 5,
+>   baseFailurePenalty: 3,
+>   missedPaymentPenalty: 12,
+>   latePaymentPenalty: 1,
+>   minScore: 0,
+>   maxScore: 100,
+> };
+>
+> export function calculateCreditScore(
+>   currentScore: number,
+>   payments: RoundPaymentSummary,
+>   config: ScoreConfig = DEFAULT_SCORE_CONFIG,
+> ): ScoreResult {
+>   const {
+>     expectedPayments,
+>     paidOnTime,
+>     paidLate,
+>     missedPayments,
+>   } = payments;
+>
+>   // Validate inputs
+>   if (
+>     !Number.isFinite(currentScore) ||
+>     currentScore < config.minScore ||
+>     currentScore > config.maxScore
+>   ) {
+>     throw new Error("Invalid current score");
+>   }
+>
+>   if (
+>     !Number.isInteger(expectedPayments) ||
+>     expectedPayments <= 0 ||
+>     !Number.isInteger(paidOnTime) ||
+>     !Number.isInteger(paidLate) ||
+>     !Number.isInteger(missedPayments) ||
+>     paidOnTime < 0 ||
+>     paidLate < 0 ||
+>     missedPayments < 0
+>   ) {
+>     throw new Error("Invalid payment summary");
+>   }
+>
+>   if (
+>     paidOnTime + paidLate + missedPayments !== expectedPayments
+>   ) {
+>     throw new Error(
+>       "Payment counts must equal expected payments",
+>     );
+>   }
+>
+>   const allOnTime =
+>     paidOnTime === expectedPayments &&
+>     paidLate === 0 &&
+>     missedPayments === 0;
+>
+>   let change: number;
+>
+>   if (allOnTime) {
+>     // Reward a perfect round
+>     change = config.perfectRoundBonus;
+>   } else {
+>     // Penalize missed payments proportionally
+>     const missedRate = missedPayments / expectedPayments;
+>
+>     change =
+>       -config.baseFailurePenalty -
+>       config.missedPaymentPenalty * missedRate -
+>       config.latePaymentPenalty * paidLate;
+>   }
+>
+>   const newScore = Math.round(
+>     Math.min(
+>       config.maxScore,
+>       Math.max(config.minScore, currentScore + change),
+>     ) * 100,
+>   ) / 100;
+>
+>   const paymentRate = Math.round(
+>     ((paidOnTime + paidLate) / expectedPayments) * 100,
+>   );
+>
+>   let status: ScoreResult["status"];
+>
+>   if (newScore >= 80) {
+>     status = "excellent";
+>   } else if (newScore >= 65) {
+>     status = "good";
+>   } else if (newScore >= 40) {
+>     status = "fair";
+>   } else {
+>     status = "poor";
+>   }
+>
+>   return {
+>     previousScore: currentScore,
+>     newScore,
+>     change: Math.round((newScore - currentScore) * 100) / 100,
+>     paymentRate,
+>     status,
+>   };
+> }
+> </pasted_content id="ce8f">
+>
+>
+>
+> given the parameters that we can measure
+
+**2026-10-16 12:35 · Claude Code**
+> by default people start with a top amount and eventually they will increase the over time and by the amount of Circles that they completed and reviews too
+
+**2026-10-16 12:43 · Claude Code**
+> y
