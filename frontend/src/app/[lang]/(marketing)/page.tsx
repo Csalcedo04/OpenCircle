@@ -4,6 +4,7 @@ import { Faq } from "@/components/landing/faq"
 import { FinalCta } from "@/components/landing/final-cta"
 import { Hero } from "@/components/landing/hero"
 import { HowItWorks } from "@/components/landing/how-it-works"
+import { MobileDock } from "@/components/landing/mobile-dock"
 import { Safety } from "@/components/landing/safety"
 import { SavingsCalculator } from "@/components/landing/savings-calculator"
 import { UseCases } from "@/components/landing/use-cases"
@@ -75,6 +76,7 @@ export default async function LandingPage() {
       <UseCases t={l.useCases} />
       <Faq t={l.faq} />
       <FinalCta t={l.finalCta} locale={locale} />
+      <MobileDock locale={locale} t={l.nav} />
     </>
   )
 }

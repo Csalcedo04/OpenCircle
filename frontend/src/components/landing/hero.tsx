@@ -1,13 +1,13 @@
 import Link from "next/link"
-import { Check } from "lucide-react"
 import type { Locale } from "@/i18n/config"
 import type { LandingDictionary } from "@/i18n/dictionaries/landing.es"
 import { HeroDashboard } from "./hero-dashboard"
+import { TrustTicker } from "./trust-ticker"
 import { cta } from "./shared"
 
 export function Hero({ t, trust, locale }: { t: LandingDictionary["hero"]; trust: LandingDictionary["trust"]; locale: Locale }) {
   return (
-    <section aria-labelledby="hero-title" className="relative isolate overflow-hidden">
+    <section id="hero" aria-labelledby="hero-title" className="relative isolate overflow-hidden scroll-mt-16">
       {/* Orbital Constellation SVG background */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-20 -z-10 h-[48rem] overflow-hidden opacity-30 select-none">
         <svg viewBox="0 0 1440 800" fill="none" className="h-full w-full">
@@ -54,18 +54,7 @@ export function Hero({ t, trust, locale }: { t: LandingDictionary["hero"]; trust
         <HeroDashboard t={t.dashboard} locale={locale} />
       </div>
 
-      <div className="border-y border-brand-line bg-brand-white/80 backdrop-blur-xs">
-        <ul className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-4 sm:justify-between sm:px-6 sm:py-5 lg:px-8">
-          {trust.map((item) => (
-            <li key={item} className="flex items-center gap-2 text-xs sm:text-[14px] lg:text-[15px] font-medium text-brand-navy">
-              <span className="grid size-5 sm:size-6 place-items-center rounded-full bg-brand-mint shrink-0">
-                <Check className="size-3 sm:size-3.5 text-brand-navy" strokeWidth={3} aria-hidden="true" />
-              </span>
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      <TrustTicker trust={trust} />
     </section>
   )
 }

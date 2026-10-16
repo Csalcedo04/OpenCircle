@@ -16,27 +16,34 @@ export function Benefits({ t, locale }: { t: T; locale: Locale }) {
           <p className="mt-6 inline-flex rounded-full bg-brand-navy px-4 py-2 text-sm font-semibold text-brand-white">{t.kicker}</p>
         </SectionHeading>
 
-        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-12">
+        <div className="mt-12 -mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory scrollbar-none md:mx-0 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-12">
           {pay && (
-            <Card className="lg:col-span-7" title={pay.title} body={pay.body}>
+            <Card className="shrink-0 w-[86vw] sm:w-[70vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-7" title={pay.title} body={pay.body}>
               <PaymentMock t={t.mock} locale={locale} />
             </Card>
           )}
           {turns && (
-            <Card className="lg:col-span-5" title={turns.title} body={turns.body}>
+            <Card className="shrink-0 w-[86vw] sm:w-[70vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-5" title={turns.title} body={turns.body}>
               <TurnsMock t={t.mock} />
             </Card>
           )}
           {feed && (
-            <Card className="lg:col-span-5" title={feed.title} body={feed.body}>
+            <Card className="shrink-0 w-[86vw] sm:w-[70vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-5" title={feed.title} body={feed.body}>
               <FeedMock t={t.mock} locale={locale} />
             </Card>
           )}
           {rules && (
-            <Card className="lg:col-span-7" title={rules.title} body={rules.body}>
+            <Card className="shrink-0 w-[86vw] sm:w-[70vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-7" title={rules.title} body={rules.body}>
               <RulesMock t={t.mock} />
             </Card>
           )}
+        </div>
+        {/* Mobile App Carousel Indicator */}
+        <div className="mt-2 flex justify-center gap-1.5 md:hidden" aria-hidden="true">
+          <span className="size-1.5 rounded-full bg-brand-navy" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
         </div>
       </div>
     </section>
@@ -45,7 +52,7 @@ export function Benefits({ t, locale }: { t: T; locale: Locale }) {
 
 function Card({ title, body, className, children }: { title: string; body: string; className?: string; children: ReactNode }) {
   return (
-    <article className={cn("oc-reveal flex flex-col rounded-[36px] border border-brand-line bg-brand-white p-3", className)}>
+    <article className={cn("oc-reveal flex flex-col rounded-[32px] sm:rounded-[36px] border border-brand-line bg-brand-white p-3", className)}>
       <div aria-hidden="true" className="relative grid h-60 place-items-center overflow-hidden rounded-[28px] bg-brand-mist px-5">
         {children}
       </div>

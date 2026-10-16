@@ -52,11 +52,11 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
     <section id="como-funciona" aria-labelledby="como-funciona-title" className="scroll-mt-20 bg-brand-white py-20 sm:py-28">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <SectionHeading id="como-funciona-title" title={t.title} lead={t.lead} />
-        <ol className="relative mt-14 grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-          {/* connector */}
+        <ol className="relative mt-14 -mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory scrollbar-none md:mx-0 md:grid md:grid-cols-2 md:gap-5 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-4">
+          {/* connector (desktop only) */}
           <span aria-hidden="true" className="absolute top-6 right-[12.5%] left-[12.5%] hidden h-px bg-[linear-gradient(90deg,var(--color-brand-violet),var(--color-brand-mint))] lg:block" />
           {t.steps.map((step, i) => (
-            <li key={step.title} className="oc-reveal relative flex flex-col">
+            <li key={step.title} className="oc-reveal relative flex flex-col shrink-0 w-[82vw] sm:w-[60vw] snap-center md:w-auto md:shrink md:snap-align-none">
               <span className="relative z-10 mx-0 grid size-12 place-items-center rounded-full border border-brand-line bg-brand-white text-sm font-semibold tabular-nums shadow-[0_6px_16px_-10px_color-mix(in_srgb,var(--color-brand-navy)_50%,transparent)] lg:mx-auto">
                 <span className="bg-[linear-gradient(135deg,var(--color-brand-violet-ink),var(--color-brand-navy))] bg-clip-text text-transparent">{String(i + 1).padStart(2, "0")}</span>
               </span>
@@ -70,6 +70,13 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
             </li>
           ))}
         </ol>
+        {/* Mobile App Carousel Indicator */}
+        <div className="mt-2 flex justify-center gap-1.5 md:hidden" aria-hidden="true">
+          <span className="size-1.5 rounded-full bg-brand-navy" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
+        </div>
       </div>
     </section>
   )

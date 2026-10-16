@@ -49,35 +49,44 @@ export function Safety({ t }: { t: LandingDictionary["safety"] }) {
           </div>
         </div>
 
-        <ul className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-          {t.items.map((item, i) => {
-            const spec = techSpecs[i] ?? techSpecs[0]
-            const Icon = spec.icon
-            return (
-              <li
-                key={item.title}
-                className="oc-reveal relative flex flex-col justify-between rounded-[36px] border border-brand-line bg-brand-canvas p-7 shadow-2xs transition-shadow duration-200 hover:shadow-xs"
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="grid size-12 place-items-center rounded-2xl bg-brand-navy text-brand-mint shadow-2xs">
-                      <Icon className="size-5" aria-hidden="true" />
-                    </span>
-                    <span className="rounded-full bg-brand-white border border-brand-line px-2.5 py-1 font-mono text-[10px] font-semibold text-brand-slate">
-                      {spec.protocol}
-                    </span>
+        <div className="flex flex-col">
+          <ul className="-mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory scrollbar-none sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-5 sm:overflow-visible sm:px-0 sm:pb-0">
+            {t.items.map((item, i) => {
+              const spec = techSpecs[i] ?? techSpecs[0]
+              const Icon = spec.icon
+              return (
+                <li
+                  key={item.title}
+                  className="oc-reveal relative flex flex-col justify-between rounded-[32px] sm:rounded-[36px] border border-brand-line bg-brand-canvas p-6 sm:p-7 shadow-2xs transition-shadow duration-200 hover:shadow-xs shrink-0 w-[84vw] snap-center sm:w-auto sm:shrink sm:snap-align-none"
+                >
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="grid size-12 place-items-center rounded-2xl bg-brand-navy text-brand-mint shadow-2xs">
+                        <Icon className="size-5" aria-hidden="true" />
+                      </span>
+                      <span className="rounded-full bg-brand-white border border-brand-line px-2.5 py-1 font-mono text-[10px] font-semibold text-brand-slate">
+                        {spec.protocol}
+                      </span>
+                    </div>
+                    <h3 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-brand-navy">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-brand-slate">{item.body}</p>
                   </div>
-                  <h3 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-brand-navy">{item.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-brand-slate">{item.body}</p>
-                </div>
 
-                <div className="mt-6 border-t border-brand-line/60 pt-3">
-                  <p className="text-[11px] font-mono text-brand-slate leading-tight">{spec.detail}</p>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+                  <div className="mt-6 border-t border-brand-line/60 pt-3">
+                    <p className="text-[11px] font-mono text-brand-slate leading-tight">{spec.detail}</p>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          {/* Mobile App Carousel Indicator */}
+          <div className="mt-2 flex justify-center gap-1.5 sm:hidden" aria-hidden="true">
+            <span className="size-1.5 rounded-full bg-brand-navy" />
+            <span className="size-1.5 rounded-full bg-brand-line" />
+            <span className="size-1.5 rounded-full bg-brand-line" />
+            <span className="size-1.5 rounded-full bg-brand-line" />
+          </div>
+        </div>
       </div>
     </section>
   )

@@ -21,11 +21,11 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
           </div>
         </div>
 
-        {/* Asymmetric Bento Architecture */}
-        <div className="mt-10 sm:mt-14 grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Asymmetric Bento Architecture (Horizontal Snap on Mobile, Bento on Desktop) */}
+        <div className="mt-10 sm:mt-14 -mx-4 flex gap-4 overflow-x-auto px-4 pb-4 snap-x snap-mandatory scrollbar-none md:mx-0 md:grid md:grid-cols-1 md:gap-6 md:overflow-visible md:px-0 md:pb-0 lg:grid-cols-12">
           {/* Card 1: Collaborative Savings (7 cols) */}
           {savings && (
-            <article className="oc-reveal relative flex flex-col justify-between overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs lg:col-span-7">
+            <article className="oc-reveal relative flex flex-col justify-between overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs shrink-0 w-[88vw] sm:w-[75vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-7">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-navy/80">
@@ -70,7 +70,7 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
 
           {/* Card 2: Merchant Payouts (5 cols) */}
           {merchant && (
-            <article className="oc-reveal relative flex flex-col justify-between overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs lg:col-span-5">
+            <article className="oc-reveal relative flex flex-col justify-between overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs shrink-0 w-[88vw] sm:w-[75vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-navy/80">
@@ -110,7 +110,7 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
 
           {/* Card 3: Interledger Cross-Border STREAM (12 cols) */}
           {ilp && (
-            <article className="oc-reveal relative overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs lg:col-span-12">
+            <article className="oc-reveal relative overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs shrink-0 w-[88vw] sm:w-[75vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-12">
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-center">
                 <div className="lg:col-span-6 space-y-3">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-navy/80">
@@ -168,6 +168,12 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
               </div>
             </article>
           )}
+        </div>
+        {/* Mobile App Carousel Indicator */}
+        <div className="mt-2 flex justify-center gap-1.5 md:hidden" aria-hidden="true">
+          <span className="size-1.5 rounded-full bg-brand-navy" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
+          <span className="size-1.5 rounded-full bg-brand-line" />
         </div>
       </div>
     </section>
