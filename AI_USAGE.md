@@ -442,3 +442,9 @@
 
 **2026-10-16 11:32 · Claude Code**
 > 1. no rotation.
+
+**2026-10-16 11:34 · Claude Code**
+> fix the proxy first, then push
+
+**2026-10-16 11:34 · Claude Code**
+> push what we have right now

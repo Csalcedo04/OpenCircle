@@ -24,3 +24,16 @@ export function supabasePublicEnv(): SupabasePublicEnv {
   })
   return cached
 }
+
+/**
+ * True when the public Supabase env is present and valid. Lets the app run
+ * (a fresh clone, a preview deploy) without Supabase configured.
+ */
+export function isSupabaseConfigured(): boolean {
+  try {
+    supabasePublicEnv()
+    return true
+  } catch {
+    return false
+  }
+}
