@@ -15,6 +15,13 @@
       "when": 1792173517575,
       "tag": "0001_audit_events_and_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792175182791,
+      "tag": "0002_wallet_consent",
+      "breakpoints": true
     }
   ]
 }

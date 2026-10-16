@@ -85,4 +85,64 @@ export const auditEvents = pgTable(
   (t) => [index("audit_events_wallet_id_created_at_idx").on(t.walletId, t.createdAt)],
 ).enableRLS();
 
+// One interactive GNAP grant request in flight. `state` ties the wallet's redirect back
+// to this row; client nonce + finish nonce + grant endpoint verify the redirect `hash`.
+// Single use, short expiry.
+export const consentChallenges = pgTable(
+  "consent_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    state: text("state").notNull().unique(),
+    walletAddressUrl: text("wallet_address_url").notNull(),
+    grantEndpoint: text("grant_endpoint").notNull(),
+    clientNonce: text("client_nonce").notNull(),
+    finishNonce: text("finish_nonce").notNull(),
+    continueUri: text("continue_uri").notNull(),
+    // Encrypted with GRANT_TOKEN_KEY.
+    continueTokenCiphertext: text("continue_token_ciphertext").notNull(),
+    status: text("status").notNull().default("PENDING"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("consent_challenges_user_id_idx").on(t.userId),
+    check("consent_challenges_status", sql`${t.status} in ('PENDING', 'COMPLETED', 'CANCELLED')`),
+  ],
+).enableRLS();
+
+// Standing outgoing-payment + quote grant a user gave OpenCircle on their wallet.
+export const walletGrants = pgTable(
+  "wallet_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    walletId: uuid("wallet_id")
+      .notNull()
+      .references(() => wallets.id),
+    // Encrypted with GRANT_TOKEN_KEY.
+    accessTokenCiphertext: text("access_token_ciphertext").notNull(),
+    // Token management URI: rotate or revoke the access token.
+    manageUri: text("manage_uri").notNull(),
+    // Grant continuation URI: cancel the whole grant.
+    continueUri: text("continue_uri").notNull(),
+    // Null when the authorization server gave no expiry.
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    status: text("status").notNull().default("ACTIVE"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("wallet_grants_user_id_idx").on(t.userId),
+    check("wallet_grants_status", sql`${t.status} in ('ACTIVE', 'REVOKED')`),
+  ],
+).enableRLS();
+
 export type User = typeof users.$inferSelect;
