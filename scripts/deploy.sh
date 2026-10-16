@@ -86,11 +86,15 @@ commit="$(git rev-parse --short HEAD)"
 # ── Backend → Railway ────────────────────────────────────────────────────────
 if deploys backend; then
   step "Backend → Railway ($commit)"
-  (cd backend && railway up --service "$RAILWAY_SERVICE" --detach) | grep -E "Build Logs" || true
+  logs="$(cd backend && railway up --service "$RAILWAY_SERVICE" --detach 2>&1 | grep -E "Build Logs" || true)"
+  echo "$logs"
+  # Wait on this exact deployment (id from the build-logs link), never on whichever is newest.
+  deployment="$(sed -nE 's/.*[?&]id=([0-9a-f-]{36}).*/\1/p' <<<"$logs")"
+  [[ -n "$deployment" ]] || fail "couldn't read the deployment id from railway up"
   status=""
   for _ in $(seq 1 90); do
     status="$(cd backend && railway deployment list --service "$RAILWAY_SERVICE" --json 2>/dev/null |
-      node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const d=JSON.parse(s);console.log((Array.isArray(d)&&d[0]?.status)||"")}catch{console.log("")}})')"
+      DEPLOYMENT="$deployment" node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const d=JSON.parse(s);console.log((Array.isArray(d)&&d.find(x=>x.id===process.env.DEPLOYMENT)?.status)||"")}catch{console.log("")}})')"
     case "$status" in SUCCESS | FAILED | CRASHED | REMOVED) break ;; esac
     sleep 10
   done
