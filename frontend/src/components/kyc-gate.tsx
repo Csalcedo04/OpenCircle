@@ -5,13 +5,15 @@ import { KycStartForm } from "@/components/kyc-start-form"
 import { buttonVariants } from "@/components/ui/button"
 import type { Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
-import { getMyKyc, getMyProfile } from "@/lib/api/backend"
+import { ServiceUnavailable } from "@/components/service-unavailable"
+import { getMyKyc, getMyProfile, isBackendUnavailable } from "@/lib/api/backend"
 import { kycGateState } from "@/lib/flows/kyc-gate"
 import { createClient } from "@/lib/supabase/server"
 
 type Props = {
   locale: Locale
   t: Dictionary["kyc"]
+  tc: Pick<Dictionary["common"], "unavailableTitle" | "unavailableBody" | "retry">
   /** Where Didit sends the user back to: the page this gate is on. */
   returnPath: string
   children: ReactNode
@@ -33,7 +35,7 @@ function Panel({ icon, title, children }: { icon: ReactNode; title: string; chil
  * Creating or joining a circle needs a signed-in, onboarded user whose identity
  * Didit approved. Anyone can browse; this gate only wraps the create/join forms.
  */
-export async function KycGate({ locale, t, returnPath, children }: Props) {
+export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
   const supabase = await createClient()
   const { data } = await supabase.auth.getClaims()
   const icon = <ShieldCheck className="size-5 shrink-0 text-brand-violet-ink" aria-hidden="true" />
@@ -49,8 +51,15 @@ export async function KycGate({ locale, t, returnPath, children }: Props) {
     )
   }
 
-  const profile = await getMyProfile()
-  if (!profile?.walletAddress) {
+  let profile, kyc
+  try {
+    profile = await getMyProfile()
+    kyc = profile?.walletAddress ? await getMyKyc() : null
+  } catch (err) {
+    if (!isBackendUnavailable(err)) throw err
+    return <ServiceUnavailable t={tc} retryHref={returnPath} />
+  }
+  if (!profile?.walletAddress || !kyc) {
     return (
       <Panel icon={icon} title={t.title}>
         <p className="mt-3 text-muted-foreground">{t.needsOnboarding}</p>
@@ -61,7 +70,7 @@ export async function KycGate({ locale, t, returnPath, children }: Props) {
     )
   }
 
-  const state = kycGateState(await getMyKyc())
+  const state = kycGateState(kyc)
   if (state === "open") return <>{children}</>
 
   if (state === "in-review") {

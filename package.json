@@ -1,0 +1,14 @@
+{
+  "name": "opencircle",
+  "private": true,
+  "description": "Repo-level dev tooling. The apps live in backend/ (npm) and frontend/ (pnpm).",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail --names api,web --prefix-colors blue,magenta \"npm --prefix backend run dev\" \"BACKEND_API_URL=${BACKEND_API_URL:-http://localhost:3000} pnpm --dir frontend dev -p 3001\""
+  },
+  "engines": {
+    "node": "24.x"
+  },
+  "devDependencies": {
+    "concurrently": "10.0.6"
+  }
+}

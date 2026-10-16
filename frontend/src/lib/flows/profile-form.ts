@@ -1,19 +1,24 @@
 import { z } from "zod"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import type { NewProfile, ProfilePatch } from "@/lib/api/backend"
+import { toE164 } from "@/lib/countries"
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 
 export type ProfileErrorKey = keyof Dictionary["onboarding"]["errors"]
+/** Fields that can carry an error message. */
 export const PROFILE_FIELDS = ["fullName", "phone", "dob", "nationality", "documentType", "documentNumber"] as const
 export type ProfileField = (typeof PROFILE_FIELDS)[number]
-export type ProfileFormFields = Record<ProfileField, string>
+
+/** Form inputs: the phone arrives as a country picker + national number. */
+export const PROFILE_INPUTS = ["fullName", "phoneCountry", "phoneNumber", "dob", "nationality", "documentType", "documentNumber"] as const
+export type ProfileFormFields = Record<(typeof PROFILE_INPUTS)[number], string>
 
 // Mirrors the API's rules so each field gets its own message; the API validates again.
 const today = () => new Date().toISOString().slice(0, 10)
 const editable = {
   fullName: z.string().min(1, "fullName").max(200, "fullName"),
   phone: z.string().regex(/^\+[1-9]\d{6,14}$/, "phone"),
-  dob: z.iso.date("dob").refine((d) => d <= today(), "dob"),
+  dob: z.iso.date("dob").refine((d) => d >= "1900-01-01" && d <= today(), "dob"),
   nationality: z.string().toUpperCase().regex(/^[A-Z]{2}$/, "nationality"),
 }
 const documentPattern: Record<DocumentType, RegExp> = {
@@ -36,7 +41,10 @@ export type ParsedProfile =
  * Validates the onboarding profile form. The first save creates the profile (identity
  * included); later saves only update the editable fields, so the document is ignored.
  */
-export function parseProfileForm(fields: ProfileFormFields, mode: "create" | "update"): ParsedProfile {
+export function parseProfileForm(form: ProfileFormFields, mode: "create" | "update"): ParsedProfile {
+  const { phoneCountry, phoneNumber, ...rest } = form
+  // Checked per country (length, prefixes); an invalid number fails the E.164 rule below.
+  const fields = { ...rest, phone: toE164(phoneCountry, phoneNumber) ?? "" }
   const parsed = mode === "create" ? newProfileSchema.safeParse(fields) : patchSchema.safeParse(fields)
   if (!parsed.success) {
     const errors: Partial<Record<ProfileField, ProfileErrorKey>> = {}
@@ -54,6 +62,7 @@ export function parseProfileForm(fields: ProfileFormFields, mode: "create" | "up
 }
 
 const profileErrors: Record<string, ProfileErrorKey> = {
+  BACKEND_UNAVAILABLE: "unavailable",
   DOCUMENT_IN_USE: "documentInUse",
   EMAIL_IN_USE: "emailInUse",
   EMAIL_REQUIRED: "emailRequired",

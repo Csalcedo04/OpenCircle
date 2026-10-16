@@ -1,9 +1,22 @@
 import type { ProfileErrorKey } from "./profile-form"
 
-/** A payment pointer (`$host/path`) or an https wallet address; the API normalizes and checks it. */
-export const isWalletInput = (value: string): boolean => /^(\$|https:\/\/)\S+$/.test(value)
+/** Shown in front of the wallet field: users only type the username they remember. */
+export const TESTNET_WALLET_PREFIX = "$ilp.interledger-test.dev/"
+
+/**
+ * What the user typed → a wallet address for the API. Usually just a username ("ana" →
+ * "$ilp.interledger-test.dev/ana"); a pasted full address ($… or https://…) is kept as is
+ * and the API normalizes and checks it. Null when it can't be an address.
+ */
+export function walletAddressFromInput(value: string): string | null {
+  const input = value.trim()
+  if (/^(\$|https:\/\/)\S+$/.test(input)) return input
+  const username = input.replace(/^ilp\.interledger-test\.dev\//i, "")
+  return /^[\w.-]+$/.test(username) ? `${TESTNET_WALLET_PREFIX}${username}` : null
+}
 
 const startErrors: Record<string, ProfileErrorKey> = {
+  BACKEND_UNAVAILABLE: "unavailable",
   VALIDATION_ERROR: "wallet",
   WALLET_NOT_ALLOWED: "walletNotAllowed",
   OPEN_PAYMENTS_ERROR: "walletUnreachable",

@@ -1,0 +1,19 @@
+# Vercel builds only the frontend (Project Settings → Root Directory: frontend).
+backend/
+
+# Secrets never leave this machine: env vars live in the Vercel project settings.
+.env*
+**/.env*
+!**/.env.example
+
+# Local tooling, caches and test output.
+**/node_modules
+**/.next
+.vercel
+.claude
+.agents
+graphify-out
+AI_USAGE.md
+frontend/e2e
+frontend/test-results
+frontend/playwright-report

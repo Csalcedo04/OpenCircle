@@ -1640,6 +1640,112 @@
 **2026-10-16 13:40 · Claude Code**
 > give me also the webhook so we can communicate with this client
 
+**2026-10-16 14:12 · Claude Code**
+> Y
+
+**2026-10-16 14:13 · Claude Code**
+> Y
+
+**2026-10-16 14:14 · Claude Code**
+> Don’t want to rotate it
+
+**2026-10-16 14:14 · Claude Code**
+> I pasted before
+
+**2026-10-16 14:14 · Claude Code**
+> Lets integrate after the registration the didit.me
+>
+>
+> here is the API Key
+> [REDACTED: Didit API key]
+>
+> and the workflow:
+> 9de66b44-94b4-4e79-a2bd-20473491ecca
+>
+>
+> they can see the app but in order to be in a Circle o create a circle the must be the KYC
+
+**2026-10-16 14:15 · Claude Code**
+> Do it
+
+**2026-10-16 14:17 · Claude Code**
+> ! printf '\nDIDIT_API_KEY=[REDACTED: Didit API key]\nDIDIT_WORKFLOW_ID=9de66b44-94b4-4e79-a2bd-20473491ecca\n' >> /Users/tinhochu/projects/hackathon-open-payments/backend/.env
+
+**2026-10-16 14:18 · Claude Code**
+> In the meantime. Dis you already create register and sign in ?
+
+**2026-10-16 14:18 · Claude Code**
+> What about forget password ?
+
+**2026-10-16 14:19 · Claude Code**
+> Awesome let’s keep it has magic link
+
+**2026-10-16 14:19 · Claude Code**
+> Is there anything missing  in the auth side?
+
+**2026-10-16 14:20 · Claude Code**
+> Do it
+
+**2026-10-16 14:25 · Claude Code**
+> Y
+
+**2026-10-16 14:26 · Claude Code**
+> Let’s merge this PRs so we can start fresh again in the main
+
+**2026-10-16 14:29 · Claude Code**
+> Ok what else can we do?
+
+**2026-10-16 14:43 · Claude Code**
+> Let’s make the schema tables
+
+**2026-10-16 14:56 · Claude Code**
+> Y
+
+**2026-10-16 14:59 · Claude Code**
+> let's start with 2, circles in the backend
+
+**2026-10-16 14:59 · Claude Code**
+> lets start merging all
+
+**2026-10-16 15:07 · Claude Code**
+> what is didit webhooks
+
+**2026-10-16 15:08 · Claude Code**
+> ok its done the env vars test it out
+
+**2026-10-16 15:09 · Claude Code**
+> also push this to main branch
+
+**2026-10-16 15:09 · Claude Code**
+> I want to start checking the the entire unit test for all the endpontsand e2e cases
+
+**2026-10-16 15:12 · Claude Code**
+> y
+
+**2026-10-16 15:35 · Claude Code**
+> y
+
+**2026-10-16 15:56 · Claude Code**
+> after the supabase email went throught correctly, I click the link:
+> https://interledger-opencircle.vercel.app/auth/confirm?token_hash=pkce_99238a67c2aaa07c15e300950d31ee5a570a6e18e89fd35f40074f75&type=email
+>
+> and its getting this:
+> [Image #6]
+
+**2026-10-16 15:58 · Claude Code**
+> can we use the API from nextjs instead for the didit?
+
+**2026-10-16 15:59 · Claude Code**
+> lets wait for the BACKEND_URL what is next?
+
+**2026-10-16 15:59 · Claude Code**
+> lets do 1 then 2
+
+**2026-10-16 16:02 · Claude Code**
+> lets merge main into this branch and lets start working again
+
+**2026-10-16 16:06 · Claude Code**
+> I need to deploy in railway this backend
 **2026-10-16 15:07 · Claude Code**
 > <task-notification>
 > <task-id>b79fizxwa</task-id>
@@ -1657,3 +1763,19 @@
 
 **2026-10-16 15:31 · Claude Code**
 > Sí, añádelo al wrapper del frontend
+
+**2026-10-16 16:13 · Claude Code**
+> <pasted_content id="c51a">
+> Starting Container
+> npm warn config production Use `--omit=dev` instead.
+> > backend@1.0.0 start
+> > node --env-file-if-exists=.env dist/server.js
+> .env not found. Continuing without it.
+> API listening on port 8080
+> </pasted_content id="c51a">
+
+**2026-10-16 16:17 · Claude Code**
+> switch to main
+
+**2026-10-16 16:18 · Claude Code**
+> lets start clean all into the main
