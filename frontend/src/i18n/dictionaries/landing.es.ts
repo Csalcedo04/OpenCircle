@@ -29,7 +29,7 @@ const landing = {
     dashboard: {
       label: "Vista previa del panel de OpenCircle con liquidación en tiempo real",
       heading: "Círculo activo · Open Payments",
-      circle: "Viaje de fin de año ✈️",
+      circle: "Círculo Viaje 2026",
       status: "Ronda 2 de 5 · Liquidando vía Rafiki",
       contribution: "Aporte por ronda",
       participants: "Participantes",
@@ -75,7 +75,7 @@ const landing = {
     ],
     mock: {
       payTitle: "Débito autorizado",
-      payTo: "Para: Viaje de fin de año ($circle/viaje)",
+      payTo: "Para: Círculo Viaje 2026 ($circle/viaje)",
       payFrom: "Desde tu Wallet Address",
       payDone: "Liquidado",
       you: "Tú",
@@ -162,12 +162,27 @@ const landing = {
     disclaimer: "Demostración técnica en testnet. OpenCircle utiliza estándares abiertos de Open Payments y liquidación simulada a través de Rafiki.",
   },
   useCases: {
-    title: "Soluciones para comunidades y comercios.",
-    lead: "Diseñado tanto para círculos de confianza mutua como para creadores y comercios que reciben cobros globales.",
+    title: "Soluciones de pago para comunidades y comercios.",
+    lead: "Diseñado para resolver transferencias directas, cobros transfronterizos y círculos colaborativos sin intermediarios.",
     cards: [
-      { emoji: "✈️", title: "Círculos de ahorro y viajes", body: "Ahorra con tu grupo de confianza y recibe la suma acordada en tu fecha exacta." },
-      { emoji: "🛍️", title: "Cobros directos para creadores", body: "Genera enlaces de cobro y recibe pagos globales en segundos sin altas comisiones." },
-      { emoji: "🌐", title: "Pagos transfronterizos", body: "Interoperabilidad nativa entre monedas y billeteras mediante el protocolo Interledger." },
+      {
+        tag: "Ahorro Comunitario",
+        title: "Círculos de ahorro y fondos mutuos",
+        body: "Aportes colectivos con turnos transparentes y custodia no centralizada sobre Interledger Protocol.",
+        metric: "100% auditable en el ledger",
+      },
+      {
+        tag: "Comercio Global",
+        title: "Pasarela y cobros directos para creadores",
+        body: "Emisión de Incoming Payments y botones de checkout con liquidación instantánea y cero comisiones abusivas.",
+        metric: "Liquidación en < 250ms",
+      },
+      {
+        tag: "Interoperabilidad ILP",
+        title: "Liquidación transfronteriza multiactivo",
+        body: "Transferencias entre distintas divisas y billeteras con paquetes STREAM sin fricción bancaria internacional.",
+        metric: "Protocolo STREAM abierto",
+      },
     ],
   },
   faq: {

@@ -31,7 +31,7 @@ const landing: LandingDictionary = {
     dashboard: {
       label: "Preview of the OpenCircle dashboard with real-time settlement",
       heading: "Active circle · Open Payments",
-      circle: "Year-end trip ✈️",
+      circle: "Trip Circle 2026",
       status: "Round 2 of 5 · Settle via Rafiki",
       contribution: "Per-round contribution",
       participants: "Members",
@@ -77,7 +77,7 @@ const landing: LandingDictionary = {
     ],
     mock: {
       payTitle: "Debit authorized",
-      payTo: "To: Year-end trip ($circle/trip)",
+      payTo: "To: Trip Circle 2026 ($circle/trip)",
       payFrom: "From your Wallet Address",
       payDone: "Settled",
       you: "You",
@@ -164,12 +164,27 @@ const landing: LandingDictionary = {
     disclaimer: "Technical demonstration on testnet. OpenCircle operates with Open Payments standards and simulated Rafiki settlement.",
   },
   useCases: {
-    title: "Solutions for communities and merchants.",
-    lead: "Designed for trust-based savings circles as well as creators and merchants receiving global payouts.",
+    title: "Payment solutions for communities and merchants.",
+    lead: "Engineered for trust-based collaborative funds, merchant checkouts, and frictionless cross-border payments.",
     cards: [
-      { emoji: "✈️", title: "Savings circles & travel pots", body: "Save with your trusted community and receive the pooled amount right on schedule." },
-      { emoji: "🛍️", title: "Direct payouts for creators", body: "Create payment links and receive global instant settlement with minimal fees." },
-      { emoji: "🌐", title: "Cross-border settlement", body: "Native interoperability across currencies and wallets powered by Interledger Protocol." },
+      {
+        tag: "Community Savings",
+        title: "Savings circles & mutual funds",
+        body: "Group contributions with transparent turns and non-custodial settlement powered by Interledger Protocol.",
+        metric: "100% on-ledger auditable",
+      },
+      {
+        tag: "Global Merchant",
+        title: "Checkout & direct creator payouts",
+        body: "Issue Incoming Payment links with sub-second finality and zero abusive interchange fees.",
+        metric: "Settlement in < 250ms",
+      },
+      {
+        tag: "ILP Interoperability",
+        title: "Multi-asset cross-border settlement",
+        body: "Direct transfers across currencies and wallets over STREAM packets with zero foreign-exchange lock-in.",
+        metric: "Open STREAM protocol",
+      },
     ],
   },
   faq: {
