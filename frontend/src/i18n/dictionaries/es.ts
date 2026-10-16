@@ -211,6 +211,7 @@ const es: Dictionary = {
       walletNotAllowed: "Esa billetera no está en la red de prueba de Interledger.",
       walletUnreachable: "No pudimos contactar esa billetera. Revisa la dirección e inténtalo de nuevo.",
       walletTaken: "Esa billetera ya está conectada a otra cuenta.",
+      unavailable: "OpenCircle no puede conectarse con su servicio en este momento. Inténtalo en un momento.",
       generic: "Algo salió mal. Inténtalo de nuevo.",
       consentRejected: "La conexión con la billetera no fue aprobada. Puedes intentarlo de nuevo.",
       consentExpired: "Esa aprobación expiró o ya se usó. Empieza de nuevo.",
@@ -233,6 +234,8 @@ const es: Dictionary = {
     },
   },
   common: {
+    unavailableTitle: "Estamos preparando todo",
+    unavailableBody: "OpenCircle no puede conectarse con su servicio en este momento. Inténtalo de nuevo en un momento.",
     back: "Volver",
     loading: "Cargando…",
     errorTitle: "Esta página no cargó",

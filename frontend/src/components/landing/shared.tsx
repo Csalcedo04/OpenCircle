@@ -45,17 +45,62 @@ export function Avatar({
     <span
       aria-hidden="true"
       className={cn(
-        "inline-grid shrink-0 place-items-center rounded-full font-semibold",
-        size === "sm" && "size-7 text-[11px]",
-        size === "md" && "size-9 text-xs",
-        size === "lg" && "size-11 text-sm",
+        "inline-grid shrink-0 place-items-center rounded-full overflow-hidden shadow-2xs",
+        size === "sm" && "size-7.5",
+        size === "md" && "size-9",
+        size === "lg" && "size-11",
         tones[tone],
         className,
       )}
     >
-      {name.slice(0, 1)}
+      <PersonSilhouette name={name} />
     </span>
   )
+}
+
+function PersonSilhouette({ name }: { name: string }) {
+  switch (name) {
+    case "María":
+      return (
+        <svg viewBox="0 0 32 32" fill="none" className="size-full p-0.5" aria-hidden="true">
+          <circle cx="16" cy="11" r="5" fill="currentColor" fillOpacity="0.85" />
+          <path d="M10 10c0-3.3 2.7-6 6-6s6 2.7 6 6c0 1.2-.4 2.3-1 3.2 1.5 1 2.5 2.8 2.5 4.8 0 .5-.1 1-.2 1.5-1.3-.8-2.8-1.5-4.3-1.5H13c-1.5 0-3 .7-4.3 1.5-.1-.5-.2-1-.2-1.5 0-2 1-3.8 2.5-4.8-.6-.9-1-2-1-3.2z" fill="currentColor" />
+          <path d="M7 28c0-5 4-9 9-9s9 4 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      )
+    case "Andrés":
+      return (
+        <svg viewBox="0 0 32 32" fill="none" className="size-full p-0.5" aria-hidden="true">
+          <path d="M11 11c0-2.8 2.2-5 5-5s5 2.2 5 5v1c0 2.8-2.2 5-5 5s-5-2.2-5-5v-1z" fill="currentColor" fillOpacity="0.85" />
+          <path d="M10 8c1-3 3.5-4.5 6-4.5s5 1.5 6 4.5l-1.5 1h-9L10 8z" fill="currentColor" />
+          <path d="M6 28c0-5.5 4.5-10 10-10s10 4.5 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      )
+    case "Lucía":
+      return (
+        <svg viewBox="0 0 32 32" fill="none" className="size-full p-0.5" aria-hidden="true">
+          <circle cx="16" cy="11.5" r="5" fill="currentColor" fillOpacity="0.85" />
+          <path d="M9.5 12c0-3.6 2.9-6.5 6.5-6.5s6.5 2.9 6.5 6.5v3.5c0 1.5-.8 2.5-2 2.5h-9c-1.2 0-2-1-2-2.5V12z" fill="currentColor" />
+          <path d="M7 28c0-5 4-9 9-9s9 4 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      )
+    case "Carlos":
+      return (
+        <svg viewBox="0 0 32 32" fill="none" className="size-full p-0.5" aria-hidden="true">
+          <circle cx="16" cy="11" r="5" fill="currentColor" fillOpacity="0.85" />
+          <path d="M11 7c1-2.5 3-3.5 5-3.5s4 1 5 3.5v2h-10V7z" fill="currentColor" />
+          <path d="M13 14c1 1.5 2 2 3 2s2-.5 3-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M6 28c0-5.5 4.5-10 10-10s10 4.5 10 10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+        </svg>
+      )
+    default:
+      return (
+        <svg viewBox="0 0 32 32" fill="none" className="size-full p-0.5" aria-hidden="true">
+          <circle cx="16" cy="11" r="5" fill="currentColor" fillOpacity="0.8" />
+          <path d="M7 28c0-5 4-9 9-9s9 4 9 9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="3 3" />
+        </svg>
+      )
+  }
 }
 
 export function SectionHeading({

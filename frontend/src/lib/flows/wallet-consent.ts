@@ -4,6 +4,7 @@ import type { ProfileErrorKey } from "./profile-form"
 export const isWalletInput = (value: string): boolean => /^(\$|https:\/\/)\S+$/.test(value)
 
 const startErrors: Record<string, ProfileErrorKey> = {
+  BACKEND_UNAVAILABLE: "unavailable",
   VALIDATION_ERROR: "wallet",
   WALLET_NOT_ALLOWED: "walletNotAllowed",
   OPEN_PAYMENTS_ERROR: "walletUnreachable",

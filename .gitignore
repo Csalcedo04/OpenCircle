@@ -20,3 +20,6 @@ dist/
 .direnv/
 graphify-out/
 .DS_Store
+
+# Vercel CLI link (project and team ids)
+.vercel
