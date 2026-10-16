@@ -17,3 +17,6 @@ dist/
 .claude/worktrees/
 graphify-out/
 .DS_Store
+.claude
+.envrc
+.direnv/
