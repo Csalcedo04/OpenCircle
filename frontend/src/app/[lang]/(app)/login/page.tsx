@@ -13,7 +13,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/[lang]/log
   const { locale, t } = await getDictionary()
   const supabase = await createClient()
   const { data } = await supabase.auth.getClaims()
-  if (data?.claims) redirect(`/${locale}/circles`)
+  if (data?.claims) redirect(`/${locale}/onboarding`)
 
   const { error } = await searchParams
   return (

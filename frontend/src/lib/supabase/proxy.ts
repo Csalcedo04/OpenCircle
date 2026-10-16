@@ -29,7 +29,17 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   // Validates the JWT (via the project's JWKS) and triggers a refresh when
   // needed. Don't put code between client creation and this call.
-  await supabase.auth.getClaims()
+  const { data } = await supabase.auth.getClaims()
+
+  // Signed-in-only pages: redirect before rendering, so it's a real 307 rather
+  // than a client-side redirect from a streamed page.
+  const match = request.nextUrl.pathname.match(/^\/([a-z]{2})\/onboarding(\/|$)/)
+  if (match && !data?.claims) {
+    const login = request.nextUrl.clone()
+    login.pathname = `/${match[1]}/login`
+    login.search = ""
+    return NextResponse.redirect(login)
+  }
 
   return response
 }

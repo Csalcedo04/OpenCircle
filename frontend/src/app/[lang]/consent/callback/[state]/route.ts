@@ -1,0 +1,36 @@
+import { NextResponse, type NextRequest } from "next/server"
+import { defaultLocale, hasLocale } from "@/i18n/config"
+import { BackendError, completeWalletConsent } from "@/lib/api/backend"
+
+// Backend error code → `?consent=` value the onboarding page understands.
+const reasons: Record<string, string> = {
+  CONSENT_NOT_FOUND: "expired",
+  CONSENT_INVALID: "invalid",
+  VALIDATION_ERROR: "invalid",
+  WALLET_ALREADY_LINKED: "taken",
+}
+
+/**
+ * The user's wallet redirects here after the consent screen (the backend set
+ * `/consent/callback/<state>`; the proxy adds the locale). Without `interact_ref`
+ * and `hash` the user didn't approve.
+ */
+export async function GET(request: NextRequest, { params }: RouteContext<"/[lang]/consent/callback/[state]">) {
+  const { lang, state } = await params
+  const locale = hasLocale(lang) ? lang : defaultLocale
+  const to = (path: string) => NextResponse.redirect(new URL(`/${locale}${path}`, request.url))
+
+  const interactRef = request.nextUrl.searchParams.get("interact_ref")
+  const hash = request.nextUrl.searchParams.get("hash")
+  if (!interactRef || !hash) return to("/onboarding?consent=rejected")
+
+  try {
+    await completeWalletConsent({ state, interactRef, hash })
+  } catch (err) {
+    if (err instanceof BackendError && err.status === 401) return to("/login")
+    const code = err instanceof BackendError ? err.code : "unknown"
+    console.error("Wallet consent completion failed", code)
+    return to(`/onboarding?consent=${reasons[code] ?? "error"}`)
+  }
+  return to("/circles")
+}
