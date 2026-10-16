@@ -20,3 +20,7 @@ graphify-out/
 .claude
 .envrc
 .direnv/
+
+.agents/
+README.md
+
