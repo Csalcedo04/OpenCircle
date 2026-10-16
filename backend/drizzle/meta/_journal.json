@@ -5,8 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1792170697412,
+      "when": 1792173155408,
       "tag": "0000_init",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792173517575,
+      "tag": "0001_audit_events_and_rls",
       "breakpoints": true
     }
   ]
