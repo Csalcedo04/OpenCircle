@@ -6,3 +6,12 @@ export const walletAddressUrlSchema = z.object({
 });
 
 export type WalletAddressUrl = z.infer<typeof walletAddressUrlSchema>;
+
+// Accepts a payment pointer (`$ilp.example/alice`) or its https form; yields the https URL.
+export const walletAddressInputSchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .transform((v) => (v.startsWith("$") ? `https://${v.slice(1)}` : v))
+    .pipe(z.url({ protocol: /^https$/ })),
+});

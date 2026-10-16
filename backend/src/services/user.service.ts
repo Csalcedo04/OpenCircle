@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { users, wallets } from "../db/schema";
 import { AppError } from "../errors/app-error";
@@ -49,32 +49,11 @@ export function createUserService(db: Db) {
 
   return {
     findById,
+    getById,
 
     // Upsert: the profile row may not exist yet for a freshly signed-up Supabase user.
     async updateProfile(id: string, patch: UpdateProfileInput): Promise<ProfileDto> {
       await db.insert(users).values({ id, ...patch }).onConflictDoUpdate({ target: users.id, set: patch });
-      return getById(id);
-    },
-
-    // `wallet.addressUrl` must be the canonical id returned by Open Payments, not raw user input.
-    async linkWallet(id: string, wallet: LinkedWalletDto): Promise<ProfileDto> {
-      await db.transaction(async (tx) => {
-        const [stored] = await tx
-          .insert(wallets)
-          .values(wallet)
-          .onConflictDoUpdate({ target: wallets.addressUrl, set: { assetCode: wallet.assetCode, assetScale: wallet.assetScale } })
-          .returning({ id: wallets.id });
-        if (!stored) throw new Error("Wallet upsert returned no row");
-
-        const [owner] = await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(and(eq(users.opWallet, stored.id), ne(users.id, id)))
-          .limit(1);
-        if (owner) throw new AppError(409, "WALLET_ALREADY_LINKED", "Wallet address is linked to another account");
-
-        await tx.insert(users).values({ id, opWallet: stored.id }).onConflictDoUpdate({ target: users.id, set: { opWallet: stored.id } });
-      });
       return getById(id);
     },
   };

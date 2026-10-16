@@ -87,7 +87,17 @@ export function updateMyProfile(patch: ProfilePatch): Promise<Profile> {
   return backendFetch("/users/me", profileSchema, { method: "PATCH", body: JSON.stringify(patch) })
 }
 
-/** Links an Open Payments wallet address (https URL) to the caller's profile. */
-export function linkMyWallet(url: string): Promise<Profile> {
-  return backendFetch("/users/me/wallet", profileSchema, { method: "PUT", body: JSON.stringify({ url }) })
+const consentStartSchema = z.object({ redirectUrl: z.url() })
+
+/**
+ * Starts Open Payments consent for a wallet address (`$ilp…` or https). Send the
+ * user to `redirectUrl`: their wallet's consent screen.
+ */
+export function startWalletConsent(url: string): Promise<{ redirectUrl: string }> {
+  return backendFetch("/users/me/wallet/consent", consentStartSchema, { method: "POST", body: JSON.stringify({ url }) })
+}
+
+/** Finishes consent with the values the wallet put on the callback URL; links the wallet. */
+export function completeWalletConsent(input: { state: string; interactRef: string; hash: string }): Promise<Profile> {
+  return backendFetch("/users/me/wallet/consent/complete", profileSchema, { method: "POST", body: JSON.stringify(input) })
 }

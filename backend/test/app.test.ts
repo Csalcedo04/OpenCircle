@@ -11,7 +11,15 @@ const services: Services = {
     updateProfile: async () => {
       throw new Error("not called in these tests");
     },
-    linkWallet: async () => {
+    getById: async () => {
+      throw new Error("not called in these tests");
+    },
+  },
+  walletConsent: {
+    start: async () => {
+      throw new Error("not called in these tests");
+    },
+    complete: async () => {
       throw new Error("not called in these tests");
     },
   },
@@ -66,11 +74,20 @@ test("PATCH /api/users/me without token returns 401", async () => {
   assert.equal(res.status, 401);
 });
 
-test("PUT /api/users/me/wallet without token returns 401", async () => {
-  const res = await fetch(`${baseUrl}/api/users/me/wallet`, {
-    method: "PUT",
+test("POST /api/users/me/wallet/consent without token returns 401", async () => {
+  const res = await fetch(`${baseUrl}/api/users/me/wallet/consent`, {
+    method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url: "https://example.com/alice" }),
+    body: JSON.stringify({ url: "$ilp.interledger-test.dev/alice" }),
+  });
+  assert.equal(res.status, 401);
+});
+
+test("POST /api/users/me/wallet/consent/complete without token returns 401", async () => {
+  const res = await fetch(`${baseUrl}/api/users/me/wallet/consent/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ state: "x".repeat(43), interactRef: "ref", hash: "hash" }),
   });
   assert.equal(res.status, 401);
 });
