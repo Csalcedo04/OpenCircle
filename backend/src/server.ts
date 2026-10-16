@@ -2,8 +2,10 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
 import { loadPrivateKey } from "./lib/client-key";
+import { createDiditClient } from "./lib/didit";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./lib/open-payments";
 import { createTokenCipher } from "./lib/token-cipher";
+import { createKycService } from "./services/kyc.service";
 import { createUserService } from "./services/user.service";
 import { createWalletAddressService } from "./services/wallet-address.service";
 import { createWalletConsentService } from "./services/wallet-consent.service";
@@ -28,7 +30,12 @@ async function main(): Promise<void> {
       users,
       frontendUrl: env.FRONTEND_URL,
     }),
-  });
+    kyc: createKycService({
+      db,
+      didit: createDiditClient({ apiKey: env.DIDIT_API_KEY, workflowId: env.DIDIT_WORKFLOW_ID }),
+      frontendUrl: env.FRONTEND_URL,
+    }),
+  }, { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET });
 
   app.listen(env.PORT, () => {
     console.log(`API listening on port ${env.PORT}`);

@@ -14,6 +14,11 @@ const envSchema = z.object({
   OP_PRIVATE_KEY: z.string().min(1),
   // Base64 of 32 random bytes; encrypts stored GNAP tokens (see lib/token-cipher.ts).
   GRANT_TOKEN_KEY: z.base64().refine((v) => Buffer.from(v, "base64").length === 32, "Must be 32 bytes, base64"),
+  // Didit KYC: server-only API key and the KYC workflow to run.
+  DIDIT_API_KEY: z.string().min(1),
+  DIDIT_WORKFLOW_ID: z.uuid(),
+  // Webhook destination's secret_shared_key; without it the webhook answers 503.
+  DIDIT_WEBHOOK_SECRET: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

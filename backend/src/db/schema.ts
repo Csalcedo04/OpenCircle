@@ -145,4 +145,24 @@ export const walletGrants = pgTable(
   ],
 ).enableRLS();
 
+// One Didit KYC session per row. Only the status is kept: Didit's decision carries
+// names, document data and images, which never leave Didit.
+export const kycVerifications = pgTable(
+  "kyc_verifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    sessionId: uuid("session_id").notNull().unique(),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [index("kyc_verifications_user_id_created_at_idx").on(t.userId, t.createdAt)],
+).enableRLS();
+
 export type User = typeof users.$inferSelect;

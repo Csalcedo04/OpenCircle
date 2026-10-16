@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { KycService } from "../services/kyc.service";
 import type { UserService } from "../services/user.service";
 import type { WalletAddressService } from "../services/wallet-address.service";
 import type { WalletConsentService } from "../services/wallet-consent.service";
@@ -10,11 +11,12 @@ export interface Services {
   users: UserService;
   walletAddresses: WalletAddressService;
   walletConsent: WalletConsentService;
+  kyc: KycService;
 }
 
 export function apiRoutes(services: Services): Router {
   return Router()
     .use("/health", healthRoutes())
-    .use("/users", userRoutes(services.users, services.walletConsent))
+    .use("/users", userRoutes(services.users, services.walletConsent, services.kyc))
     .use("/wallet-addresses", walletAddressRoutes(services.walletAddresses));
 }
