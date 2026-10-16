@@ -37,8 +37,9 @@ export async function HeaderAccount({ locale, t, linkClass }: Props) {
       </span>
       <form action={signOut.bind(null, locale)}>
         <button type="submit" className={linkClass}>
-          <LogOut className="mr-1.5 size-4" aria-hidden="true" />
-          {t.signOut}
+          <LogOut className="size-4 sm:mr-1.5" aria-hidden="true" />
+          {/* Icon only on phones so the header fits at 320px; the label stays for screen readers. */}
+          <span className="sr-only sm:not-sr-only">{t.signOut}</span>
         </button>
       </form>
     </>

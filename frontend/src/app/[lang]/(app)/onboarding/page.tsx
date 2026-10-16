@@ -7,6 +7,7 @@ import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getMyProfile, isBackendUnavailable, type Profile } from "@/lib/api/backend"
+import { countryOptions, splitPhone } from "@/lib/countries"
 import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
@@ -61,7 +62,14 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
             {o.profileTitle}
           </h2>
           <div className="mt-6">
-            <ProfileForm locale={locale} t={o} profile={profile} />
+            <ProfileForm
+              locale={locale}
+              t={o}
+              profile={profile}
+              countries={countryOptions(locale)}
+              phone={splitPhone(profile?.phone)}
+              maxDob={new Date().toISOString().slice(0, 10)}
+            />
           </div>
         </section>
       ) : (
