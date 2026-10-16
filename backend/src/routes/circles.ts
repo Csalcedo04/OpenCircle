@@ -1,0 +1,88 @@
+import { Router, type RequestHandler, type Response } from "express";
+import { z } from "zod";
+import { AppError } from "../errors/app-error";
+import { CIRCLE_STATUSES, GRANT_MODES } from "../db/schema";
+import { requireKyc } from "../middleware/require-kyc";
+import { requireUser } from "../middleware/require-user";
+import type { CircleService } from "../services/circle.service";
+import type { KycService } from "../services/kyc.service";
+
+// Money in the asset's minor unit as an integer string: never a float. 18 digits stays within bigint.
+const minorUnits = (min: "zero" | "positive") =>
+  z
+    .string()
+    .regex(min === "zero" ? /^(0|[1-9]\d{0,17})$/ : /^[1-9]\d{0,17}$/, "Must be an integer amount in minor units")
+    .transform((v) => BigInt(v));
+
+const seatFields = {
+  payoutRound: z.int().min(1),
+  collateralValue: minorUnits("zero").default(0n),
+  grantMode: z.enum(GRANT_MODES).nullable().default(null),
+};
+
+// Strict objects: unknown keys (status, feeBps, poolWallet...) are rejected, never silently stored.
+export const createCircleSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(80),
+    city: z.string().trim().min(1).max(80),
+    contributionValue: minorUnits("positive"),
+    size: z.int().min(2).max(50),
+    roundLengthDays: z.int().min(1).max(365),
+    ...seatFields,
+  })
+  .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" });
+
+export const joinCircleSchema = z.strictObject(seatFields);
+
+export const listCirclesQuerySchema = z.object({ status: z.enum(CIRCLE_STATUSES).optional() });
+
+export type CreateCircleBody = z.infer<typeof createCircleSchema>;
+export type JoinCircleBody = z.infer<typeof joinCircleSchema>;
+
+export interface CircleRouteServices {
+  circles: CircleService;
+  kyc: KycService;
+}
+
+// A malformed id can't match any circle: same answer as an unknown one.
+function circleId(id: unknown): string {
+  const parsed = z.uuid().safeParse(id);
+  if (!parsed.success) throw new AppError(404, "CIRCLE_NOT_FOUND", "Circle not found");
+  return parsed.data;
+}
+
+function currentUserId(res: Response): string {
+  const user = res.locals.user;
+  if (!user) throw new AppError(401, "UNAUTHORIZED", "Unauthorized");
+  return user.id;
+}
+
+export function circleRoutes({ circles, kyc }: CircleRouteServices): Router {
+  // Browsing is public; creating and joining need a signed-in, KYC-approved user.
+  const list: RequestHandler = async (req, res) => {
+    const { status } = listCirclesQuerySchema.parse(req.query);
+    res.json(await circles.list({ status }));
+  };
+
+  const getOne: RequestHandler = async (req, res) => {
+    res.json(await circles.get(circleId(req.params.id)));
+  };
+
+  const create: RequestHandler = async (req, res) => {
+    const body: CreateCircleBody = createCircleSchema.parse(req.body);
+    res.status(201).json(await circles.create(currentUserId(res), body));
+  };
+
+  const join: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const body: JoinCircleBody = joinCircleSchema.parse(req.body);
+    res.json(await circles.join(currentUserId(res), id, body));
+  };
+
+  const verified = [requireUser, requireKyc(kyc)];
+  return Router()
+    .get("/", list)
+    .get("/:id", getOne)
+    .post("/", ...verified, create)
+    .post("/:id/join", ...verified, join);
+}
