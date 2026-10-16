@@ -1,4 +1,9 @@
+import landing from "./landing.en"
+import legal from "./legal.en"
+
 const en = {
+  landing,
+  legal,
   meta: {
     title: "OpenCircle — save together, get the whole pot on your turn",
     description:
@@ -12,34 +17,6 @@ const en = {
     home: "OpenCircle home",
   },
   testFunds: "Demo with test funds only. No real money moves.",
-  home: {
-    title: "Save together. Take the whole pot when it’s your turn.",
-    lead:
-      "OpenCircle runs your natillera on Open Payments. Everyone pays into the circle’s own pool, every payment is verified, and the pot is released only when the whole round is in.",
-    explore: "Explore circles",
-    start: "Start a circle",
-    ringCaption: "{circle}: round {round} of {size}. {verified} of {size} payments verified.",
-    howTitle: "How a round works",
-    howLead: "A round pays out in full or refunds everyone. Nothing is released halfway.",
-    steps: [
-      { title: "Everyone pays in", body: "Each member, including this round’s beneficiary, pays the fixed amount into the circle’s pool from any Open Payments wallet." },
-      { title: "Each payment is verified", body: "OpenCircle checks every incoming payment on the pool until the full amount has arrived." },
-      { title: "The safety check runs", body: "Before releasing the pot, the Safe Round Engine checks that the beneficiary’s future payments are covered." },
-      { title: "The pot is paid out", body: "The beneficiary receives the pot minus a 2% fee. The fee is shown before you join and on every payout." },
-      { title: "Or everyone is refunded", body: "If a payment is still missing at the deadline, the payments that did arrive go back to the members who made them." },
-    ],
-    trustTitle: "Built so you don’t have to trust an organizer",
-    trustLead: "Savings circles usually fail when someone disappears with the pot. Here, the rules hold the money.",
-    trust: [
-      { title: "One pool per circle", body: "Each circle has its own wallet address. Money is never mixed across circles." },
-      { title: "You see the balance", body: "Every member sees the pool balance and each verified payment as it arrives." },
-      { title: "A fixed release rule", body: "The pot leaves only when all payments are verified and the safety check approves." },
-      { title: "Trust scores and reviews", body: "Members build a record from on-time payments and reviews from people they’ve saved with." },
-    ],
-    yieldTitle: "Coming later: earn on your savings",
-    yieldBody: "While the pot waits in the pool, it could earn yield with a licensed custody partner. We’ll add this after the core circle works.",
-    soon: "Coming later",
-  },
   circles: {
     title: "Circles",
     lead: "Join an open circle or follow the ones you’re in.",

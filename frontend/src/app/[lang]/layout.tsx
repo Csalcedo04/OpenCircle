@@ -1,20 +1,15 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import localFont from "next/font/local"
-import { SiteHeader } from "@/components/site-header"
 import { locales } from "@/i18n/config"
 import { getDictionary, getLocale } from "@/i18n/get-dictionary"
+import { siteUrl } from "@/lib/site"
 import "../globals.css"
 
-// Poppins (OFL) vendored in ../fonts so builds never reach Google Fonts.
-const poppins = localFont({
-  variable: "--font-poppins",
+// Geist (OFL) vendored in ../fonts so builds never reach Google Fonts (the Nix sandbox has no network).
+const geist = localFont({
+  variable: "--font-geist",
   display: "swap",
-  src: [
-    { path: "../fonts/poppins-400.woff2", weight: "400", style: "normal" },
-    { path: "../fonts/poppins-500.woff2", weight: "500", style: "normal" },
-    { path: "../fonts/poppins-600.woff2", weight: "600", style: "normal" },
-    { path: "../fonts/poppins-700.woff2", weight: "700", style: "normal" },
-  ],
+  src: [{ path: "../fonts/geist-variable.woff2", weight: "100 900", style: "normal" }],
 })
 
 export function generateStaticParams() {
@@ -23,21 +18,23 @@ export function generateStaticParams() {
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDictionary()
-  return { title: { default: "OpenCircle", template: "%s · OpenCircle" }, description: t.meta.description }
+  return {
+    metadataBase: siteUrl,
+    title: { default: "OpenCircle", template: "%s · OpenCircle" },
+    description: t.meta.description,
+    applicationName: "OpenCircle",
+  }
+}
+
+export const viewport: Viewport = {
+  themeColor: "#101828",
 }
 
 export default async function RootLayout({ children }: LayoutProps<"/[lang]">) {
   const locale = await getLocale()
-  const { t } = await getDictionary()
   return (
-    <html lang={locale} className={`${poppins.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">
-        <SiteHeader />
-        <main className="flex-1">{children}</main>
-        <footer className="border-t border-border">
-          <p className="mx-auto max-w-6xl px-4 py-8 text-sm text-muted-foreground sm:px-6">{t.common.footer}</p>
-        </footer>
-      </body>
+    <html lang={locale} className={`${geist.variable} h-full scroll-smooth antialiased`}>
+      <body className="flex min-h-full flex-col">{children}</body>
     </html>
   )
 }

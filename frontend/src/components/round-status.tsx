@@ -24,14 +24,14 @@ const icon: Record<RoundStatus, LucideIcon> = {
 
 /** Brand palette only: state reads from icon + label, colour just groups it. */
 const tone: Record<RoundStatus, string> = {
-  COLLECTING: "bg-brand-cool-steel/40 text-brand-deep-space-blue",
-  FUNDED: "bg-brand-baltic-blue text-brand-white-smoke",
-  RISK_CHECK: "bg-brand-cool-steel/40 text-brand-deep-space-blue",
-  BLOCKED: "bg-brand-black text-brand-white-smoke",
-  PAYING_OUT: "bg-brand-baltic-blue text-brand-white-smoke",
-  PAID_OUT: "bg-brand-deep-space-blue text-brand-white-smoke",
-  REFUNDED: "bg-brand-cool-steel/40 text-brand-deep-space-blue",
-  UPCOMING: "border border-brand-grey text-brand-deep-space-blue",
+  COLLECTING: "bg-brand-mint text-brand-navy",
+  FUNDED: "bg-brand-violet text-brand-white",
+  RISK_CHECK: "bg-brand-mint text-brand-navy",
+  BLOCKED: "bg-brand-navy text-brand-white",
+  PAYING_OUT: "bg-brand-violet text-brand-white",
+  PAID_OUT: "bg-brand-navy text-brand-white",
+  REFUNDED: "bg-brand-mint text-brand-navy",
+  UPCOMING: "border border-brand-slate text-brand-navy",
 }
 
 export function RoundStatusBadge({ status, label, className }: { status: RoundStatus; label: string; className?: string }) {

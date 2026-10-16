@@ -37,7 +37,7 @@ export function CircleRing({ seats, progress, amount, caption, title, className 
   return (
     <svg viewBox="0 0 460 460" role="img" aria-label={title} className={cn("h-auto w-full", className)}>
       <title>{title}</title>
-      <circle cx={C} cy={C} r={R} fill="none" className="stroke-brand-cool-steel" strokeWidth={2} />
+      <circle cx={C} cy={C} r={R} fill="none" className="stroke-brand-line" strokeWidth={2} />
       <circle
         cx={C}
         cy={C}
@@ -47,7 +47,7 @@ export function CircleRing({ seats, progress, amount, caption, title, className 
         strokeDasharray={`${progress} 100`}
         strokeLinecap="round"
         transform={`rotate(-90 ${C} ${C})`}
-        className="stroke-brand-baltic-blue"
+        className="stroke-brand-violet"
         strokeWidth={6}
       />
 
@@ -61,17 +61,17 @@ export function CircleRing({ seats, progress, amount, caption, title, className 
             x2={C + (CORE + 6) * Math.cos(angle)}
             y2={C + (CORE + 6) * Math.sin(angle)}
             pathLength={1}
-            className="ring-spoke stroke-brand-baltic-blue"
+            className="ring-spoke stroke-brand-violet"
             strokeWidth={2}
             style={{ animationDelay: `${i * 90}ms` }}
           />
         ))}
 
-      <circle cx={C} cy={C} r={CORE} className="fill-brand-deep-space-blue" />
-      <text x={C} y={C - 4} textAnchor="middle" className="fill-brand-white-smoke font-heading text-[26px] font-semibold">
+      <circle cx={C} cy={C} r={CORE} className="fill-brand-navy" />
+      <text x={C} y={C - 4} textAnchor="middle" className="fill-brand-white font-heading text-[26px] font-semibold">
         {amount}
       </text>
-      <text x={C} y={C + 26} textAnchor="middle" className="fill-brand-cool-steel text-[15px]">
+      <text x={C} y={C + 26} textAnchor="middle" className="fill-brand-on-navy text-[15px]">
         {caption}
       </text>
 
@@ -79,7 +79,7 @@ export function CircleRing({ seats, progress, amount, caption, title, className 
         <g key={seat.id}>
           <title>{seat.label}</title>
           {seat.beneficiary && (
-            <circle cx={x} cy={y} r={SEAT + 8} fill="none" className="stroke-brand-deep-space-blue" strokeWidth={3} />
+            <circle cx={x} cy={y} r={SEAT + 8} fill="none" className="stroke-brand-navy" strokeWidth={3} />
           )}
           <circle
             cx={x}
@@ -87,8 +87,8 @@ export function CircleRing({ seats, progress, amount, caption, title, className 
             r={SEAT}
             className={
               seat.state === "verified"
-                ? "fill-brand-baltic-blue stroke-brand-baltic-blue"
-                : "fill-brand-white-smoke stroke-brand-grey"
+                ? "fill-brand-violet stroke-brand-violet"
+                : "fill-brand-white stroke-brand-slate"
             }
             strokeWidth={2}
             strokeDasharray={seat.state === "verified" ? undefined : "5 5"}
@@ -99,7 +99,7 @@ export function CircleRing({ seats, progress, amount, caption, title, className 
             textAnchor="middle"
             className={cn(
               "text-[17px] font-semibold",
-              seat.state === "verified" ? "fill-brand-white-smoke" : "fill-brand-deep-space-blue",
+              seat.state === "verified" ? "fill-brand-white" : "fill-brand-navy",
             )}
           >
             {seat.initials}

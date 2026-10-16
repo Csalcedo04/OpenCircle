@@ -9,17 +9,22 @@
  * Use as bg-/text-/border-brand-*; semantic shadcn tokens below map onto these.
  */
 @theme {
-  --color-brand-baltic-blue: #3a607d; /* Baltic Blue (primary) */
-  --color-brand-deep-space-blue: #082b42; /* Deep Space Blue (primary) */
-  --color-brand-cool-steel: #97b7c1; /* Cool Steel (primary) — tint only, never text on Baltic Blue */
-  --color-brand-white-smoke: #f3f3f3; /* White Smoke (secondary) */
-  --color-brand-grey: #7f7f7f; /* Grey (secondary) — decoration only, fails as body text */
-  --color-brand-black: #000000; /* Black (secondary) */
+  --color-brand-navy: #101828; /* Deep navy (primary, text) */
+  --color-brand-violet: #7659f5; /* Violet (brand accent) — fills; text only on white */
+  --color-brand-mint: #bdf8da; /* Soft mint (secondary accent) */
+  --color-brand-canvas: #f8fafc; /* Warm off-white (page background) */
+  --color-brand-white: #ffffff; /* Surface */
+  --color-brand-mist: #f1f3f9; /* Secondary surface */
+  --color-brand-slate: #667085; /* Muted text — on white/canvas only */
+  /* Derived from the palette (no new hues): */
+  --color-brand-violet-ink: color-mix(in srgb, var(--color-brand-violet) 85%, var(--color-brand-navy)); /* violet text on canvas, 5.5:1 */
+  --color-brand-on-navy: color-mix(in srgb, var(--color-brand-white) 72%, var(--color-brand-navy)); /* muted text on navy, 9.5:1 */
+  --color-brand-line: color-mix(in srgb, var(--color-brand-navy) 10%, var(--color-brand-white)); /* borders */
 }
 
 @theme inline {
-  --font-sans: var(--font-poppins);
-  --font-heading: var(--font-poppins);
+  --font-sans: var(--font-geist);
+  --font-heading: var(--font-geist);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -47,29 +52,28 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Contrast (WCAG): Deep Space on White Smoke 13.2:1, Baltic Blue on White Smoke 6.0:1,
-   White Smoke on Deep Space 13.2:1, Cool Steel on Deep Space 6.9:1. */
+/* Contrast (WCAG): navy on canvas 17:1, slate on canvas 4.75:1, slate on white 5:1,
+   white on violet 4.65:1, violet-ink on canvas 5.5:1, mint on navy 14.9:1. */
 :root {
-  --tint: color-mix(in srgb, var(--color-brand-cool-steel) 22%, var(--color-brand-white-smoke));
-  --background: var(--color-brand-white-smoke);
-  --foreground: var(--color-brand-deep-space-blue);
-  --card: var(--color-brand-white-smoke);
-  --card-foreground: var(--color-brand-deep-space-blue);
-  --popover: var(--color-brand-white-smoke);
-  --popover-foreground: var(--color-brand-deep-space-blue);
-  --primary: var(--color-brand-deep-space-blue);
-  --primary-foreground: var(--color-brand-white-smoke);
-  --secondary: var(--tint);
-  --secondary-foreground: var(--color-brand-deep-space-blue);
-  --muted: var(--tint);
-  --muted-foreground: var(--color-brand-baltic-blue);
-  --accent: var(--tint);
-  --accent-foreground: var(--color-brand-deep-space-blue);
-  --destructive: var(--color-brand-black);
-  --border: var(--color-brand-cool-steel);
-  --input: var(--color-brand-cool-steel);
-  --ring: var(--color-brand-baltic-blue);
-  --radius: 0.75rem;
+  --background: var(--color-brand-canvas);
+  --foreground: var(--color-brand-navy);
+  --card: var(--color-brand-white);
+  --card-foreground: var(--color-brand-navy);
+  --popover: var(--color-brand-white);
+  --popover-foreground: var(--color-brand-navy);
+  --primary: var(--color-brand-navy);
+  --primary-foreground: var(--color-brand-white);
+  --secondary: var(--color-brand-mist);
+  --secondary-foreground: var(--color-brand-navy);
+  --muted: var(--color-brand-mist);
+  --muted-foreground: var(--color-brand-slate);
+  --accent: var(--color-brand-mist);
+  --accent-foreground: var(--color-brand-navy);
+  --destructive: var(--color-brand-navy);
+  --border: var(--color-brand-line);
+  --input: var(--color-brand-line);
+  --ring: var(--color-brand-violet);
+  --radius: 1rem;
 }
 
 @layer base {
@@ -95,4 +99,43 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ring-spoke { animation: none; }
+}
+
+/* ── Landing motion. All of it stops under prefers-reduced-motion. ── */
+@keyframes oc-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes oc-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes oc-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes oc-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes oc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .oc-rise { animation: oc-rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .oc-pop { animation: oc-pop 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .oc-bob { animation: oc-bob 6s ease-in-out infinite; }
+  .oc-fill { transform-origin: left; animation: oc-fill 1200ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .oc-pulse { animation: oc-pulse 1.8s ease-in-out infinite; }
+
+  /* Sections ease in as they scroll into view; browsers without support just show them. */
+  @supports (animation-timeline: view()) {
+    .oc-reveal {
+      animation: oc-rise linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 35%;
+    }
+  }
 }

@@ -53,7 +53,7 @@ Las copias en `.claude/skills/*/references/invariants.md` derivan de esta secci�
 
 ## Marca / UI
 
-Toda la marca (paleta, tipografía Poppins, logo, tokens y contraste) está en `.claude/skills/brand/SKILL.md`. Úsala en cualquier cambio visual.
+Toda la marca (paleta, tipografía Geist, logo, tokens y contraste) está en `.claude/skills/brand/SKILL.md`. Úsala en cualquier cambio visual.
 
 ## Definition of Done
 

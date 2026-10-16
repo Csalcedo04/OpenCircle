@@ -14,15 +14,8 @@ node_modules/
 out/
 dist/
 *.tsbuildinfo
-package-lock.json
+
 # Local tooling
 .claude/worktrees/
 graphify-out/
 .DS_Store
-.claude
-.envrc
-.direnv/
-
-.agents/
-README.md
-
