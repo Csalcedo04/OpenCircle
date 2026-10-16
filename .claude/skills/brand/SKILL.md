@@ -1,6 +1,6 @@
 ---
 name: brand
-description: Brand rules for every user-visible change in this repository — colours, typography, the logo, Tailwind v4 tokens, contrast and bilingual copy. Use it whenever the user asks for UI, layout, styling, colours, fonts, logos, icons, a new page, section or component, the 404 page, a "re-skin", "look and feel", "diseño", "colores" or "estilos", even without the word "brand".
+description: Brand rules for every user-visible change in this repository — colours, typography, the logo, Tailwind v4 tokens, contrast and bilingual copy. Use it whenever the user asks for UI, layout, styling, colours, fonts, logos, icons, a new page, section or component, the 404 page, a "re-skin", "look and feel", "diseño", "colores" or "estilos", even without the word "brand". Usar en cualquier cambio visual de `frontend/`. NO usar para lógica de pagos, backend, base de datos ni textos legales; do not use for payment flows (use the Open Payments skills).
 ---
 
 # Brand for OpenCircle

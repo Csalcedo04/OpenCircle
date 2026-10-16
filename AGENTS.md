@@ -1,6 +1,6 @@
 # Open Payments / Rafiki — guía del proyecto
 
-Proyecto de pagos con Open Payments, Interledger y Rafiki sobre Next.js + TypeScript. Las skills de dominio están en `.Codex/skills/` (checkout, transferencias, webhooks, cliente server-only, Rafiki local, ILP, arquitectura Next.js). Adaptado de `lastHunter956/skills-hackaton-medellin` (Apache-2.0).
+Proyecto de pagos con Open Payments, Interledger y Rafiki sobre Next.js + TypeScript. Las skills de dominio están en `.agents/skills/` (checkout, transferencias, webhooks, cliente server-only, Rafiki local, ILP, arquitectura Next.js). Adaptado de `lastHunter956/skills-hackaton-medellin` (Apache-2.0).
 
 ## Flujo de trabajo
 
@@ -21,7 +21,7 @@ Proyecto de pagos con Open Payments, Interledger y Rafiki sobre Next.js + TypeSc
 
 ## Invariantes de pagos (fuente única)
 
-Las copias en `.Codex/skills/*/references/invariants.md` derivan de esta sección; si cambias una, actualízalas todas.
+Las copias en `.agents/skills/*/references/invariants.md` derivan de esta sección; si cambias una, actualízalas todas.
 
 - **Cero floats:** montos como enteros en unidad mínima (`value` string entero o `bigint`). Nada de `number` para cálculos o conversiones.
 - **Tupla monetaria:** todo monto lleva `value`, `assetCode` y `assetScale`.
@@ -51,6 +51,10 @@ Las copias en `.Codex/skills/*/references/invariants.md` derivan de esta secció
 - Compose solo para servicios auxiliares (Postgres, Redis, Rafiki local), con redes bridge explícitas y secretos desde el entorno.
 - Mantener `infra/.env.example` con valores seguros de prueba.
 
+## Marca / UI
+
+Toda la marca (paleta, tipografía Poppins, logo, tokens y contraste) está en `.agents/skills/brand/SKILL.md`. Úsala en cualquier cambio visual.
+
 ## Definition of Done
 
 - `tsc --noEmit` sin errores.
@@ -60,7 +64,7 @@ Las copias en `.Codex/skills/*/references/invariants.md` derivan de esta secció
 
 ## Guardrails automáticos
 
-`.Codex/settings.json` registra hooks en `.Codex/hooks/`:
+Los hooks viven en `.claude/hooks/` y los registra `.claude/settings.json`; **solo se ejecutan en Claude Code**. En Codex no hay hooks configurados: aplica estas mismas reglas a mano antes de escribir archivos, instalar dependencias o hacer commit.
 - `payments-guard.py` (PreToolUse): bloquea `.env`/claves, comandos destructivos, secretos en archivos escritos, `NEXT_PUBLIC_*SECRET`, `ignoreBuildErrors: true`, Open Payments en `"use client"`; pide confirmación para commits, instalaciones, `docker compose up` y migraciones.
 - `track-verification.py` (PostToolUse) + `done-gate.py` (Stop): si se tocó código, pide correr `tsc --noEmit` y tests antes de terminar (máx. 2 veces por sesión).
 

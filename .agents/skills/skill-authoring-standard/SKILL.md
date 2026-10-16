@@ -5,7 +5,7 @@ description: >-
   en este proyecto. Usar al crear nuevas skills operativas. NO usar para
   directivas globales de código (usar AGENTS.md) ni para tareas sin flujo
   procedimental paso a paso. Use when creating or editing a Codex skill
-  under .Codex/skills in this project.
+  under .agents/skills in this project.
 ---
 
 # Estándar de Creación de Skills en Codex
@@ -29,9 +29,9 @@ Esta skill define el procedimiento uniforme para diseñar, documentar y verifica
 - Campos opcionales de frontmatter: `allowed-tools` (herramientas permitidas sin pedir permiso mientras la skill está activa), `disable-model-invocation: true` (solo invocable con `/<nombre>`, útil para acciones con efectos secundarios), `argument-hint`.
 
 ### 2. Estructuración del Directorio
-Crea la jerarquía bajo `.Codex/skills/<nombre>/`:
+Crea la jerarquía bajo `.agents/skills/<nombre>/`:
 ```text
-.Codex/skills/<nombre>/
+.agents/skills/<nombre>/
 ├── SKILL.md
 └── references/
     └── <guia-detallada>.md
@@ -46,6 +46,6 @@ Crea la jerarquía bajo `.Codex/skills/<nombre>/`:
 ### 4. Verificación
 Tras escribir la skill, ejecuta:
 ```bash
-python3 .Codex/skills/skill-authoring-standard/scripts/validate-skill.py .Codex/skills/<nombre>
+python3 .agents/skills/skill-authoring-standard/scripts/validate-skill.py .agents/skills/<nombre>
 ```
 Las skills nuevas se detectan al iniciar sesión; reinicia Codex si no aparece en la lista.
