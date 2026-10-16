@@ -27,7 +27,7 @@ buildNpmPackage' (finalAttrs: {
   };
 
   # Regenerate after changing package-lock.json: set to "", build, copy `got:`.
-  npmDepsHash = "sha256-W0Mds1rI3kKzpp71uZ9CjvL/UbgT5laeqly1jd554hA=";
+  npmDepsHash = "sha256-fU30dF5/PZUtsEshOJisyRSk99GYH/bWrYip2O7qEzk=";
 
   nativeBuildInputs = [ makeBinaryWrapper ];
 

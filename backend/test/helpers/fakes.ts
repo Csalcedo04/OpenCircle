@@ -40,7 +40,7 @@ const notUsed = (): never => {
 // Services for tests that never reach the database.
 export function fakeServices(overrides: Partial<Services> = {}): Services {
   return {
-    users: { getProfile: notUsed, createProfile: notUsed, updateProfile: notUsed },
+    users: { getProfile: notUsed, getPublicProfile: notUsed, createProfile: notUsed, updateProfile: notUsed },
     wallets: { getSavings: notUsed },
     walletAddresses: { getByUrl: notUsed },
     walletConsent: { start: notUsed, complete: notUsed },

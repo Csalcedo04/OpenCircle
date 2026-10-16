@@ -553,24 +553,64 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       assert.deepEqual(res.body, {
         walletAddress: url,
         balance: { value: "0", assetCode: "USD", assetScale: 2 },
-        paymentScore: null,
+        ics: null,
       });
     });
 
-    test("exposes the payment score but never the internal borrowing capacity", async () => {
+    test("exposes the ICS (0..100) but never the internal borrowing capacity", async () => {
       const { id, token } = await userWithProfile();
       const walletId = (await link(id, testWalletUrl())).wallet.id;
       await db.update(walletBalances).set({ balance: 1250075n }).where(eq(walletBalances.walletId, walletId));
-      await db.insert(creditProfiles).values({ walletId, internalCreditScore: "0.8734", borrowingCapacity: 987654321n });
+      await db.insert(creditProfiles).values({ walletId, internalCreditScore: 0.8734, borrowingCapacity: 987654321n });
 
       const res = await server.request("/api/users/me/savings", { token });
       assert.equal(res.status, 200);
-      const body = res.body as { balance: { value: string }; paymentScore: string };
+      const body = res.body as { balance: { value: string }; ics: number };
       assert.equal(body.balance.value, "1250075");
-      assert.equal(body.paymentScore, "0.8734");
-      assert.deepEqual(Object.keys(body).sort(), ["balance", "paymentScore", "walletAddress"]);
+      assert.equal(body.ics, 87.34);
+      assert.deepEqual(Object.keys(body).sort(), ["balance", "ics", "walletAddress"]);
       assert.ok(!res.text.includes("987654321"), "borrowing capacity leaked");
       assert.ok(!/credit|borrow/i.test(res.text), "credit wording leaked");
+    });
+  });
+
+  describe("GET /:id/public and /public (savings-circle applicant)", () => {
+    const byWallet = (walletAddress: string) => `/api/users/public?walletAddress=${encodeURIComponent(walletAddress)}`;
+
+    test("by id and by wallet → only name, wallet and ICS on the 0..100 scale", async () => {
+      const viewer = await newUser();
+      const applicant = await userWithProfile();
+      const url = testWalletUrl("applicant");
+      const walletId = (await link(applicant.id, url)).wallet.id;
+      await db.insert(creditProfiles).values({ walletId, internalCreditScore: 0.8734, borrowingCapacity: 987654321n });
+
+      const expected = { fullName: `${TEST_NAME_PREFIX}Ana Gómez`, walletAddress: url, ics: 87.34 };
+      for (const path of [`/api/users/${applicant.id}/public`, byWallet(url), byWallet(`$${url.slice("https://".length)}`)]) {
+        const res = await server.request(path, { token: viewer.token });
+        assert.equal(res.status, 200, path);
+        assert.deepEqual(res.body, expected, path);
+        assert.ok(!res.text.includes("987654321"), "borrowing capacity leaked");
+      }
+    });
+
+    test("no score yet → ics is null", async () => {
+      const viewer = await newUser();
+      const applicant = await userWithProfile();
+      await link(applicant.id, testWalletUrl("applicant"));
+
+      const res = await server.request(`/api/users/${applicant.id}/public`, { token: viewer.token });
+      assert.equal(res.status, 200);
+      assert.equal((res.body as { ics: unknown }).ics, null);
+    });
+
+    test("unknown user, user without a wallet, or unknown wallet → 404 PROFILE_NOT_FOUND", async () => {
+      const viewer = await newUser();
+      const noWallet = await userWithProfile();
+      for (const path of [`/api/users/${randomUUID()}/public`, `/api/users/${noWallet.id}/public`, byWallet(testWalletUrl("ghost"))]) {
+        const res = await server.request(path, { token: viewer.token });
+        assert.equal(res.status, 404, path);
+        assert.equal(errorCode(res.body), "PROFILE_NOT_FOUND");
+      }
     });
   });
 });

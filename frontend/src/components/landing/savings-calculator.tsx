@@ -49,7 +49,7 @@ export function SavingsCalculator({ t, locale }: { t: LandingDictionary["calc"];
           <p className="mt-4 text-lg leading-relaxed text-brand-slate">{t.lead}</p>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 overflow-hidden rounded-[28px] border border-brand-line bg-brand-white lg:grid-cols-[1.05fr_1fr]">
+        <div className="mt-12 grid grid-cols-1 overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white lg:grid-cols-[1.05fr_1fr]">
           {/* Controls */}
           <div className="space-y-9 p-6 sm:p-9">
             <div>
@@ -174,14 +174,14 @@ export function SavingsCalculator({ t, locale }: { t: LandingDictionary["calc"];
           </div>
 
           {/* Result */}
-          <div className="relative isolate overflow-hidden bg-brand-navy p-6 text-brand-white sm:p-9">
+          <div className="relative isolate overflow-hidden bg-brand-navy p-5 text-brand-white sm:p-9">
             <div
               aria-hidden="true"
               className="absolute -top-24 -right-24 -z-10 size-80 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_45%,transparent),transparent)]"
             />
             <div aria-live="polite" className={cn("transition-opacity", invalid && "opacity-50")}>
-              <p className="text-sm font-medium text-brand-on-navy">{t.payoutLabel}</p>
-              <p className="mt-2 text-[2.75rem] leading-none font-semibold tracking-[-0.04em] text-brand-mint tabular-nums sm:text-6xl">
+              <p className="text-xs sm:text-sm font-medium text-brand-on-navy">{t.payoutLabel}</p>
+              <p className="mt-2 text-3xl sm:text-5xl lg:text-6xl leading-tight font-semibold tracking-[-0.04em] text-brand-mint tabular-nums break-words">
                 {pesos(payout, locale)}
               </p>
 

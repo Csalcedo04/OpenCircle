@@ -3,6 +3,7 @@ import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
 import { auditEvents, creditProfiles, users, walletBalances, wallets } from "../db/schema";
 import { AppError } from "../errors/app-error";
+import { icsFromStored } from "./credit/credit-score";
 
 export interface WalletDto {
   id: string;
@@ -22,8 +23,8 @@ export interface AmountDto {
 export interface SavingsDto {
   walletAddress: string;
   balance: AmountDto;
-  // How reliably the user pays in savings rounds, 0..1; null until it is first computed.
-  paymentScore: string | null;
+  // Payment-reliability score (ICS), 0..100; null until it is first computed.
+  ics: number | null;
 }
 
 const profileNotFound = () => new AppError(404, "PROFILE_NOT_FOUND", "User profile not found");
@@ -85,7 +86,7 @@ export function createWalletService(db: Db) {
           assetCode: wallets.assetCode,
           assetScale: wallets.assetScale,
           balance: walletBalances.balance,
-          paymentScore: creditProfiles.internalCreditScore,
+          score: creditProfiles.internalCreditScore,
         })
         .from(users)
         .leftJoin(wallets, eq(users.opWallet, wallets.id))
@@ -105,7 +106,7 @@ export function createWalletService(db: Db) {
           assetCode: row.assetCode,
           assetScale: row.assetScale,
         },
-        paymentScore: row.paymentScore,
+        ics: icsFromStored(row.score),
       };
     },
   };
