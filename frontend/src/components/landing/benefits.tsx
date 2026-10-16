@@ -45,11 +45,11 @@ export function Benefits({ t, locale }: { t: T; locale: Locale }) {
 
 function Card({ title, body, className, children }: { title: string; body: string; className?: string; children: ReactNode }) {
   return (
-    <article className={cn("oc-reveal flex flex-col rounded-[28px] border border-brand-line bg-brand-white p-2", className)}>
-      <div aria-hidden="true" className="relative grid h-60 place-items-center overflow-hidden rounded-[22px] bg-brand-mist px-5">
+    <article className={cn("oc-reveal flex flex-col rounded-[36px] border border-brand-line bg-brand-white p-3", className)}>
+      <div aria-hidden="true" className="relative grid h-60 place-items-center overflow-hidden rounded-[28px] bg-brand-mist px-5">
         {children}
       </div>
-      <div className="px-4 pt-5 pb-4 sm:px-5">
+      <div className="px-5 pt-6 pb-5">
         <h3 className="text-xl font-semibold tracking-[-0.02em]">{title}</h3>
         <p className="mt-2 max-w-md leading-relaxed text-brand-slate">{body}</p>
       </div>

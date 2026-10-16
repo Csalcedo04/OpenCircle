@@ -27,7 +27,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
         className="absolute -inset-x-6 -inset-y-10 -z-10 rounded-[48px] bg-[radial-gradient(60%_55%_at_70%_30%,color-mix(in_srgb,var(--color-brand-violet)_18%,transparent),transparent_70%),radial-gradient(50%_50%_at_25%_80%,color-mix(in_srgb,var(--color-brand-mint)_60%,transparent),transparent_70%)] blur-2xl"
       />
 
-      <div className="oc-rise rounded-[28px] border border-brand-line bg-brand-white p-5 pb-16 shadow-[0_30px_60px_-30px_color-mix(in_srgb,var(--color-brand-navy)_35%,transparent)] sm:p-6 sm:pb-16">
+      <div className="oc-rise rounded-[40px] border border-brand-line bg-brand-white p-5 pb-16 shadow-[0_30px_60px_-30px_color-mix(in_srgb,var(--color-brand-navy)_35%,transparent)] sm:p-7 sm:pb-16">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[13px] font-medium text-brand-slate">{t.heading}</p>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mint px-2.5 py-1 text-[11px] font-semibold text-brand-navy">
@@ -35,7 +35,13 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
             {t.status}
           </span>
         </div>
-        <p className="mt-2 text-[1.35rem] font-semibold tracking-[-0.02em] sm:text-2xl">{t.circle}</p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[1.35rem] font-semibold tracking-[-0.02em] sm:text-2xl">{t.circle}</p>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-[11px] font-medium text-brand-navy/80">
+            <span className="size-1.5 rounded-full bg-brand-violet" aria-hidden="true" />
+            $ilp.rafiki.money/viaje
+          </span>
+        </div>
 
         <dl className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           <div className="rounded-2xl bg-brand-mist p-3.5">

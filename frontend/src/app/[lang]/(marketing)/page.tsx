@@ -18,8 +18,8 @@ export async function generateMetadata(): Promise<Metadata> {
     description: m.description,
     keywords:
       locale === "es"
-        ? ["círculos de ahorro", "ahorro en grupo", "ahorro comunitario", "rondas de ahorro", "tandas digitales", "cadenas de ahorro", "ahorro con amigos", "natillera"]
-        : ["savings circles", "group savings", "community savings", "ROSCA", "tanda", "save with friends"],
+        ? ["open payments", "interledger", "rafiki", "gnap", "círculos de ahorro", "ahorro en grupo", "ahorro comunitario", "rondas de ahorro", "tandas digitales", "cadenas de ahorro", "pasarela de pagos"]
+        : ["open payments", "interledger", "rafiki", "gnap", "savings circles", "group savings", "community savings", "ROSCA", "tanda", "payment gateway"],
     alternates: {
       canonical: `/${locale}`,
       languages: { es: "/es", en: "/en", "x-default": "/es" },

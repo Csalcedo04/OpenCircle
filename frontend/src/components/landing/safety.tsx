@@ -22,8 +22,8 @@ export function Safety({ t }: { t: LandingDictionary["safety"] }) {
           {t.items.map((item, i) => {
             const Icon = icons[i] ?? BadgeCheck
             return (
-              <li key={item.title} className="oc-reveal rounded-[24px] border border-brand-line bg-brand-canvas p-6 sm:p-7">
-                <span className="grid size-12 place-items-center rounded-2xl bg-brand-navy text-brand-mint">
+              <li key={item.title} className="oc-reveal rounded-[32px] border border-brand-line bg-brand-canvas p-6 sm:p-8">
+                <span className="grid size-12 place-items-center rounded-2xl bg-brand-navy text-brand-mint shadow-sm">
                   <Icon className="size-5" aria-hidden="true" />
                 </span>
                 <h3 className="mt-6 text-lg font-semibold tracking-[-0.01em]">{item.title}</h3>

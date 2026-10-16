@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { Check, Link2 } from "lucide-react"
+import { Link2 } from "lucide-react"
 import type { Locale } from "@/i18n/config"
 import type { LandingDictionary } from "@/i18n/dictionaries/landing.es"
 import { estimateCircle } from "@/lib/domain/calculator"
@@ -11,7 +11,7 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
   const { payout } = estimateCircle(5, 20_000n, 200)
   const vignettes: ReactNode[] = [
     <div key="create" className="space-y-2">
-      <Field label={t.mock.name} value={circleName} />
+      <Field label={t.mock.name} value={`$ilp.rafiki.money/${circleName}`} />
       <Field label={t.mock.amount} value={pesos(20_000, locale)} />
     </div>,
     <div key="invite" className="space-y-3">
@@ -28,22 +28,22 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
     </div>,
     <div key="pay" className="space-y-2.5">
       <div className="flex items-center justify-between text-xs font-semibold">
-        <span>4/5</span>
-        <span className="text-brand-violet-ink">80%</span>
+        <span>Consentimiento GNAP</span>
+        <span className="text-brand-violet-ink">5/5 listo</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-brand-white">
-        <div className="oc-reveal h-full w-4/5 rounded-full bg-brand-violet" />
+        <div className="oc-reveal h-full w-full rounded-full bg-brand-violet" />
       </div>
-      <div className="flex gap-1.5">
-        {PEOPLE.map((p, i) => (
-          <span key={p.name} className={i < 4 ? "grid size-5 place-items-center rounded-full bg-brand-mint" : "size-5 rounded-full border border-dashed border-brand-slate"}>
-            {i < 4 && <Check className="size-3 text-brand-navy" strokeWidth={3} />}
-          </span>
-        ))}
+      <div className="flex items-center justify-between gap-1.5 pt-1 text-[11px] text-brand-slate">
+        <span>Débito autorizado</span>
+        <span className="font-semibold text-brand-navy">100% verificado</span>
       </div>
     </div>,
     <div key="receive" className="rounded-2xl bg-brand-navy p-3.5 text-brand-white">
-      <p className="text-[11px] text-brand-on-navy">{t.mock.received}</p>
+      <div className="flex items-center justify-between text-[11px] text-brand-on-navy">
+        <span>{t.mock.received}</span>
+        <span className="rounded-full bg-brand-mint/20 px-2 py-0.5 text-[10px] text-brand-mint">Rafiki ILP</span>
+      </div>
       <p className="mt-1 text-xl font-semibold tracking-[-0.02em] text-brand-mint tabular-nums">{pesos(payout, locale)}</p>
     </div>,
   ]
@@ -60,7 +60,7 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
               <span className="relative z-10 mx-0 grid size-12 place-items-center rounded-full border border-brand-line bg-brand-white text-sm font-semibold tabular-nums shadow-[0_6px_16px_-10px_color-mix(in_srgb,var(--color-brand-navy)_50%,transparent)] lg:mx-auto">
                 <span className="bg-[linear-gradient(135deg,var(--color-brand-violet-ink),var(--color-brand-navy))] bg-clip-text text-transparent">{String(i + 1).padStart(2, "0")}</span>
               </span>
-              <div className="mt-5 flex flex-1 flex-col rounded-[24px] border border-brand-line bg-brand-canvas p-5">
+              <div className="mt-5 flex flex-1 flex-col rounded-[32px] border border-brand-line bg-brand-canvas p-6">
                 <div aria-hidden="true" className="flex h-36 flex-col justify-center rounded-2xl bg-brand-mist p-4">
                   {vignettes[i]}
                 </div>
