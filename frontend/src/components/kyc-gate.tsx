@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button"
 import type { Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { getMyKyc, getMyProfile } from "@/lib/api/backend"
+import { kycGateState } from "@/lib/flows/kyc-gate"
 import { createClient } from "@/lib/supabase/server"
 
 type Props = {
@@ -60,10 +61,10 @@ export async function KycGate({ locale, t, returnPath, children }: Props) {
     )
   }
 
-  const kyc = await getMyKyc()
-  if (kyc.approved) return <>{children}</>
+  const state = kycGateState(await getMyKyc())
+  if (state === "open") return <>{children}</>
 
-  if (kyc.status === "In Review") {
+  if (state === "in-review") {
     return (
       <Panel icon={<Clock className="size-5 shrink-0 text-brand-violet-ink" aria-hidden="true" />} title={t.title}>
         <p className="mt-3 text-muted-foreground" role="status">
@@ -73,10 +74,9 @@ export async function KycGate({ locale, t, returnPath, children }: Props) {
     )
   }
 
-  const declined = kyc.status === "Declined" || kyc.status === "Kyc Expired"
   return (
     <Panel icon={icon} title={t.title}>
-      <p className="mt-3 text-muted-foreground">{declined ? t.declined : t.lead}</p>
+      <p className="mt-3 text-muted-foreground">{state === "declined" ? t.declined : t.lead}</p>
       <KycStartForm locale={locale} returnPath={returnPath} t={t} />
     </Panel>
   )

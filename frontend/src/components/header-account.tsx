@@ -4,6 +4,7 @@ import { signOut } from "@/app/[lang]/auth/actions"
 import type { Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { getMyProfile } from "@/lib/api/backend"
+import { headerName } from "@/lib/flows/display-name"
 import { createClient } from "@/lib/supabase/server"
 
 type Props = {
@@ -26,8 +27,7 @@ export async function HeaderAccount({ locale, t, linkClass }: Props) {
 
   // The header must render even if the API is down: fall back to the email.
   const profile = await getMyProfile().catch(() => null)
-  const email = typeof data.claims.email === "string" ? data.claims.email : ""
-  const name = profile?.fullName ?? email.split("@")[0] ?? ""
+  const name = headerName(profile?.fullName, data.claims.email)
 
   return (
     <>
