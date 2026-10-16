@@ -21,6 +21,9 @@
         # Override to bake in public Supabase config:
         #   frontend.override { supabaseUrl = "https://x.supabase.co"; supabasePublishableKey = "sb_publishable_..."; }
         frontend = pkgs.callPackage ./frontend/package.nix { };
+        # `nix build .#backend` → result/bin/opencircle-backend (Express API).
+        # Runtime config comes from the environment (see backend/.env.example).
+        backend = pkgs.callPackage ./backend/package.nix { };
         default = frontend;
       });
 
@@ -29,6 +32,11 @@
         frontend = {
           type = "app";
           program = pkgs.lib.getExe inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.frontend;
+        };
+        # `nix run .#backend` with PORT, DATABASE_URL and SUPABASE_URL exported.
+        backend = {
+          type = "app";
+          program = pkgs.lib.getExe inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.backend;
         };
         default = frontend;
       });

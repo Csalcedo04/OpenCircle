@@ -15,9 +15,6 @@ out/
 dist/
 *.tsbuildinfo
 package-lock.json
-package.nix
-pnpm-lock.yaml
-pnpm-workspace.yaml
 
 
 # Local tooling
