@@ -33,10 +33,10 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
   if (!data?.claims) redirect(`/${locale}/login`)
 
   const profile = await getMyProfile()
-  if (profile?.fullName && profile.wallet) redirect(`/${locale}/circles`)
+  if (profile?.walletAddress) redirect(`/${locale}/circles`)
 
   const { consent, edit } = await searchParams
-  const step = profile?.fullName && edit !== "profile" ? 2 : 1
+  const step = profile && edit !== "profile" ? 2 : 1
   const consentError = typeof consent === "string" ? (consentErrors[consent] ?? null) : null
   const o = t.onboarding
 
@@ -52,11 +52,7 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
             {o.profileTitle}
           </h2>
           <div className="mt-6">
-            <ProfileForm
-              locale={locale}
-              t={o}
-              defaults={{ fullName: profile?.fullName ?? "", phone: profile?.phone ?? "", dob: profile?.dob ?? "" }}
-            />
+            <ProfileForm locale={locale} t={o} profile={profile} />
           </div>
         </section>
       ) : (

@@ -8,6 +8,7 @@ const reasons: Record<string, string> = {
   CONSENT_INVALID: "invalid",
   VALIDATION_ERROR: "invalid",
   WALLET_ALREADY_LINKED: "taken",
+  WALLET_IN_USE: "taken",
 }
 
 /**

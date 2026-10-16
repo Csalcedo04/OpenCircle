@@ -1,5 +1,7 @@
 import type { Metadata } from "next"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { Suspense } from "react"
+import { KycGate } from "@/components/kyc-gate"
 import { CreateCircleForm } from "./create-circle-form"
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -14,7 +16,11 @@ export default async function NewCirclePage() {
       <h1 className="font-heading text-4xl font-semibold tracking-tight">{t.create.title}</h1>
       <p className="mt-2 max-w-2xl text-muted-foreground">{t.create.lead}</p>
       <div className="mt-10">
-        <CreateCircleForm locale={locale} t={t.create} />
+        <Suspense fallback={<p className="text-muted-foreground">{t.common.loading}</p>}>
+          <KycGate locale={locale} t={t.kyc} returnPath={`/${locale}/circles/new`}>
+            <CreateCircleForm locale={locale} t={t.create} />
+          </KycGate>
+        </Suspense>
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import "server-only"
 
 import { z } from "zod"
+import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 import { createClient } from "@/lib/supabase/server"
 
 /**
@@ -27,22 +28,33 @@ export class BackendError extends Error {
 
 const profileSchema = z.object({
   id: z.uuid(),
+  email: z.string(),
+  documentType: z.enum(DOCUMENT_TYPES),
+  documentNumber: z.string(),
+  nationality: z.string(),
   fullName: z.string().nullable(),
   phone: z.string().nullable(),
   dob: z.string().nullable(),
-  wallet: z
-    .object({ addressUrl: z.string(), assetCode: z.string(), assetScale: z.number().int() })
-    .nullable(),
+  walletAddress: z.string().nullable(),
 })
 
 export type Profile = z.infer<typeof profileSchema>
 
-export interface ProfilePatch {
-  fullName?: string
-  phone?: string
+/** Everything POST /users/me needs; the email comes from the Supabase token. */
+export interface NewProfile {
+  fullName: string
+  /** E.164, e.g. +573001234567 */
+  phone: string
   /** YYYY-MM-DD */
-  dob?: string
+  dob: string
+  /** ISO 3166-1 alpha-2, e.g. CO */
+  nationality: string
+  documentType: DocumentType
+  documentNumber: string
 }
+
+/** Identity fields (document, email) are fixed once the profile exists. */
+export type ProfilePatch = Partial<Pick<NewProfile, "fullName" | "phone" | "dob" | "nationality">>
 
 async function backendFetch<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
   const supabase = await createClient()
@@ -78,26 +90,47 @@ export async function getMyProfile(): Promise<Profile | null> {
   try {
     return await backendFetch("/users/me", profileSchema)
   } catch (err) {
-    if (err instanceof BackendError && err.code === "USER_NOT_FOUND") return null
+    if (err instanceof BackendError && err.code === "PROFILE_NOT_FOUND") return null
     throw err
   }
+}
+
+export function createMyProfile(profile: NewProfile): Promise<Profile> {
+  return backendFetch("/users/me", profileSchema, { method: "POST", body: JSON.stringify(profile) })
 }
 
 export function updateMyProfile(patch: ProfilePatch): Promise<Profile> {
   return backendFetch("/users/me", profileSchema, { method: "PATCH", body: JSON.stringify(patch) })
 }
 
-const consentStartSchema = z.object({ redirectUrl: z.url() })
+const redirectSchema = z.object({ redirectUrl: z.url() })
 
 /**
  * Starts Open Payments consent for a wallet address (`$ilp…` or https). Send the
  * user to `redirectUrl`: their wallet's consent screen.
  */
-export function startWalletConsent(url: string): Promise<{ redirectUrl: string }> {
-  return backendFetch("/users/me/wallet/consent", consentStartSchema, { method: "POST", body: JSON.stringify({ url }) })
+export function startWalletConsent(walletAddress: string): Promise<{ redirectUrl: string }> {
+  return backendFetch("/users/me/wallet/consent", redirectSchema, {
+    method: "POST",
+    body: JSON.stringify({ walletAddress }),
+  })
 }
 
 /** Finishes consent with the values the wallet put on the callback URL; links the wallet. */
 export function completeWalletConsent(input: { state: string; interactRef: string; hash: string }): Promise<Profile> {
   return backendFetch("/users/me/wallet/consent/complete", profileSchema, { method: "POST", body: JSON.stringify(input) })
+}
+
+const kycSchema = z.object({ status: z.string().nullable(), approved: z.boolean() })
+
+export type Kyc = z.infer<typeof kycSchema>
+
+/** Identity verification status; the API refreshes pending sessions from Didit. */
+export function getMyKyc(): Promise<Kyc> {
+  return backendFetch("/users/me/kyc", kycSchema)
+}
+
+/** Starts (or resumes) Didit verification; send the user to `url`. */
+export function startKyc(input: { locale: "en" | "es"; returnPath: string }): Promise<{ url: string }> {
+  return backendFetch("/users/me/kyc/session", z.object({ url: z.url() }), { method: "POST", body: JSON.stringify(input) })
 }
