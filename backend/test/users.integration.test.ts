@@ -531,22 +531,22 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       assert.deepEqual(res.body, {
         walletAddress: url,
         balance: { value: "0", assetCode: "USD", assetScale: 2 },
-        paymentScore: null,
+        ics: null,
       });
     });
 
-    test("exposes the payment score but never the internal borrowing capacity", async () => {
+    test("exposes the ICS (0..100) but never the internal borrowing capacity", async () => {
       const { id, token } = await userWithProfile();
       const walletId = (await link(id, testWalletUrl())).wallet.id;
       await db.update(walletBalances).set({ balance: 1250075n }).where(eq(walletBalances.walletId, walletId));
-      await db.insert(creditProfiles).values({ walletId, internalCreditScore: "0.8734", borrowingCapacity: 987654321n });
+      await db.insert(creditProfiles).values({ walletId, internalCreditScore: 0.8734, borrowingCapacity: 987654321n });
 
       const res = await server.request("/api/users/me/savings", { token });
       assert.equal(res.status, 200);
-      const body = res.body as { balance: { value: string }; paymentScore: string };
+      const body = res.body as { balance: { value: string }; ics: number };
       assert.equal(body.balance.value, "1250075");
-      assert.equal(body.paymentScore, "0.8734");
-      assert.deepEqual(Object.keys(body).sort(), ["balance", "paymentScore", "walletAddress"]);
+      assert.equal(body.ics, 87.34);
+      assert.deepEqual(Object.keys(body).sort(), ["balance", "ics", "walletAddress"]);
       assert.ok(!res.text.includes("987654321"), "borrowing capacity leaked");
       assert.ok(!/credit|borrow/i.test(res.text), "credit wording leaked");
     });
@@ -560,7 +560,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       const applicant = await userWithProfile();
       const url = testWalletUrl("applicant");
       const walletId = (await link(applicant.id, url)).wallet.id;
-      await db.insert(creditProfiles).values({ walletId, internalCreditScore: "0.8734", borrowingCapacity: 987654321n });
+      await db.insert(creditProfiles).values({ walletId, internalCreditScore: 0.8734, borrowingCapacity: 987654321n });
 
       const expected = { fullName: `${TEST_NAME_PREFIX}Ana Gómez`, walletAddress: url, ics: 87.34 };
       for (const path of [`/api/users/${applicant.id}/public`, byWallet(url), byWallet(`$${url.slice("https://".length)}`)]) {

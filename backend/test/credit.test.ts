@@ -67,16 +67,17 @@ describe("calculateCreditScore", () => {
 
 describe("scoreFromFraction", () => {
   test("maps the stored 0..1 fraction to the 0..100 score", () => {
-    assert.equal(scoreFromFraction("0.8734"), 87.34);
-    assert.equal(scoreFromFraction("0.0001"), 0.01);
-    assert.equal(scoreFromFraction("0.0000"), 0);
-    assert.equal(scoreFromFraction("1.0000"), 100);
+    assert.equal(scoreFromFraction(0.8734), 87.34);
+    assert.equal(scoreFromFraction(0.0001), 0.01);
+    assert.equal(scoreFromFraction(0.5), 50);
+    assert.equal(scoreFromFraction(0), 0);
+    assert.equal(scoreFromFraction(1), 100);
   });
 
-  test("rejects out-of-range or non-numeric values", () => {
-    assert.throws(() => scoreFromFraction("1.0001"), RangeError);
-    assert.throws(() => scoreFromFraction("-0.1"), RangeError);
-    assert.throws(() => scoreFromFraction("abc"), RangeError);
+  test("rejects out-of-range or non-finite values", () => {
+    assert.throws(() => scoreFromFraction(1.0001), RangeError);
+    assert.throws(() => scoreFromFraction(-0.1), RangeError);
+    assert.throws(() => scoreFromFraction(Number.NaN), RangeError);
   });
 });
 

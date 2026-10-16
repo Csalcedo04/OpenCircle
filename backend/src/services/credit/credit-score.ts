@@ -55,12 +55,16 @@ export function assertValidScore(score: number, config: ScoreBounds = DEFAULT_SC
   }
 }
 
-/** Converts the stored 0..1 fraction (`credit_profiles.internal_credit_score`) to the 0..100 score. */
-export function scoreFromFraction(fraction: string, config: ScoreBounds = DEFAULT_SCORE_CONFIG): number {
-  const score = round2(config.minScore + Number(fraction) * (config.maxScore - config.minScore));
+/** Converts the stored 0..1 fraction (`credit_profiles.internal_credit_score`) to the 0..100 score (ICS). */
+export function scoreFromFraction(fraction: number, config: ScoreBounds = DEFAULT_SCORE_CONFIG): number {
+  const score = round2(config.minScore + fraction * (config.maxScore - config.minScore));
   assertValidScore(score, config);
   return score;
 }
+
+/** ICS for API responses: null while the user has no stored score yet. */
+export const icsFromStored = (fraction: number | null): number | null =>
+  fraction === null ? null : scoreFromFraction(fraction);
 
 export function scoreStatus(score: number, config: ScoreStatusConfig = DEFAULT_SCORE_CONFIG): ScoreStatus {
   const { excellent, good, fair } = config.statusThresholds;

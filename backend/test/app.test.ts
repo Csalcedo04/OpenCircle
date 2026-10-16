@@ -17,12 +17,17 @@ const kyc: Services["kyc"] = {
   },
 };
 
+const users: Services["users"] = {
+  ...fakeServices().users,
+  getPublicProfile: async () => ({ fullName: "Ana", walletAddress: "https://wallet.test/ana", ics: 87.34 }),
+};
+
 let server: TestServer;
 let auth: TestAuth;
 
 before(async () => {
   auth = await setupTestAuth();
-  server = await startServer(fakeServices({ kyc }), { diditWebhookSecret: WEBHOOK_SECRET });
+  server = await startServer(fakeServices({ kyc, users }), { diditWebhookSecret: WEBHOOK_SECRET });
 });
 
 after(() => server.close());
@@ -95,6 +100,22 @@ test("public profile routes validate the id and wallet address → 400", async (
     assert.equal(res.status, 400, path);
     assert.equal(errorCode(res.body), "VALIDATION_ERROR");
   }
+});
+
+test("public profile lookups are rate limited per user across both routes → 429", async () => {
+  const token = await auth.token("44444444-4444-4444-8444-444444444444");
+  const paths = ["/api/users/11111111-1111-4111-8111-111111111111/public", "/api/users/public?walletAddress=%24wallet.test%2Fx"];
+  for (let i = 0; i < 30; i++) {
+    const res = await server.request(paths[i % 2] ?? "", { token });
+    assert.equal(res.status, 200, `request ${i + 1}`);
+  }
+  const limited = await server.request(paths[0] ?? "", { token });
+  assert.equal(limited.status, 429);
+  assert.equal(errorCode(limited.body), "RATE_LIMITED");
+
+  // Another user keeps their own budget.
+  const other = await server.request(paths[0] ?? "", { token: await auth.token("55555555-5555-4555-8555-555555555555") });
+  assert.equal(other.status, 200);
 });
 
 test("PUT /api/users/me/wallet is gone: wallets are linked only through consent", async () => {

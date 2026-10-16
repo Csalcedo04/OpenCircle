@@ -3,7 +3,7 @@ import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
 import { creditProfiles, documentType, users, wallets } from "../db/schema";
 import { AppError } from "../errors/app-error";
-import { scoreFromFraction } from "./credit/credit-score";
+import { icsFromStored } from "./credit/credit-score";
 
 export const DOCUMENT_TYPES = documentType.enumValues;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -98,7 +98,7 @@ export function createUserService(db: Db) {
     return {
       fullName: row.fullName,
       walletAddress: row.walletAddress,
-      ics: row.score === null ? null : scoreFromFraction(row.score),
+      ics: icsFromStored(row.score),
     };
   }
 

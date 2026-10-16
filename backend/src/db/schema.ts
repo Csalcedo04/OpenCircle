@@ -78,7 +78,8 @@ export const creditProfiles = pgTable(
       .primaryKey()
       .references(() => wallets.id, { onDelete: "cascade" }),
     // Fraction between 0 and 1 (percentage); exact decimal, returned as string by Drizzle.
-    internalCreditScore: numeric("internal_credit_score", { precision: 5, scale: 4 }).notNull(),
+    // Payment-reliability fraction, 0..1 with 4 decimals; read as a JS number. The ICS is this × 100.
+    internalCreditScore: numeric("internal_credit_score", { precision: 5, scale: 4, mode: "number" }).notNull(),
     // Maximum debt the user may take, in the wallet asset's minor unit.
     borrowingCapacity: bigint("borrowing_capacity", { mode: "bigint" }).notNull().default(sql`0`),
     updatedAt: timestamp("updated_at", { withTimezone: true })
