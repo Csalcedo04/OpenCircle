@@ -1,17 +1,21 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
-import { createOpenPaymentsPublicClient } from "./lib/open-payments";
+import { createOpenPaymentsPublicClient } from "./services/open-payments/client";
 import { createUserService } from "./services/user.service";
-import { createWalletAddressService } from "./services/wallet-address.service";
+import { createWalletAddressService } from "./services/open-payments/wallet-address.service";
+import { createWalletService } from "./services/wallet.service";
 
 async function main(): Promise<void> {
   const db = createDb(env.DATABASE_URL);
   const openPayments = await createOpenPaymentsPublicClient();
 
+  const walletAddresses = createWalletAddressService(openPayments);
+
   const app = createApp({
     users: createUserService(db),
-    walletAddresses: createWalletAddressService(openPayments),
+    wallets: createWalletService(db, walletAddresses),
+    walletAddresses,
   });
 
   app.listen(env.PORT, () => {

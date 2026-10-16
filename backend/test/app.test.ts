@@ -1,50 +1,49 @@
 import assert from "node:assert/strict";
-import type { AddressInfo } from "node:net";
-import type { Server } from "node:http";
 import { after, before, test } from "node:test";
-import { createApp } from "../src/app";
-import type { Services } from "../src/routes";
+import { setupTestAuth, type TestAuth } from "./helpers/auth";
+import { fakeServices } from "./helpers/fakes";
+import { errorCode, startServer, type TestServer } from "./helpers/server";
 
-const services: Services = {
-  users: { findById: async () => null },
-  walletAddresses: {
-    getByUrl: async () => {
-      throw new Error("not called in these tests");
-    },
-  },
-};
-
-let server: Server;
-let baseUrl: string;
+let server: TestServer;
+let auth: TestAuth;
 
 before(async () => {
-  process.env.SUPABASE_URL ??= "https://example.supabase.co";
-  server = createApp(services).listen(0);
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  auth = await setupTestAuth();
+  server = await startServer(fakeServices());
 });
 
-after(() => {
-  server.close();
-});
+after(() => server.close());
 
-test("GET /api/health returns ok", async () => {
-  const res = await fetch(`${baseUrl}/api/health`);
+test("GET /api/health returns ok without authentication", async () => {
+  const res = await server.request("/api/health");
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { status: "ok" });
+  assert.deepEqual(res.body, { status: "ok" });
 });
 
-test("unknown route returns 404", async () => {
-  const res = await fetch(`${baseUrl}/api/nope`);
+test("unknown route returns 404 NOT_FOUND", async () => {
+  const res = await server.request("/api/nope");
   assert.equal(res.status, 404);
+  assert.equal(errorCode(res.body), "NOT_FOUND");
 });
 
-test("GET /api/users/me without token returns 401", async () => {
-  const res = await fetch(`${baseUrl}/api/users/me`);
-  assert.equal(res.status, 401);
+test("malformed JSON body returns 400 INVALID_REQUEST_BODY", async () => {
+  const token = await auth.token("8a6e0804-2bd0-4672-b79d-d97027f9071a");
+  const res = await fetch(`${server.baseUrl}/api/users/me`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: "{not json",
+  });
+  assert.equal(res.status, 400);
+  assert.equal(errorCode(await res.json()), "INVALID_REQUEST_BODY");
 });
 
-test("GET /api/wallet-addresses without token returns 401", async () => {
-  const res = await fetch(`${baseUrl}/api/wallet-addresses?url=https://example.com/alice`);
-  assert.equal(res.status, 401);
+test("body over the size limit returns 413", async () => {
+  const token = await auth.token("8a6e0804-2bd0-4672-b79d-d97027f9071a");
+  const res = await server.request("/api/users/me", {
+    method: "POST",
+    token,
+    body: { fullName: "x".repeat(200 * 1024) },
+  });
+  assert.equal(res.status, 413);
+  assert.equal(errorCode(res.body), "INVALID_REQUEST_BODY");
 });

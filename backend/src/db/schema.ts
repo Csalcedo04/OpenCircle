@@ -1,5 +1,19 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, date, index, integer, numeric, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  date,
+  index,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
 // Every table enables RLS with no policies: the Supabase Data API (anon/authenticated)
 // gets no access, while the backend connects as the table owner and is unaffected.
@@ -18,16 +32,28 @@ export const wallets = pgTable(
   (t) => [check("wallets_asset_scale_range", sql`${t.assetScale} between 0 and 255`)],
 ).enableRLS();
 
+// cc: cédula de ciudadanía, ti: tarjeta de identidad, ce: cédula de extranjería, pp: pasaporte.
+export const documentType = pgEnum("document_type", ["cc", "ti", "ce", "pp"]);
+
 // `id` is the Supabase Auth user id (auth.users.id), so it has no default.
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey(),
-  fullName: text("full_name"),
-  phone: varchar("phone", { length: 256 }),
-  dob: date("dob"),
-  opWallet: uuid("op_wallet")
-    .unique()
-    .references(() => wallets.id),
-}).enableRLS();
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey(),
+    email: text("email").notNull().unique(),
+    documentType: documentType("document_type").notNull(),
+    documentNumber: text("document_number").notNull(),
+    // ISO 3166-1 alpha-2 country code, e.g. "CO".
+    nationality: varchar("nationality", { length: 2 }).notNull(),
+    fullName: text("full_name"),
+    phone: varchar("phone", { length: 256 }),
+    dob: date("dob"),
+    opWallet: uuid("op_wallet")
+      .unique()
+      .references(() => wallets.id),
+  },
+  (t) => [unique("users_document_unique").on(t.documentType, t.documentNumber)],
+).enableRLS();
 
 // Amounts are integers in the wallet asset's minor unit (see wallets.asset_scale).
 export const walletBalances = pgTable(
