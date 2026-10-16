@@ -14,11 +14,11 @@ test.describe("sign-in and onboarding", () => {
     await page.getByLabel("Nombre completo").fill(`${E2E_PREFIX}Ana Gómez`)
     await page.getByLabel("Número de documento").fill("12ab")
     await page.getByLabel("Fecha de nacimiento").fill("1995-04-12")
-    await page.getByLabel("Teléfono").fill("3001234567")
+    await page.getByLabel("Teléfono").fill("123")
     await page.getByRole("button", { name: "Continuar" }).click()
 
     await expect(page.getByText("Usa de 3 a 15 dígitos (pasaporte: de 5 a 20 letras o dígitos).")).toBeVisible()
-    await expect(page.getByText("Usa formato internacional, por ejemplo +573001234567.")).toBeVisible()
+    await expect(page.getByText("Escribe un número de teléfono válido para ese país.")).toBeVisible()
     expect(await storedProfile(user)).toBeNull()
   })
 
@@ -28,8 +28,9 @@ test.describe("sign-in and onboarding", () => {
     await page.getByLabel("Documento de identidad").selectOption("cc")
     await page.getByLabel("Número de documento").fill("1023456789")
     await page.getByLabel("Fecha de nacimiento").fill("1995-04-12")
-    await page.getByLabel("Nacionalidad").fill("co")
-    await page.getByLabel("Teléfono").fill("+573001234567")
+    await page.getByLabel("Nacionalidad").selectOption("CO")
+    await page.getByLabel("Indicativo").selectOption("CO")
+    await page.getByLabel("Teléfono").fill("300 123 4567")
     await page.getByRole("button", { name: "Continuar" }).click()
 
     await expect(page.getByText("Paso 2 de 2")).toBeVisible()
@@ -50,10 +51,27 @@ test.describe("sign-in and onboarding", () => {
     await expect(page.getByLabel("Número de documento")).toHaveCount(0)
   })
 
+  test("the phone code follows the nationality until picked by hand", async ({ page, user }) => {
+    await signIn(page, user)
+    const nationality = page.getByLabel("Nacionalidad")
+    const code = page.getByLabel("Indicativo")
+    await expect(nationality).toHaveValue("CO")
+    await expect(code).toHaveValue("CO")
+    await expect(code.locator("option:checked")).toHaveText("+57 Colombia")
+
+    await nationality.selectOption("VE")
+    await expect(code).toHaveValue("VE")
+
+    await code.selectOption("US")
+    await nationality.selectOption("PE")
+    await expect(code).toHaveValue("US")
+  })
+
   test("the wallet step rejects addresses off the test network", async ({ page, user }) => {
     await seedProfile(user)
     await signIn(page, user)
-    await page.getByLabel("Dirección de la billetera").fill("$wallet.example.com/ana")
+    // A pasted full address still works, and is checked by the API.
+    await page.getByLabel("Usuario de tu billetera").fill("$wallet.example.com/ana")
     await page.getByRole("button", { name: "Continuar a mi billetera" }).click()
     await expect(page.getByText("Esa billetera no está en la red de prueba de Interledger.")).toBeVisible()
   })
@@ -61,7 +79,9 @@ test.describe("sign-in and onboarding", () => {
   test("a test-network wallet sends the user to that wallet's real consent screen", async ({ page, user }) => {
     await seedProfile(user)
     await signIn(page, user)
-    await page.getByLabel("Dirección de la billetera").fill("$ilp.interledger-test.dev/opencircle")
+    // Just the username: the field adds $ilp.interledger-test.dev/.
+    await expect(page.getByText("$ilp.interledger-test.dev/")).toBeVisible()
+    await page.getByLabel("Usuario de tu billetera").fill("opencircle")
     await page.getByRole("button", { name: "Continuar a mi billetera" }).click()
     // Real Interledger test network: the grant is pending until the wallet owner approves.
     await page.waitForURL((url) => url.hostname.endsWith("interledger-test.dev"), { timeout: 30_000 })
