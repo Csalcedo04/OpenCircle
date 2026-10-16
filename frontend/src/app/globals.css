@@ -138,4 +138,54 @@
       animation-range: entry 0% entry 35%;
     }
   }
+
+  .oc-ticker-track {
+    animation: oc-ticker-ltr 32s linear infinite;
+  }
+  .oc-ticker-track:hover,
+  .oc-ticker-track:focus-within {
+    animation-play-state: paused;
+  }
 }
+
+/* Horizontal ticker: smooth left-to-right infinite scroll */
+@keyframes oc-ticker-ltr {
+  from {
+    transform: translate3d(-50%, 0, 0);
+  }
+  to {
+    transform: translate3d(0%, 0, 0);
+  }
+}
+
+.oc-ticker-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+}
+
+/* Edge fade mask: smooth progressive fade at start and end */
+.oc-ticker-mask {
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oc-ticker-track {
+    animation: none !important;
+    transform: none !important;
+    width: 100% !important;
+    justify-content: center !important;
+    flex-wrap: wrap !important;
+  }
+}
+
+/* Mobile App Carousel: hide native scrollbar */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

@@ -5,7 +5,7 @@ import type { LandingDictionary } from "@/i18n/dictionaries/landing.es"
 export function FinalCta({ t, locale }: { t: LandingDictionary["finalCta"]; locale: Locale }) {
   return (
     <section aria-labelledby="cta-title" className="px-3 pb-3 sm:px-4 sm:pb-4">
-      <div className="relative isolate mx-auto max-w-[96rem] overflow-hidden rounded-[32px] bg-brand-navy px-5 py-24 text-center text-brand-white sm:py-32">
+      <div className="relative isolate mx-auto max-w-[96rem] overflow-hidden rounded-[40px] bg-brand-navy px-5 py-24 text-center text-brand-white sm:py-32">
         <div
           aria-hidden="true"
           className="absolute inset-0 -z-10 bg-[radial-gradient(40%_60%_at_20%_100%,color-mix(in_srgb,var(--color-brand-violet)_45%,transparent),transparent_70%),radial-gradient(35%_50%_at_85%_0%,color-mix(in_srgb,var(--color-brand-mint)_22%,transparent),transparent_70%)]"

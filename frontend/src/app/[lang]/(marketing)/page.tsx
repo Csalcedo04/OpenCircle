@@ -4,6 +4,7 @@ import { Faq } from "@/components/landing/faq"
 import { FinalCta } from "@/components/landing/final-cta"
 import { Hero } from "@/components/landing/hero"
 import { HowItWorks } from "@/components/landing/how-it-works"
+import { MobileDock } from "@/components/landing/mobile-dock"
 import { Safety } from "@/components/landing/safety"
 import { SavingsCalculator } from "@/components/landing/savings-calculator"
 import { UseCases } from "@/components/landing/use-cases"
@@ -18,8 +19,8 @@ export async function generateMetadata(): Promise<Metadata> {
     description: m.description,
     keywords:
       locale === "es"
-        ? ["círculos de ahorro", "ahorro en grupo", "ahorro comunitario", "rondas de ahorro", "tandas digitales", "cadenas de ahorro", "ahorro con amigos", "natillera"]
-        : ["savings circles", "group savings", "community savings", "ROSCA", "tanda", "save with friends"],
+        ? ["open payments", "interledger", "rafiki", "gnap", "círculos de ahorro", "ahorro en grupo", "ahorro comunitario", "rondas de ahorro", "tandas digitales", "cadenas de ahorro", "pasarela de pagos"]
+        : ["open payments", "interledger", "rafiki", "gnap", "savings circles", "group savings", "community savings", "ROSCA", "tanda", "payment gateway"],
     alternates: {
       canonical: `/${locale}`,
       languages: { es: "/es", en: "/en", "x-default": "/es" },
@@ -75,6 +76,7 @@ export default async function LandingPage() {
       <UseCases t={l.useCases} />
       <Faq t={l.faq} />
       <FinalCta t={l.finalCta} locale={locale} />
+      <MobileDock locale={locale} t={l.nav} />
     </>
   )
 }

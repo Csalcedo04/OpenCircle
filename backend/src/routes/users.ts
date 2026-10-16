@@ -1,6 +1,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { AppError } from "../errors/app-error";
+import { publicProfileRateLimit } from "../middleware/rate-limit";
 import { requireUser } from "../middleware/require-user";
 import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
@@ -73,11 +74,17 @@ export const startKycSchema = z.strictObject({
   returnPath: z.string().max(200).regex(/^\/(en|es)(\/[\w-]+)*$/),
 });
 
+// Public profile of another user (e.g. a savings-circle applicant), by id or by wallet.
+export const publicProfileParamsSchema = z.strictObject({ id: z.uuid() });
+export const publicProfileQuerySchema = z.strictObject({ walletAddress: walletAddressInputSchema });
+
 export type CreateProfileBody = z.infer<typeof createProfileSchema>;
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>;
 export type StartConsentBody = z.infer<typeof startConsentSchema>;
 export type CompleteConsentBody = z.infer<typeof completeConsentSchema>;
 export type StartKycBody = z.infer<typeof startKycSchema>;
+export type PublicProfileParams = z.infer<typeof publicProfileParamsSchema>;
+export type PublicProfileQuery = z.infer<typeof publicProfileQuerySchema>;
 
 export interface UserRouteServices {
   users: UserService;
@@ -145,6 +152,19 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles }: User
     res.status(201).json(await kyc.startSession(currentUserId(res), body));
   };
 
+  // One counter shared by both lookups, so switching between id and wallet doesn't reset it.
+  const publicProfileLimit = publicProfileRateLimit();
+
+  const getPublicById: RequestHandler = async (req, res) => {
+    const { id }: PublicProfileParams = publicProfileParamsSchema.parse(req.params);
+    res.json(await users.getPublicProfile({ id }));
+  };
+
+  const getPublicByWallet: RequestHandler = async (req, res) => {
+    const { walletAddress }: PublicProfileQuery = publicProfileQuerySchema.parse(req.query);
+    res.json(await users.getPublicProfile({ walletAddress }));
+  };
+
   const getMySavings: RequestHandler = async (_req, res) => {
     res.json(await wallets.getSavings(currentUserId(res)));
   };
@@ -159,5 +179,7 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles }: User
     .get("/me/circles", getMyCircles)
     .get("/me/kyc", getMyKyc)
     .post("/me/kyc/session", startMyKyc)
-    .get("/me/savings", getMySavings);
+    .get("/me/savings", getMySavings)
+    .get("/public", publicProfileLimit, getPublicByWallet)
+    .get("/:id/public", publicProfileLimit, getPublicById);
 }
