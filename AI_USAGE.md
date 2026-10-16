@@ -1623,3 +1623,19 @@
 
 **2026-10-16 13:34 · Claude Code**
 > commit and start phase 4
+
+**2026-10-16 13:38 · Claude Code**
+> Lets integrate after the registration the didit.me
+>
+>
+> here is the API Key
+> [REDACTED: Didit API key, rotated]
+>
+> and the workflow:
+> 9de66b44-94b4-4e79-a2bd-20473491ecca
+>
+>
+> they can see the app but in order to be in a Circle o create a circle the must be the KYC
+
+**2026-10-16 13:40 · Claude Code**
+> give me also the webhook so we can communicate with this client
