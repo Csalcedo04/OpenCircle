@@ -1,5 +1,7 @@
+import { Suspense } from "react"
 import Link from "next/link"
 import { Logo } from "@/components/logo-mark"
+import { HeaderAccount } from "@/components/header-account"
 import { LocaleToggle } from "@/components/locale-toggle"
 import { getDictionary } from "@/i18n/get-dictionary"
 
@@ -26,6 +28,9 @@ export async function SiteHeader() {
             {t.nav.create}
           </Link>
           <LocaleToggle locale={locale} label={t.nav.language} switchTo={t.nav.switchTo} />
+          <Suspense fallback={null}>
+            <HeaderAccount locale={locale} t={t.nav} linkClass={navLink} />
+          </Suspense>
         </nav>
       </div>
       <p className="bg-brand-violet px-4 py-1.5 text-center text-xs text-brand-white">{t.testFunds}</p>

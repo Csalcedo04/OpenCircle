@@ -1,4 +1,4 @@
-import type { RequestHandler } from "express";
+import type { RequestHandler, Response } from "express";
 import { verifyCredentials } from "@supabase/server/core";
 import { AppError } from "../errors/app-error";
 
@@ -28,3 +28,10 @@ export const requireUser: RequestHandler = async (req, res, next) => {
   res.locals.user = data.userClaims;
   next();
 };
+
+/** Id of the caller authenticated by `requireUser`; 401 if the middleware did not run. */
+export function authUserId(res: Response): string {
+  const user = res.locals.user;
+  if (!user) throw new AppError(401, "UNAUTHORIZED", "Unauthorized");
+  return user.id;
+}

@@ -1,0 +1,46 @@
+import Link from "next/link"
+import { LogOut, UserRound } from "lucide-react"
+import { signOut } from "@/app/[lang]/auth/actions"
+import type { Locale } from "@/i18n/config"
+import type { Dictionary } from "@/i18n/dictionaries/en"
+import { getMyProfile } from "@/lib/api/backend"
+import { createClient } from "@/lib/supabase/server"
+
+type Props = {
+  locale: Locale
+  t: Pick<Dictionary["nav"], "signIn" | "signOut">
+  linkClass: string
+}
+
+/** "Sign in" when signed out; the user's name and "Sign out" when signed in. */
+export async function HeaderAccount({ locale, t, linkClass }: Props) {
+  const supabase = await createClient()
+  const { data } = await supabase.auth.getClaims()
+  if (!data?.claims) {
+    return (
+      <Link href={`/${locale}/login`} className={linkClass}>
+        {t.signIn}
+      </Link>
+    )
+  }
+
+  // The header must render even if the API is down: fall back to the email.
+  const profile = await getMyProfile().catch(() => null)
+  const email = typeof data.claims.email === "string" ? data.claims.email : ""
+  const name = profile?.fullName ?? email.split("@")[0] ?? ""
+
+  return (
+    <>
+      <span className="hidden max-w-40 items-center gap-1.5 truncate px-2 text-sm text-brand-on-navy sm:inline-flex">
+        <UserRound className="size-4 shrink-0" aria-hidden="true" />
+        <span className="truncate">{name}</span>
+      </span>
+      <form action={signOut.bind(null, locale)}>
+        <button type="submit" className={linkClass}>
+          <LogOut className="mr-1.5 size-4" aria-hidden="true" />
+          {t.signOut}
+        </button>
+      </form>
+    </>
+  )
+}

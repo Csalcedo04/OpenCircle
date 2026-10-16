@@ -19,8 +19,22 @@
     {
       "idx": 2,
       "version": "7",
+      "when": 1792175182791,
+      "tag": "0002_wallet_consent",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
       "when": 1792175220613,
-      "tag": "0002_user_identity",
+      "tag": "0003_user_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792176353075,
+      "tag": "0004_kyc_verifications",
       "breakpoints": true
     }
   ]

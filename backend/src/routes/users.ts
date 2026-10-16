@@ -4,6 +4,8 @@ import { AppError } from "../errors/app-error";
 import { requireUser } from "../middleware/require-user";
 import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
+import type { KycService } from "../services/kyc.service";
+import type { WalletConsentService } from "../services/wallet-consent.service";
 import type { WalletService } from "../services/wallet.service";
 import { walletAddressInputSchema } from "../services/open-payments/payment-pointer";
 
@@ -54,15 +56,33 @@ export const updateProfileSchema = z
 // The email comes from the verified Supabase JWT, not from the request body.
 const tokenEmailSchema = z.email().transform((email) => email.toLowerCase());
 
-export const linkWalletSchema = z.strictObject({ walletAddress: walletAddressInputSchema });
+// Starts Open Payments consent on this wallet; the wallet is linked only once the user approves.
+export const startConsentSchema = z.strictObject({ walletAddress: walletAddressInputSchema });
+
+// Query values from the wallet's redirect, forwarded by the frontend callback route.
+export const completeConsentSchema = z.strictObject({
+  state: z.string().regex(/^[\w-]{32,128}$/),
+  interactRef: z.string().min(1).max(512),
+  hash: z.string().min(1).max(512),
+});
+
+export const startKycSchema = z.strictObject({
+  locale: z.enum(["en", "es"]),
+  // Where the user returns after Didit; an in-app path only, so it can't become an open redirect.
+  returnPath: z.string().max(200).regex(/^\/(en|es)(\/[\w-]+)*$/),
+});
 
 export type CreateProfileBody = z.infer<typeof createProfileSchema>;
 export type UpdateProfileBody = z.infer<typeof updateProfileSchema>;
-export type LinkWalletBody = z.infer<typeof linkWalletSchema>;
+export type StartConsentBody = z.infer<typeof startConsentSchema>;
+export type CompleteConsentBody = z.infer<typeof completeConsentSchema>;
+export type StartKycBody = z.infer<typeof startKycSchema>;
 
 export interface UserRouteServices {
   users: UserService;
   wallets: WalletService;
+  walletConsent: WalletConsentService;
+  kyc: KycService;
 }
 
 // requireUser runs at router level, so the claims are always present here.
@@ -82,7 +102,7 @@ function currentUserEmail(res: Response): string {
   return parsed.data;
 }
 
-export function userRoutes({ users, wallets }: UserRouteServices): Router {
+export function userRoutes({ users, wallets, walletConsent, kyc }: UserRouteServices): Router {
   const getMe: RequestHandler = async (_req, res) => {
     res.json(await users.getProfile(currentUserId(res)));
   };
@@ -98,10 +118,25 @@ export function userRoutes({ users, wallets }: UserRouteServices): Router {
     res.json(await users.updateProfile(currentUserId(res), body));
   };
 
-  const linkMyWallet: RequestHandler = async (req, res) => {
-    const { walletAddress }: LinkWalletBody = linkWalletSchema.parse(req.body);
-    const { wallet, created } = await wallets.linkWallet(currentUserId(res), walletAddress);
-    res.status(created ? 201 : 200).json(wallet);
+  // Returns the wallet's consent URL; the frontend sends the user there.
+  const startWalletConsent: RequestHandler = async (req, res) => {
+    const { walletAddress }: StartConsentBody = startConsentSchema.parse(req.body);
+    res.status(201).json(await walletConsent.start(currentUserId(res), walletAddress));
+  };
+
+  const completeWalletConsent: RequestHandler = async (req, res) => {
+    const body: CompleteConsentBody = completeConsentSchema.parse(req.body);
+    res.json(await walletConsent.complete(currentUserId(res), body));
+  };
+
+  const getMyKyc: RequestHandler = async (_req, res) => {
+    res.json(await kyc.getStatus(currentUserId(res)));
+  };
+
+  // Returns Didit's hosted verification URL; the frontend sends the user there.
+  const startMyKyc: RequestHandler = async (req, res) => {
+    const body: StartKycBody = startKycSchema.parse(req.body);
+    res.status(201).json(await kyc.startSession(currentUserId(res), body));
   };
 
   const getMySavings: RequestHandler = async (_req, res) => {
@@ -113,6 +148,9 @@ export function userRoutes({ users, wallets }: UserRouteServices): Router {
     .get("/me", getMe)
     .post("/me", createMe)
     .patch("/me", updateMe)
-    .put("/me/wallet", linkMyWallet)
+    .post("/me/wallet/consent", startWalletConsent)
+    .post("/me/wallet/consent/complete", completeWalletConsent)
+    .get("/me/kyc", getMyKyc)
+    .post("/me/kyc/session", startMyKyc)
     .get("/me/savings", getMySavings);
 }

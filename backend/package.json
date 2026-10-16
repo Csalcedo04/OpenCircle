@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "node --env-file-if-exists=.env --import tsx --test \"test/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file=.env node_modules/drizzle-kit/bin.cjs migrate"
+    "db:migrate": "node --env-file=.env node_modules/drizzle-kit/bin.cjs migrate",
+    "op:check": "node --env-file=.env --import tsx src/scripts/check-op-client.ts"
   },
   "keywords": [],
   "author": "",

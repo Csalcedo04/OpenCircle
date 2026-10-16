@@ -41,8 +41,10 @@ const notUsed = (): never => {
 export function fakeServices(overrides: Partial<Services> = {}): Services {
   return {
     users: { getProfile: notUsed, createProfile: notUsed, updateProfile: notUsed },
-    wallets: { linkWallet: notUsed, getSavings: notUsed },
+    wallets: { getSavings: notUsed },
     walletAddresses: { getByUrl: notUsed },
+    walletConsent: { start: notUsed, complete: notUsed },
+    kyc: { getStatus: notUsed, startSession: notUsed, handleWebhook: notUsed },
     ...overrides,
   };
 }

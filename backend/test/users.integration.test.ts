@@ -3,10 +3,15 @@ import { randomInt, randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import { eq, inArray, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
-import { auditEvents, creditProfiles, users, walletBalances, wallets } from "../src/db/schema";
+import { auditEvents, consentChallenges, creditProfiles, kycVerifications, users, walletBalances, walletGrants, wallets } from "../src/db/schema";
+import type { DiditClient } from "../src/services/didit/client";
+import { createKycService } from "../src/services/kyc.service";
+import type { OpenPaymentsGrantClient } from "../src/services/open-payments/client";
+import { createTokenCipher } from "../src/services/open-payments/token-cipher";
+import { createWalletConsentService } from "../src/services/wallet-consent.service";
 import { createWalletAddressService } from "../src/services/open-payments/wallet-address.service";
 import { createUserService } from "../src/services/user.service";
-import { createWalletService } from "../src/services/wallet.service";
+import { createWalletService, linkWalletInTx, walletInUse } from "../src/services/wallet.service";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
 import { fakeOpenPayments, TEST_WALLET_HOST } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
@@ -31,6 +36,12 @@ async function deleteTestData(): Promise<void> {
   // FK order: audit_events and users reference wallets without cascade.
   if (walletIds.length > 0) {
     await db.delete(auditEvents).where(inArray(auditEvents.walletId, walletIds));
+  }
+  // Consent and KYC rows reference users without cascade.
+  if (createdUserIds.length > 0) {
+    await db.delete(walletGrants).where(inArray(walletGrants.userId, createdUserIds));
+    await db.delete(consentChallenges).where(inArray(consentChallenges.userId, createdUserIds));
+    await db.delete(kycVerifications).where(inArray(kycVerifications.userId, createdUserIds));
   }
   const userFilters = [like(users.fullName, `${TEST_NAME_PREFIX}%`)];
   if (createdUserIds.length > 0) userFilters.push(inArray(users.id, createdUserIds));
@@ -68,6 +79,29 @@ async function userWithProfile(): Promise<{ id: string; token: string }> {
 
 const testWalletUrl = (name = "saver") => `https://${TEST_WALLET_HOST}/${name}-${randomUUID()}`;
 
+// Links a test wallet the way consent completion does (the wallet server is faked as USD, scale 2).
+async function link(userId: string, url: string) {
+  try {
+    return await db.transaction((tx) => linkWalletInTx(tx, userId, { id: url, assetCode: "USD", assetScale: 2 }));
+  } catch (err) {
+    throw walletInUse(err) ?? err;
+  }
+}
+
+const rejectsWith = (promise: Promise<unknown>, code: string) =>
+  assert.rejects(promise, (err: unknown) => (err as { code?: unknown }).code === code);
+
+// External services these tests never reach.
+const fail = async (): Promise<never> => {
+  throw new Error("external service not used in this test");
+};
+const unusedGrantClient: OpenPaymentsGrantClient = {
+  walletAddress: { get: fail, getKeys: fail, getDIDDocument: fail },
+  grant: { request: fail, continue: fail, cancel: fail },
+  token: { rotate: fail, revoke: fail },
+};
+const unusedDidit: DiditClient = { createSession: fail, getDecision: fail };
+
 async function auditCount(walletId: string): Promise<number> {
   const rows = await db.select({ id: auditEvents.id }).from(auditEvents).where(eq(auditEvents.walletId, walletId));
   return rows.length;
@@ -79,11 +113,19 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     db = createDb(databaseUrl ?? "");
     await deleteTestData();
 
-    const walletAddresses = createWalletAddressService(fakeOpenPayments());
+    const userService = createUserService(db);
     server = await startServer({
-      users: createUserService(db),
-      wallets: createWalletService(db, walletAddresses),
-      walletAddresses,
+      users: userService,
+      wallets: createWalletService(db),
+      walletAddresses: createWalletAddressService(fakeOpenPayments()),
+      walletConsent: createWalletConsentService({
+        db,
+        client: unusedGrantClient,
+        cipher: createTokenCipher(Buffer.alloc(32, 1).toString("base64")),
+        users: userService,
+        frontendUrl: "http://localhost:3001",
+      }),
+      kyc: createKycService({ db, didit: unusedDidit, frontendUrl: "http://localhost:3001" }),
     });
   });
 
@@ -308,24 +350,20 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     });
   });
 
-  describe("PUT /me/wallet (link Open Payments wallet)", () => {
-    test("before onboarding → 404 PROFILE_NOT_FOUND, nothing stored", async () => {
-      const { token } = await newUser();
+  describe("wallet linking (linkWalletInTx, used by consent completion)", () => {
+    test("before onboarding → PROFILE_NOT_FOUND, nothing stored", async () => {
+      const { id } = await newUser();
       const url = testWalletUrl();
-      const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: url } });
-      assert.equal(res.status, 404);
-      assert.equal(errorCode(res.body), "PROFILE_NOT_FOUND");
+      await rejectsWith(link(id, url), "PROFILE_NOT_FOUND");
       assert.equal((await db.select().from(wallets).where(eq(wallets.addressUrl, url))).length, 0);
     });
 
-    test("payment pointer links the wallet → 201 with zero balance and one audit event", async () => {
+    test("links the wallet with zero balance and one audit event", async () => {
       const { id, token } = await userWithProfile();
       const url = testWalletUrl();
-      const pointer = `$${url.slice("https://".length)}`;
 
-      const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: pointer } });
-      assert.equal(res.status, 201);
-      const wallet = res.body as { id: string; addressUrl: string; assetCode: string; assetScale: number };
+      const { wallet, created } = await link(id, url);
+      assert.equal(created, true);
       assert.equal(wallet.addressUrl, url);
       assert.equal(wallet.assetCode, "USD");
       assert.equal(wallet.assetScale, 2);
@@ -343,82 +381,128 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       assert.equal((profile.body as { walletAddress: string }).walletAddress, url);
     });
 
-    test("linking the same wallet again (pointer or URL) is idempotent → 200, no new audit event", async () => {
-      const { token } = await userWithProfile();
+    test("linking the same wallet again is idempotent, no new audit event", async () => {
+      const { id } = await userWithProfile();
       const url = testWalletUrl();
-      const first = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: url } });
-      assert.equal(first.status, 201);
-      const walletId = (first.body as { id: string }).id;
-
-      const pointer = `$${url.slice("https://".length)}`;
-      const second = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: pointer } });
-      assert.equal(second.status, 200);
-      assert.deepEqual(second.body, first.body);
-      assert.equal(await auditCount(walletId), 1);
+      const first = await link(id, url);
+      const second = await link(id, url);
+      assert.equal(second.created, false);
+      assert.deepEqual(second.wallet, first.wallet);
+      assert.equal(await auditCount(first.wallet.id), 1);
     });
 
-    test("concurrent link requests for the same user and wallet create it once", async () => {
-      const { token } = await userWithProfile();
+    test("concurrent links for the same user and wallet create it once", async () => {
+      const { id } = await userWithProfile();
       const url = testWalletUrl();
-      const results = await Promise.all(
-        [1, 2, 3].map(() => server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: url } })),
-      );
-      assert.deepEqual(results.map((r) => r.status).sort(), [200, 200, 201]);
-      assert.equal(await auditCount((results[0]?.body as { id: string }).id), 1);
+      const results = await Promise.all([1, 2, 3].map(() => link(id, url)));
+      assert.deepEqual(results.map((r) => r.created).sort(), [false, false, true]);
+      assert.equal(await auditCount(results[0]?.wallet.id ?? ""), 1);
     });
 
-    test("a different wallet when one is already linked → 409 WALLET_ALREADY_LINKED", async () => {
-      const { token } = await userWithProfile();
-      await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: testWalletUrl() } });
-      const res = await server.request("/api/users/me/wallet", {
-        method: "PUT",
-        token,
-        body: { walletAddress: testWalletUrl() },
-      });
-      assert.equal(res.status, 409);
-      assert.equal(errorCode(res.body), "WALLET_ALREADY_LINKED");
+    test("a different wallet when one is already linked → WALLET_ALREADY_LINKED", async () => {
+      const { id } = await userWithProfile();
+      await link(id, testWalletUrl());
+      await rejectsWith(link(id, testWalletUrl()), "WALLET_ALREADY_LINKED");
     });
 
-    test("a wallet already linked to another user → 409 WALLET_IN_USE", async () => {
+    test("a wallet already linked to another user → WALLET_IN_USE", async () => {
       const alice = await userWithProfile();
       const bob = await userWithProfile();
       const url = testWalletUrl();
-      await server.request("/api/users/me/wallet", { method: "PUT", token: alice.token, body: { walletAddress: url } });
+      await link(alice.id, url);
 
-      const res = await server.request("/api/users/me/wallet", { method: "PUT", token: bob.token, body: { walletAddress: url } });
-      assert.equal(res.status, 409);
-      assert.equal(errorCode(res.body), "WALLET_IN_USE");
+      await rejectsWith(link(bob.id, url), "WALLET_IN_USE");
       const [user] = await db.select().from(users).where(eq(users.id, bob.id));
       assert.equal(user?.opWallet, null);
+    });
+  });
+
+  describe("POST /me/wallet/consent", () => {
+    test("PUT /me/wallet no longer exists → 404", async () => {
+      const { token } = await userWithProfile();
+      const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: testWalletUrl() } });
+      assert.equal(res.status, 404);
+    });
+
+    test("before onboarding → 404 PROFILE_NOT_FOUND, nothing stored", async () => {
+      const { id, token } = await newUser();
+      const res = await server.request("/api/users/me/wallet/consent", {
+        method: "POST",
+        token,
+        body: { walletAddress: "$ilp.interledger-test.dev/alice" },
+      });
+      assert.equal(res.status, 404);
+      assert.equal(errorCode(res.body), "PROFILE_NOT_FOUND");
+      assert.equal((await db.select().from(consentChallenges).where(eq(consentChallenges.userId, id))).length, 0);
+    });
+
+    test("wallets outside the Interledger test network → 422 WALLET_NOT_ALLOWED", async () => {
+      const { token } = await userWithProfile();
+      const res = await server.request("/api/users/me/wallet/consent", {
+        method: "POST",
+        token,
+        body: { walletAddress: testWalletUrl() },
+      });
+      assert.equal(res.status, 422);
+      assert.equal(errorCode(res.body), "WALLET_NOT_ALLOWED");
     });
 
     test("invalid wallet address → 400 VALIDATION_ERROR", async () => {
       const { token } = await userWithProfile();
       for (const walletAddress of ["http://wallet.test/alice", "alice", 42]) {
-        const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress } });
+        const res = await server.request("/api/users/me/wallet/consent", { method: "POST", token, body: { walletAddress } });
         assert.equal(res.status, 400, String(walletAddress));
         assert.equal(errorCode(res.body), "VALIDATION_ERROR");
       }
     });
 
-    test("wallet address unknown to its wallet server → 404 WALLET_ADDRESS_NOT_FOUND, nothing stored", async () => {
+    test("completing an unknown or another user's consent → 404 CONSENT_NOT_FOUND", async () => {
       const { token } = await userWithProfile();
-      const url = testWalletUrl("missing");
-      const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: url } });
+      const res = await server.request("/api/users/me/wallet/consent/complete", {
+        method: "POST",
+        token,
+        body: { state: "x".repeat(43), interactRef: "ref", hash: "hash" },
+      });
+      assert.equal(res.status, 404);
+      assert.equal(errorCode(res.body), "CONSENT_NOT_FOUND");
+    });
+  });
+
+  describe("GET /wallet-addresses", () => {
+    test("wallet address unknown to its wallet server → 404 WALLET_ADDRESS_NOT_FOUND", async () => {
+      const { token } = await userWithProfile();
+      const url = encodeURIComponent(testWalletUrl("missing"));
+      const res = await server.request(`/api/wallet-addresses?url=${url}`, { token });
       assert.equal(res.status, 404);
       assert.equal(errorCode(res.body), "WALLET_ADDRESS_NOT_FOUND");
-      assert.equal((await db.select().from(wallets).where(eq(wallets.addressUrl, url))).length, 0);
     });
 
     test("wallet server failure → 502 OPEN_PAYMENTS_ERROR", async () => {
       const { token } = await userWithProfile();
-      const res = await server.request("/api/users/me/wallet", {
-        method: "PUT",
-        token,
-        body: { walletAddress: testWalletUrl("down") },
-      });
+      const url = encodeURIComponent(testWalletUrl("down"));
+      const res = await server.request(`/api/wallet-addresses?url=${url}`, { token });
       assert.equal(res.status, 502);
       assert.equal(errorCode(res.body), "OPEN_PAYMENTS_ERROR");
+    });
+  });
+
+  describe("KYC", () => {
+    test("GET /me/kyc before starting → not started, not approved", async () => {
+      const { token } = await userWithProfile();
+      const res = await server.request("/api/users/me/kyc", { token });
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, { status: null, approved: false });
+    });
+
+    test("starting KYC without a linked wallet → 409 ONBOARDING_REQUIRED", async () => {
+      const { token } = await userWithProfile();
+      const res = await server.request("/api/users/me/kyc/session", {
+        method: "POST",
+        token,
+        body: { locale: "es", returnPath: "/es/circles/new" },
+      });
+      assert.equal(res.status, 409);
+      assert.equal(errorCode(res.body), "ONBOARDING_REQUIRED");
     });
   });
 
@@ -438,9 +522,9 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     });
 
     test("after linking → zero balance as an integer string with its asset, no score yet", async () => {
-      const { token } = await userWithProfile();
+      const { id, token } = await userWithProfile();
       const url = testWalletUrl();
-      await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: url } });
+      await link(id, url);
 
       const res = await server.request("/api/users/me/savings", { token });
       assert.equal(res.status, 200);
@@ -452,13 +536,8 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     });
 
     test("exposes the payment score but never the internal borrowing capacity", async () => {
-      const { token } = await userWithProfile();
-      const linked = await server.request("/api/users/me/wallet", {
-        method: "PUT",
-        token,
-        body: { walletAddress: testWalletUrl() },
-      });
-      const walletId = (linked.body as { id: string }).id;
+      const { id, token } = await userWithProfile();
+      const walletId = (await link(id, testWalletUrl())).wallet.id;
       await db.update(walletBalances).set({ balance: 1250075n }).where(eq(walletBalances.walletId, walletId));
       await db.insert(creditProfiles).values({ walletId, internalCreditScore: "0.8734", borrowingCapacity: 987654321n });
 

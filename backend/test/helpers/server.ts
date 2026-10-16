@@ -21,8 +21,11 @@ export interface TestServer {
   close(): Promise<void>;
 }
 
-export async function startServer(services: Services): Promise<TestServer> {
-  const server: Server = createApp(services).listen(0);
+export async function startServer(
+  services: Services,
+  options: { diditWebhookSecret: string | undefined } = { diditWebhookSecret: undefined },
+): Promise<TestServer> {
+  const server: Server = createApp(services, options).listen(0);
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
