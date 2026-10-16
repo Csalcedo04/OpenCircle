@@ -13,7 +13,7 @@ import { createWalletAddressService } from "../src/services/open-payments/wallet
 import { createUserService } from "../src/services/user.service";
 import { createWalletService, linkWalletInTx, walletInUse } from "../src/services/wallet.service";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
-import { fakeOpenPayments, TEST_WALLET_HOST } from "./helpers/fakes";
+import { fakeOpenPayments, fakeServices, TEST_WALLET_HOST } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
 
 // Runs against the database in DATABASE_URL (Supabase). Every row it creates uses the
@@ -126,6 +126,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
         frontendUrl: "http://localhost:3001",
       }),
       kyc: createKycService({ db, didit: unusedDidit, frontendUrl: "http://localhost:3001" }),
+      circles: fakeServices().circles,
     });
   });
 
@@ -469,6 +470,27 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
   });
 
   describe("GET /wallet-addresses", () => {
+    test("a payment pointer resolves to the wallet's public details → 200", async () => {
+      const { token } = await userWithProfile();
+      const url = testWalletUrl();
+      const pointer = encodeURIComponent(`$${url.slice("https://".length)}`);
+      const res = await server.request(`/api/wallet-addresses?url=${pointer}`, { token });
+      assert.equal(res.status, 200);
+      assert.deepEqual(res.body, {
+        id: url,
+        publicName: "Test wallet",
+        assetCode: "USD",
+        assetScale: 2,
+        authServer: `https://auth.${TEST_WALLET_HOST}`,
+        resourceServer: `https://${TEST_WALLET_HOST}`,
+      });
+    });
+
+    test("without a token → 401", async () => {
+      const res = await server.request(`/api/wallet-addresses?url=${encodeURIComponent(testWalletUrl())}`);
+      assert.equal(res.status, 401);
+    });
+
     test("wallet address unknown to its wallet server → 404 WALLET_ADDRESS_NOT_FOUND", async () => {
       const { token } = await userWithProfile();
       const url = encodeURIComponent(testWalletUrl("missing"));

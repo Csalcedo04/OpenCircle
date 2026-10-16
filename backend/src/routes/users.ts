@@ -5,6 +5,7 @@ import { publicProfileRateLimit } from "../middleware/rate-limit";
 import { requireUser } from "../middleware/require-user";
 import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
+import type { CircleService } from "../services/circle.service";
 import type { KycService } from "../services/kyc.service";
 import type { WalletConsentService } from "../services/wallet-consent.service";
 import type { WalletService } from "../services/wallet.service";
@@ -90,6 +91,7 @@ export interface UserRouteServices {
   wallets: WalletService;
   walletConsent: WalletConsentService;
   kyc: KycService;
+  circles: CircleService;
 }
 
 // requireUser runs at router level, so the claims are always present here.
@@ -109,7 +111,7 @@ function currentUserEmail(res: Response): string {
   return parsed.data;
 }
 
-export function userRoutes({ users, wallets, walletConsent, kyc }: UserRouteServices): Router {
+export function userRoutes({ users, wallets, walletConsent, kyc, circles }: UserRouteServices): Router {
   const getMe: RequestHandler = async (_req, res) => {
     res.json(await users.getProfile(currentUserId(res)));
   };
@@ -134,6 +136,10 @@ export function userRoutes({ users, wallets, walletConsent, kyc }: UserRouteServ
   const completeWalletConsent: RequestHandler = async (req, res) => {
     const body: CompleteConsentBody = completeConsentSchema.parse(req.body);
     res.json(await walletConsent.complete(currentUserId(res), body));
+  };
+
+  const getMyCircles: RequestHandler = async (_req, res) => {
+    res.json(await circles.listForUser(currentUserId(res)));
   };
 
   const getMyKyc: RequestHandler = async (_req, res) => {
@@ -170,6 +176,7 @@ export function userRoutes({ users, wallets, walletConsent, kyc }: UserRouteServ
     .patch("/me", updateMe)
     .post("/me/wallet/consent", startWalletConsent)
     .post("/me/wallet/consent/complete", completeWalletConsent)
+    .get("/me/circles", getMyCircles)
     .get("/me/kyc", getMyKyc)
     .post("/me/kyc/session", startMyKyc)
     .get("/me/savings", getMySavings)
