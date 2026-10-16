@@ -1763,3 +1763,19 @@
 
 **2026-10-16 15:31 · Claude Code**
 > Sí, añádelo al wrapper del frontend
+
+**2026-10-16 16:13 · Claude Code**
+> <pasted_content id="c51a">
+> Starting Container
+> npm warn config production Use `--omit=dev` instead.
+> > backend@1.0.0 start
+> > node --env-file-if-exists=.env dist/server.js
+> .env not found. Continuing without it.
+> API listening on port 8080
+> </pasted_content id="c51a">
+
+**2026-10-16 16:17 · Claude Code**
+> switch to main
+
+**2026-10-16 16:18 · Claude Code**
+> lets start clean all into the main
