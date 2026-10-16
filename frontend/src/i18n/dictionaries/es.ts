@@ -154,6 +154,20 @@ const es: Dictionary = {
       collateral: "Ingresa un monto entero o déjalo vacío.",
     },
   },
+  auth: {
+    title: "Inicia sesión",
+    lead: "Te enviamos un enlace por correo para entrar. Sin contraseña.",
+    email: "Correo",
+    emailPlaceholder: "tu@ejemplo.com",
+    send: "Enviarme un enlace",
+    sending: "Enviando…",
+    sent: "Revisa tu correo: enviamos un enlace de acceso a {email}.",
+    errors: {
+      email: "Escribe un correo válido.",
+      send: "No pudimos enviar el enlace. Inténtalo de nuevo en un minuto.",
+      link: "Ese enlace de acceso no es válido o expiró. Pide uno nuevo.",
+    },
+  },
   common: {
     back: "Volver",
     loading: "Cargando…",

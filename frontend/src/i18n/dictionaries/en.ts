@@ -153,6 +153,20 @@ const en = {
       collateral: "Enter a whole amount, or leave it empty.",
     },
   },
+  auth: {
+    title: "Sign in",
+    lead: "We’ll email you a link to sign in. No password needed.",
+    email: "Email",
+    emailPlaceholder: "you@example.com",
+    send: "Email me a link",
+    sending: "Sending…",
+    sent: "Check your inbox: we sent a sign-in link to {email}.",
+    errors: {
+      email: "Enter a valid email address.",
+      send: "We couldn’t send the link. Try again in a minute.",
+      link: "That sign-in link is invalid or expired. Request a new one.",
+    },
+  },
   common: {
     back: "Back",
     loading: "Loading…",
