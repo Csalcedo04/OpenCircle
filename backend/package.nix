@@ -43,7 +43,8 @@ buildNpmPackage' (finalAttrs: {
 
   # Ship the compiled server with production dependencies only. Runtime config
   # (PORT, DATABASE_URL, SUPABASE_URL; see .env.example) comes from the
-  # environment: the wrapper does not read .env files.
+  # environment, or from a .env in the current directory when one exists
+  # (same as `npm start`). Variables already exported take precedence.
   installPhase = ''
     runHook preInstall
 
@@ -56,6 +57,7 @@ buildNpmPackage' (finalAttrs: {
 
     makeBinaryWrapper ${lib.getExe nodejs_22} $out/bin/opencircle-backend \
       --set NODE_ENV production \
+      --add-flags "--env-file-if-exists=.env" \
       --add-flags "$app/dist/server.js"
 
     runHook postInstall
