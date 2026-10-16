@@ -13,12 +13,25 @@
 
       services.opencircle-backend = {
         enable = true;
-        environment.SUPABASE_URL = "https://example.supabase.co";
-        # Fake credentials: the API only connects lazily, on the first query.
+        # Public values go in `environment`; the fake secrets below live in an
+        # EnvironmentFile, exercising the same split a real host would use.
+        environment = {
+          SUPABASE_URL = "https://example.supabase.co";
+          FRONTEND_URL = "http://127.0.0.1:3000";
+          OP_CLIENT_WALLET_ADDRESS = "https://ilp.interledger-test.dev/opencircle-test";
+          OP_KEY_ID = "test-key";
+          DIDIT_WORKFLOW_ID = "00000000-0000-4000-8000-000000000000";
+        };
         environmentFile = "/etc/opencircle-backend.env";
       };
+      # Throwaway test fixtures, not credentials: the database is unreachable
+      # (the API connects lazily), the Ed25519 key was generated for this test
+      # only, and the token key is 32 repeated bytes.
       environment.etc."opencircle-backend.env".text = ''
         DATABASE_URL=postgresql://user:pass@127.0.0.1:1/postgres
+        OP_PRIVATE_KEY=MC4CAQAwBQYDK2VwBCIEICNLtP42IEqNnpwJfqzdYyAahp6MyM79K4SVeOXl8Fqv
+        GRANT_TOKEN_KEY=BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+        DIDIT_API_KEY=test-api-key
       '';
 
       environment.systemPackages = [ pkgs.curl ];

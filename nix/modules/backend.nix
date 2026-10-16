@@ -1,12 +1,35 @@
 # services.opencircle-backend: the Express API as a systemd service.
 #
-# The API needs DATABASE_URL and SUPABASE_URL (see backend/.env.example).
-# DATABASE_URL carries a password, so it belongs in `environmentFile`;
-# SUPABASE_URL is public and can go in `environment`.
+# The API validates its configuration at start-up (backend/src/config/env.ts;
+# documented in backend/.env.example). Public values can go in `environment`;
+# anything secret must come from `environmentFile`, which never enters the store.
 { config, lib, ... }:
 let
   cfg = config.services.opencircle-backend;
-  provides = name: cfg.environmentFile != null || builtins.hasAttr name cfg.environment;
+
+  # Keep in sync with backend/src/config/env.ts.
+  requiredVars = [
+    "DATABASE_URL"
+    "SUPABASE_URL"
+    "FRONTEND_URL"
+    "OP_CLIENT_WALLET_ADDRESS"
+    "OP_KEY_ID"
+    "OP_PRIVATE_KEY"
+    "GRANT_TOKEN_KEY"
+    "DIDIT_API_KEY"
+    "DIDIT_WORKFLOW_ID"
+  ];
+  secretVars = [
+    "DATABASE_URL"
+    "OP_PRIVATE_KEY"
+    "GRANT_TOKEN_KEY"
+    "DIDIT_API_KEY"
+    "DIDIT_WEBHOOK_SECRET"
+  ];
+
+  inEnvironment = name: builtins.hasAttr name cfg.environment;
+  missing = lib.filter (name: !(inEnvironment name)) requiredVars;
+  leaked = lib.filter inEnvironment secretVars;
 in
 {
   options.services.opencircle-backend = {
@@ -32,15 +55,27 @@ in
       default = { };
       example = {
         SUPABASE_URL = "https://project-ref.supabase.co";
+        FRONTEND_URL = "https://app.example.org";
+        OP_CLIENT_WALLET_ADDRESS = "https://ilp.interledger-test.dev/opencircle";
+        OP_KEY_ID = "key-id-from-the-wallet";
+        DIDIT_WORKFLOW_ID = "00000000-0000-4000-8000-000000000000";
       };
-      description = "Non-secret runtime environment variables. Values end up in the Nix store.";
+      description = ''
+        Public runtime environment variables. Values end up in the Nix store,
+        so secrets (${lib.concatStringsSep ", " secretVars}) are refused here.
+      '';
     };
 
     environmentFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
       example = "/run/secrets/opencircle-backend.env";
-      description = "systemd EnvironmentFile with secrets such as DATABASE_URL, in KEY=value form. Must not live in the Nix store.";
+      description = ''
+        systemd EnvironmentFile (KEY=value lines) with the secrets and any
+        other variable not set in `environment`. Required unless `environment`
+        covers every variable the API needs: ${lib.concatStringsSep ", " requiredVars}.
+        Must not live in the Nix store.
+      '';
     };
 
     openFirewall = lib.mkOption {
@@ -53,12 +88,12 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = provides "DATABASE_URL" && provides "SUPABASE_URL";
-        message = "services.opencircle-backend needs DATABASE_URL and SUPABASE_URL, via `environmentFile` or `environment`.";
+        assertion = cfg.environmentFile != null || missing == [ ];
+        message = "services.opencircle-backend: set `environmentFile`, or provide ${lib.concatStringsSep ", " missing} in `environment`.";
       }
       {
-        assertion = !(builtins.hasAttr "DATABASE_URL" cfg.environment);
-        message = "services.opencircle-backend.environment.DATABASE_URL would put the database password in the Nix store; use `environmentFile`.";
+        assertion = leaked == [ ];
+        message = "services.opencircle-backend.environment must not contain secrets (${lib.concatStringsSep ", " leaked}); put them in `environmentFile`.";
       }
     ];
 
