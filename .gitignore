@@ -7,20 +7,16 @@
 *.p12
 
 # Dependencies / builds
+result
+result-*
 node_modules/
 .next/
 out/
 dist/
 *.tsbuildinfo
-package-lock.json
+
 # Local tooling
 .claude/worktrees/
+.direnv/
 graphify-out/
 .DS_Store
-.claude
-.envrc
-.direnv/
-
-.agents/
-README.md
-
