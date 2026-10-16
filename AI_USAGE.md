@@ -21,3 +21,6 @@
 * Testing and verification of all AI-suggested code
 
 ## Prompt Log
+
+**2026-10-16 10:51 · Claude Code**
+> we need to follow the AI_USAGE.md get need to log every single prompt to this
