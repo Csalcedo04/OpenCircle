@@ -14,8 +14,8 @@ const techSpecs = [
   },
   {
     icon: Repeat,
-    protocol: "Idempotency-Key",
-    detail: "Claves de idempotencia deterministas que bloquean doble facturación.",
+    protocol: "external_id UNIQUE",
+    detail: "Deduplicación en audit_events; previene dobles abonos y protege credit_profiles.",
   },
   {
     icon: KeyRound,

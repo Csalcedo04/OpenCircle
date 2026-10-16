@@ -153,8 +153,8 @@ const landing: LandingDictionary = {
         body: "A round is only marked completed after receiving and validating the HMAC signature on the Rafiki webhook.",
       },
       {
-        title: "Deterministic idempotency",
-        body: "Every fund movement request carries a unique idempotency key, preventing duplicate charges or race conditions.",
+        title: "Idempotency & safe AI scoring",
+        body: "Every Rafiki webhook carries a unique external_id. The backend deduplicates events before updating wallet_balances (zero floats) and deterministically synchronizes the credit_profiles table for the AI model.",
       },
       {
         title: "Cryptographic isolation",

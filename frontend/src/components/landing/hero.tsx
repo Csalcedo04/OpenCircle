@@ -8,7 +8,7 @@ import { cta } from "./shared"
 export function Hero({ t, trust, locale }: { t: LandingDictionary["hero"]; trust: LandingDictionary["trust"]; locale: Locale }) {
   return (
     <section aria-labelledby="hero-title" className="relative isolate overflow-hidden">
-      {/* Orbital Constellation SVG background — replacing AI purple radial gradients */}
+      {/* Orbital Constellation SVG background */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 -top-20 -z-10 h-[48rem] overflow-hidden opacity-30 select-none">
         <svg viewBox="0 0 1440 800" fill="none" className="h-full w-full">
           <circle cx="1120" cy="300" r="260" stroke="var(--color-brand-line)" strokeWidth="1.5" strokeDasharray="5 7" />
@@ -19,17 +19,17 @@ export function Hero({ t, trust, locale }: { t: LandingDictionary["hero"]; trust
         </svg>
       </div>
 
-      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-x-12 gap-y-16 px-4 pt-10 pb-16 sm:px-6 sm:pt-14 lg:grid-cols-[1.02fr_1fr] lg:px-8 lg:pt-14 lg:pb-20">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 items-center gap-x-12 gap-y-12 px-4 pt-8 pb-12 sm:px-6 sm:pt-14 sm:pb-16 lg:grid-cols-[1.02fr_1fr] lg:px-8 lg:pt-14 lg:pb-20">
         <div className="oc-rise">
           {/* Institutional Dot Eyebrow */}
-          <p className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-white px-3.5 py-1.5 text-xs font-bold uppercase tracking-wider text-brand-navy shadow-2xs">
+          <p className="inline-flex items-center gap-2 rounded-full border border-brand-line bg-brand-white px-3.5 py-1.5 text-[11px] sm:text-xs font-bold uppercase tracking-wider text-brand-navy shadow-2xs">
             <span className="size-2 rounded-full bg-brand-violet animate-pulse" aria-hidden="true" />
             {t.eyebrow}
           </p>
 
           <h1
             id="hero-title"
-            className="mt-6 text-[2.6rem] leading-[1.02] font-semibold tracking-[-0.04em] text-balance text-brand-navy sm:text-6xl lg:text-[4.4rem]"
+            className="mt-5 text-[2.1rem] leading-[1.05] font-semibold tracking-[-0.04em] text-balance text-brand-navy break-words sm:text-5xl lg:text-[4.2rem]"
           >
             {t.titleStart}
             <span className="bg-[linear-gradient(transparent_68%,color-mix(in_srgb,var(--color-brand-mint)_85%,transparent)_68%,color-mix(in_srgb,var(--color-brand-mint)_85%,transparent)_92%,transparent_92%)] box-decoration-clone text-brand-violet-ink">
@@ -37,31 +37,31 @@ export function Hero({ t, trust, locale }: { t: LandingDictionary["hero"]; trust
             </span>
           </h1>
 
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-pretty text-brand-slate sm:text-xl">{t.lead}</p>
+          <p className="mt-5 max-w-xl text-base leading-relaxed text-pretty text-brand-slate sm:text-lg lg:text-xl">{t.lead}</p>
 
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Link href={`/${locale}/circles`} className={cta.primary}>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row w-full sm:w-auto">
+            <Link href={`/${locale}/circles`} className={`${cta.primary} w-full sm:w-auto`}>
               {t.primary}
             </Link>
-            <a href="#como-funciona" className={cta.secondary}>
+            <a href="#como-funciona" className={`${cta.secondary} w-full sm:w-auto`}>
               {t.secondary}
             </a>
           </div>
 
-          <p className="mt-5 text-sm font-medium text-brand-navy/80">{t.micro}</p>
+          <p className="mt-4 text-xs sm:text-sm font-medium text-brand-navy/80">{t.micro}</p>
         </div>
 
         <HeroDashboard t={t.dashboard} locale={locale} />
       </div>
 
       <div className="border-y border-brand-line bg-brand-white/80 backdrop-blur-xs">
-        <ul className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-10 gap-y-3 px-4 py-5 sm:justify-between sm:px-6 lg:px-8">
+        <ul className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-4 sm:justify-between sm:px-6 sm:py-5 lg:px-8">
           {trust.map((item) => (
-            <li key={item} className="flex items-center gap-2.5 text-[14px] sm:text-[15px] font-medium text-brand-navy">
-              <span className="grid size-6 place-items-center rounded-full bg-brand-mint">
-                <Check className="size-3.5 text-brand-navy" strokeWidth={3} aria-hidden="true" />
+            <li key={item} className="flex items-center gap-2 text-xs sm:text-[14px] lg:text-[15px] font-medium text-brand-navy">
+              <span className="grid size-5 sm:size-6 place-items-center rounded-full bg-brand-mint shrink-0">
+                <Check className="size-3 sm:size-3.5 text-brand-navy" strokeWidth={3} aria-hidden="true" />
               </span>
-              {item}
+              <span>{item}</span>
             </li>
           ))}
         </ul>

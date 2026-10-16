@@ -151,8 +151,8 @@ const landing = {
         body: "Un ciclo solo pasa a completado tras recibir y validar criptográficamente la firma HMAC del webhook emitido por Rafiki.",
       },
       {
-        title: "Idempotencia determinista",
-        body: "Cada solicitud que mueve fondos lleva una clave de idempotencia única, eliminando riesgos de débitos duplicados.",
+        title: "Idempotencia y scoring seguro de IA",
+        body: "Cada webhook de Rafiki porta un identificador external_id único. El backend deduplica eventos antes de actualizar wallet_balances (cero floats) y sincroniza de forma determinista la tabla credit_profiles para el modelo de IA.",
       },
       {
         title: "Aislamiento criptográfico",

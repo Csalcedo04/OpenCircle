@@ -34,19 +34,19 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
   }
 
   return (
-    <figure aria-label={t.label} className="relative mx-auto mb-10 w-full max-w-[34rem] lg:mx-0 lg:ml-auto">
+    <figure aria-label={t.label} className="relative mx-auto mb-6 sm:mb-10 w-full max-w-[34rem] lg:mx-0 lg:ml-auto">
       {/* Subtle orbital aura */}
       <div
         aria-hidden="true"
-        className="absolute -inset-x-6 -inset-y-10 -z-10 rounded-[48px] bg-[radial-gradient(60%_55%_at_70%_30%,color-mix(in_srgb,var(--color-brand-violet)_12%,transparent),transparent_70%),radial-gradient(50%_50%_at_25%_80%,color-mix(in_srgb,var(--color-brand-mint)_50%,transparent),transparent_70%)] blur-2xl"
+        className="absolute -inset-x-4 -inset-y-6 sm:-inset-x-6 sm:-inset-y-10 -z-10 rounded-[48px] bg-[radial-gradient(60%_55%_at_70%_30%,color-mix(in_srgb,var(--color-brand-violet)_12%,transparent),transparent_70%),radial-gradient(50%_50%_at_25%_80%,color-mix(in_srgb,var(--color-brand-mint)_50%,transparent),transparent_70%)] blur-2xl"
       />
 
-      <div className="oc-rise rounded-[40px] border border-brand-line bg-brand-white p-6 pb-16 shadow-[0_30px_60px_-30px_color-mix(in_srgb,var(--color-brand-navy)_35%,transparent)] sm:p-7 sm:pb-16">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] font-medium text-brand-slate">{t.heading}</p>
+      <div className="oc-rise rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-4 pb-12 sm:p-7 sm:pb-16 shadow-[0_30px_60px_-30px_color-mix(in_srgb,var(--color-brand-navy)_35%,transparent)]">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs sm:text-[13px] font-medium text-brand-slate">{t.heading}</p>
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold tracking-wide transition-colors",
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-[11px] font-bold tracking-wide transition-colors",
               completedJuan ? "bg-brand-mint text-brand-navy" : "bg-brand-mist text-brand-navy"
             )}
           >
@@ -58,16 +58,17 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
           </span>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-b border-brand-line/60 pb-4">
+        {/* Header responsive layout */}
+        <div className="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-brand-line/60 pb-4">
           <div>
-            <p className="text-[1.35rem] font-semibold tracking-[-0.02em] sm:text-2xl text-brand-navy">{t.circle}</p>
-            <p className="text-[11px] font-mono text-brand-slate">$ilp.rafiki.money/viaje-2026</p>
+            <p className="text-[1.25rem] font-semibold tracking-[-0.02em] sm:text-2xl text-brand-navy">{t.circle}</p>
+            <p className="text-[11px] font-mono text-brand-slate break-all">$ilp.rafiki.money/viaje-2026</p>
           </div>
           <button
             type="button"
             onClick={handleSimulatePayment}
             disabled={isSimulating}
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand-navy px-3.5 py-1.5 text-xs font-semibold text-brand-white shadow-2xs transition-transform active:scale-95 hover:bg-brand-navy/90 cursor-pointer disabled:opacity-50"
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-full bg-brand-navy px-3.5 py-2 text-xs font-semibold text-brand-white shadow-2xs transition-transform active:scale-95 hover:bg-brand-navy/90 cursor-pointer disabled:opacity-50"
           >
             {completedJuan ? (
               <>
@@ -88,23 +89,23 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
           </button>
         </div>
 
-        <dl className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          <div className="rounded-2xl bg-brand-mist p-3.5">
-            <dt className="text-[11px] font-medium text-brand-navy/70">{t.contribution}</dt>
-            <dd className="mt-1 text-[15px] font-semibold tabular-nums text-brand-navy">{pesosLabel(CONTRIBUTION, locale)}</dd>
+        <dl className="mt-4 sm:mt-5 grid grid-cols-2 gap-2 sm:gap-2.5 sm:grid-cols-3">
+          <div className="rounded-2xl bg-brand-mist p-3 sm:p-3.5">
+            <dt className="text-[10px] sm:text-[11px] font-medium text-brand-navy/70">{t.contribution}</dt>
+            <dd className="mt-1 text-sm sm:text-[15px] font-semibold tabular-nums text-brand-navy">{pesosLabel(CONTRIBUTION, locale)}</dd>
           </div>
-          <div className="rounded-2xl bg-brand-mist p-3.5">
-            <dt className="text-[11px] font-medium text-brand-navy/70">{t.participants}</dt>
-            <dd className="mt-1 text-[15px] font-semibold text-brand-navy">{fill(t.people, { count: PEOPLE.length })}</dd>
+          <div className="rounded-2xl bg-brand-mist p-3 sm:p-3.5">
+            <dt className="text-[10px] sm:text-[11px] font-medium text-brand-navy/70">{t.participants}</dt>
+            <dd className="mt-1 text-sm sm:text-[15px] font-semibold text-brand-navy">{fill(t.people, { count: PEOPLE.length })}</dd>
           </div>
-          <div className="col-span-2 rounded-2xl bg-brand-navy p-3.5 text-brand-white sm:col-span-1">
-            <dt className="text-[11px] font-medium text-brand-on-navy">{t.pool}</dt>
-            <dd className="mt-1 text-[15px] font-semibold text-brand-mint tabular-nums">{pesosLabel(total, locale)}</dd>
+          <div className="col-span-2 rounded-2xl bg-brand-navy p-3 sm:p-3.5 text-brand-white sm:col-span-1">
+            <dt className="text-[10px] sm:text-[11px] font-medium text-brand-on-navy">{t.pool}</dt>
+            <dd className="mt-1 text-sm sm:text-[15px] font-semibold text-brand-mint tabular-nums">{pesosLabel(total, locale)}</dd>
           </div>
         </dl>
 
-        <div className="mt-5">
-          <div className="flex items-baseline justify-between text-[13px]">
+        <div className="mt-4 sm:mt-5">
+          <div className="flex items-baseline justify-between text-xs sm:text-[13px]">
             <p className="font-medium text-brand-navy">{fill(t.progress, { confirmed: confirmedCount, total: PEOPLE.length })}</p>
             <p className="font-semibold tabular-nums text-brand-violet-ink">{pct}%</p>
           </div>
@@ -121,65 +122,69 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
               style={{ width: `${pct}%` }}
             />
           </div>
-          <ul className="mt-4 flex items-center gap-2" aria-hidden="true">
-            {order.map((p, i) => {
-              const isJuan = i === 4
-              const paid = isJuan ? completedJuan : true
-              return (
-                <li key={p.name} className="relative">
-                  <Avatar
-                    name={p.name}
-                    tone={p.tone}
-                    size="lg"
-                    className={cn(!paid && "border-2 border-dashed border-brand-slate bg-brand-white ring-0")}
-                  />
-                  {paid && (
-                    <span className="absolute -right-0.5 -bottom-0.5 grid size-4 place-items-center rounded-full bg-brand-mint ring-2 ring-brand-white">
-                      <Check className="size-2.5 text-brand-navy" strokeWidth={3.5} />
-                    </span>
-                  )}
-                </li>
-              )
-            })}
-            <li className="ml-auto text-right text-[11px] leading-tight text-brand-slate">
+
+          {/* Avatars and turn receiver responsive row */}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2.5">
+            <ul className="flex items-center -space-x-1 sm:space-x-1" aria-hidden="true">
+              {order.map((p, i) => {
+                const isJuan = i === 4
+                const paid = isJuan ? completedJuan : true
+                return (
+                  <li key={p.name} className="relative">
+                    <Avatar
+                      name={p.name}
+                      tone={p.tone}
+                      size="md"
+                      className={cn(!paid && "border-2 border-dashed border-brand-slate bg-brand-white ring-0")}
+                    />
+                    {paid && (
+                      <span className="absolute -right-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-brand-mint ring-2 ring-brand-white">
+                        <Check className="size-2 text-brand-navy" strokeWidth={3.5} />
+                      </span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="text-right text-[11px] leading-tight text-brand-slate shrink-0">
               {t.receives}
-              <span className="block text-[13px] font-semibold text-brand-navy">Andrés</span>
-            </li>
-          </ul>
+              <span className="block text-xs sm:text-[13px] font-semibold text-brand-navy">Andrés</span>
+            </div>
+          </div>
         </div>
 
-        <div className="mt-5 border-t border-brand-line pt-4">
-          <div className="flex items-center justify-between">
-            <p className="text-[13px] font-medium text-brand-slate">{t.activity}</p>
-            <span className="flex items-center gap-1 text-[11px] text-brand-slate font-mono">
+        <div className="mt-4 sm:mt-5 border-t border-brand-line pt-3 sm:pt-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs sm:text-[13px] font-medium text-brand-slate">{t.activity}</p>
+            <span className="flex items-center gap-1 text-[10px] sm:text-[11px] text-brand-slate font-mono">
               <ShieldCheck className="size-3 text-brand-violet" />
               HMAC SHA-256 verificado
             </span>
           </div>
           <ul className="mt-2 divide-y divide-brand-line">
             {activity.map((p, i) => (
-              <li key={p.name} className={cn("flex items-center gap-3 py-2.5", i > 2 && "hidden")}>
+              <li key={p.name} className={cn("flex items-center gap-2.5 sm:gap-3 py-2 sm:py-2.5", i > 2 && "hidden")}>
                 <Avatar name={p.name} tone={p.tone} size="sm" />
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-brand-navy">{p.name}</p>
-                  <p className="flex items-center gap-1 text-[11px] text-brand-slate">
+                  <p className="text-xs sm:text-[13px] font-semibold text-brand-navy truncate">{p.name}</p>
+                  <p className="flex items-center gap-1 text-[10px] sm:text-[11px] text-brand-slate">
                     <CircleCheck className="size-3 text-brand-violet-ink" aria-hidden="true" />
                     {t.confirmed} · {t.times[i]}
                   </p>
                 </div>
-                <p className="text-[13px] font-semibold tabular-nums text-brand-navy">+{pesos(CONTRIBUTION, locale)}</p>
+                <p className="text-xs sm:text-[13px] font-semibold tabular-nums text-brand-navy shrink-0">+{pesos(CONTRIBUTION, locale)}</p>
               </li>
             ))}
-            <li className="flex items-center gap-3 py-2.5">
+            <li className="flex items-center gap-2.5 sm:gap-3 py-2 sm:py-2.5">
               <Avatar
                 name="Juan"
-                tone={completedJuan ? "line" : "line"}
+                tone="line"
                 size="sm"
                 className={cn(!completedJuan && "border border-dashed border-brand-slate ring-0")}
               />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-brand-navy">Juan</p>
-                <p className="flex items-center gap-1 text-[11px] text-brand-slate">
+                <p className="text-xs sm:text-[13px] font-semibold text-brand-navy truncate">Juan</p>
+                <p className="flex items-center gap-1 text-[10px] sm:text-[11px] text-brand-slate">
                   {completedJuan ? (
                     <>
                       <CircleCheck className="size-3 text-brand-violet-ink" aria-hidden="true" />
@@ -195,7 +200,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
               </div>
               <p
                 className={cn(
-                  "text-[13px] font-medium tabular-nums",
+                  "text-xs sm:text-[13px] font-medium tabular-nums shrink-0",
                   completedJuan ? "font-semibold text-brand-navy" : "text-brand-slate"
                 )}
               >
@@ -204,24 +209,24 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
             </li>
           </ul>
         </div>
-        <figcaption className="mt-3 text-right text-[11px] text-brand-slate">{t.sample}</figcaption>
+        <figcaption className="mt-3 text-right text-[10px] sm:text-[11px] text-brand-slate">{t.sample}</figcaption>
       </div>
 
-      {/* Floating interactive satellite */}
-      <div className="oc-pop absolute -bottom-5 left-3 [animation-delay:900ms] sm:-bottom-6 sm:-left-10">
-        <div className="oc-bob flex items-center gap-2.5 rounded-full border border-brand-line bg-brand-white/95 py-2.5 pr-5 pl-3 shadow-[0_16px_40px_-20px_color-mix(in_srgb,var(--color-brand-navy)_40%,transparent)] backdrop-blur">
-          <span className="grid size-7 place-items-center rounded-full bg-brand-mint">
-            <Check className="size-4 text-brand-navy" strokeWidth={3} aria-hidden="true" />
+      {/* Floating interactive satellites: shown gracefully on tablet/desktop to avoid mobile overflow */}
+      <div className="hidden sm:flex oc-pop absolute -bottom-5 left-3 sm:-bottom-6 sm:-left-8">
+        <div className="oc-bob flex items-center gap-2.5 rounded-full border border-brand-line bg-brand-white/95 py-2 pr-4 pl-2.5 shadow-[0_16px_40px_-20px_color-mix(in_srgb,var(--color-brand-navy)_40%,transparent)] backdrop-blur">
+          <span className="grid size-6 place-items-center rounded-full bg-brand-mint">
+            <Check className="size-3.5 text-brand-navy" strokeWidth={3} aria-hidden="true" />
           </span>
-          <p className="text-[13px] font-semibold text-brand-navy">
+          <p className="text-xs font-semibold text-brand-navy">
             {completedJuan ? "Ronda 2 completada · Payout emitido" : t.notifyPaid}
           </p>
         </div>
       </div>
-      <div className="oc-pop absolute right-3 -bottom-12 [animation-delay:1400ms] sm:-right-6 sm:-bottom-14">
-        <div className="oc-bob flex items-center gap-2.5 rounded-full bg-brand-navy py-2.5 pr-5 pl-3 text-brand-white shadow-[0_16px_40px_-18px_color-mix(in_srgb,var(--color-brand-navy)_60%,transparent)] [animation-delay:-3s]">
+      <div className="hidden sm:flex oc-pop absolute right-3 -bottom-10 sm:-right-6 sm:-bottom-12 [animation-delay:1400ms]">
+        <div className="oc-bob flex items-center gap-2.5 rounded-full bg-brand-navy py-2 pr-4 pl-2.5 text-brand-white shadow-[0_16px_40px_-18px_color-mix(in_srgb,var(--color-brand-navy)_60%,transparent)] [animation-delay:-3s]">
           <Avatar name="Carlos" tone="mint" size="sm" />
-          <p className="text-[13px] font-semibold">{t.notifyNext}</p>
+          <p className="text-xs font-semibold">{t.notifyNext}</p>
         </div>
       </div>
     </figure>
