@@ -1554,3 +1554,50 @@
 
 **2026-10-16 12:43 · Claude Code**
 > y
+
+**2026-10-16 12:45 · Claude Code**
+> lets start creating the routes in REST API
+
+**2026-10-16 12:46 · Claude Code**
+> using the supabase token to access those endpoints from the frontend
+
+**2026-10-16 12:49 · Claude Code**
+> the onboarding should also start doing this.
+> since we are going to start adding the interledger and open payments.
+> that field needs to also fill it by the User:
+>
+> so we need to ask the permission via the protocol from the opencircle
+
+**2026-10-16 12:53 · Claude Code**
+> here is the database:
+> DATABASE_URL="postgresql://postgres.qqjfxapqjhnfsegiwqwl:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+
+**2026-10-16 13:00 · Claude Code**
+> ok I have it base64 the private key, what else do you need from me
+
+**2026-10-16 13:02 · Claude Code**
+> they key ID I don't know where to get it
+
+**2026-10-16 13:03 · Claude Code**
+> it only allows us to use Personal Accounts
+
+**2026-10-16 13:04 · Claude Code**
+> ok I got it
+
+**2026-10-16 13:04 · Claude Code**
+> they are in the @backend/.env
+
+**2026-10-16 13:06 · Claude Code**
+> done
+
+**2026-10-16 13:06 · Claude Code**
+> test the connection
+
+**2026-10-16 13:07 · Claude Code**
+> 2. we can received any currency
+
+**2026-10-16 13:07 · Claude Code**
+> 3. y
+
+**2026-10-16 13:07 · Claude Code**
+> 3. lets commit all
