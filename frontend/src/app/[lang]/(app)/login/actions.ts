@@ -1,8 +1,9 @@
 "use server"
 
-import { headers } from "next/headers"
+import { cookies, headers } from "next/headers"
 import { z } from "zod"
 import { hasLocale } from "@/i18n/config"
+import { RETURN_PATH_COOKIE, RETURN_PATH_MAX_AGE, isInAppPath } from "@/lib/return-path"
 import { siteUrl } from "@/lib/site"
 import { createClient } from "@/lib/supabase/server"
 
@@ -26,6 +27,18 @@ export async function sendMagicLink(locale: string, _prev: LoginState, formData:
   if (error) {
     console.error("Magic link failed", error.code ?? error.status)
     return { status: "error", error: "send" }
+  }
+
+  // Where to land after sign-in and onboarding (e.g. the circle they were joining).
+  const next = formData.get("next")
+  if (isInAppPath(next)) {
+    ;(await cookies()).set(RETURN_PATH_COOKIE, next, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: RETURN_PATH_MAX_AGE,
+    })
   }
   return { status: "sent", email: email.data }
 }

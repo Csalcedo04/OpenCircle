@@ -13,9 +13,11 @@ type Props = {
   locale: Locale
   t: Dictionary["auth"]
   linkError: boolean
+  /** In-app path to return to after sign-in; validated again on the server. */
+  next: string | null
 }
 
-export function LoginForm({ locale, t, linkError }: Props) {
+export function LoginForm({ locale, t, linkError, next }: Props) {
   const [state, action, pending] = useActionState<LoginState, FormData>(sendMagicLink.bind(null, locale), {
     status: "idle",
   })
@@ -34,6 +36,7 @@ export function LoginForm({ locale, t, linkError }: Props) {
 
   return (
     <form action={action} noValidate className="space-y-6">
+      {next && <input type="hidden" name="next" value={next} />}
       <FormField id="email" label={t.email} error={error}>
         <Input
           id="email"

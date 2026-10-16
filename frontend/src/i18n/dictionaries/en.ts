@@ -12,6 +12,8 @@ const en = {
   nav: {
     circles: "Circles",
     create: "Start a circle",
+    signIn: "Sign in",
+    signOut: "Sign out",
     language: "Language",
     switchTo: "Español",
     home: "OpenCircle home",

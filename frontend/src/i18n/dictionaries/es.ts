@@ -13,6 +13,8 @@ const es: Dictionary = {
   nav: {
     circles: "Círculos",
     create: "Crear un círculo",
+    signIn: "Iniciar sesión",
+    signOut: "Cerrar sesión",
     language: "Idioma",
     switchTo: "English",
     home: "Inicio de OpenCircle",

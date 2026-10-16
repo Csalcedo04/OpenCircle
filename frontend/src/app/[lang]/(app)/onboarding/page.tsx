@@ -1,11 +1,13 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { CircleCheck } from "lucide-react"
 import { fill } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { getMyProfile } from "@/lib/api/backend"
+import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
 import { ProfileForm } from "./profile-form"
 import { WalletForm } from "./wallet-form"
@@ -33,7 +35,10 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
   if (!data?.claims) redirect(`/${locale}/login`)
 
   const profile = await getMyProfile()
-  if (profile?.walletAddress) redirect(`/${locale}/circles`)
+  if (profile?.walletAddress) {
+    const next = (await cookies()).get(RETURN_PATH_COOKIE)?.value
+    redirect(isInAppPath(next) ? next : `/${locale}/circles`)
+  }
 
   const { consent, edit } = await searchParams
   const step = profile && edit !== "profile" ? 2 : 1

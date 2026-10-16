@@ -41,7 +41,7 @@ export async function KycGate({ locale, t, returnPath, children }: Props) {
     return (
       <Panel icon={icon} title={t.title}>
         <p className="mt-3 text-muted-foreground">{t.needsLogin}</p>
-        <Link href={`/${locale}/login`} className={buttonVariants({ className: "mt-6 h-11 px-5 text-base" })}>
+        <Link href={`/${locale}/login?next=${encodeURIComponent(returnPath)}`} className={buttonVariants({ className: "mt-6 h-11 px-5 text-base" })}>
           {t.goLogin}
         </Link>
       </Panel>

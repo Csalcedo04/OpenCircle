@@ -1,9 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { defaultLocale, hasLocale } from "@/i18n/config"
 import { getMyKyc } from "@/lib/api/backend"
-
-// Same rule the API enforces on returnPath: an in-app path only, never an open redirect.
-const IN_APP_PATH = /^\/(en|es)(\/[\w-]+)*$/
+import { isInAppPath } from "@/lib/return-path"
 
 /**
  * Didit sends the user back here. Its query values are not trusted: reading the
@@ -13,7 +11,7 @@ export async function GET(request: NextRequest, { params }: RouteContext<"/[lang
   const { lang } = await params
   const locale = hasLocale(lang) ? lang : defaultLocale
   const next = request.nextUrl.searchParams.get("next") ?? ""
-  const target = IN_APP_PATH.test(next) ? next : `/${locale}/circles`
+  const target = isInAppPath(next) ? next : `/${locale}/circles`
 
   try {
     await getMyKyc()

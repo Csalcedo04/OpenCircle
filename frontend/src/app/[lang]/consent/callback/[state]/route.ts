@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { defaultLocale, hasLocale } from "@/i18n/config"
 import { BackendError, completeWalletConsent } from "@/lib/api/backend"
+import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 
 // Backend error code → `?consent=` value the onboarding page understands.
 const reasons: Record<string, string> = {
@@ -33,5 +34,9 @@ export async function GET(request: NextRequest, { params }: RouteContext<"/[lang
     console.error("Wallet consent completion failed", code)
     return to(`/onboarding?consent=${reasons[code] ?? "error"}`)
   }
-  return to("/circles")
+  // Onboarding is done: go back to where sign-in started (e.g. a circle's join page).
+  const next = request.cookies.get(RETURN_PATH_COOKIE)?.value
+  const done = NextResponse.redirect(new URL(isInAppPath(next) ? next : `/${locale}/circles`, request.url))
+  done.cookies.delete(RETURN_PATH_COOKIE)
+  return done
 }
