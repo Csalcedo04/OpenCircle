@@ -1,0 +1,10 @@
+# Secrets never leave this machine: Railway variables come from the project settings.
+.env*
+!.env.example
+
+# Installed and built on Railway.
+node_modules/
+dist/
+
+# Not needed to run the API.
+test/

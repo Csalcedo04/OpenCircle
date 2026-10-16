@@ -75,10 +75,15 @@ test.describe("sign-in and onboarding", () => {
     await expect(page.getByText("La conexión con la billetera no fue aprobada. Puedes intentarlo de nuevo.")).toBeVisible()
   })
 
-  test("an onboarded user skips onboarding", async ({ page, user }) => {
+  test("an onboarded user goes straight to circles, never loading onboarding", async ({ page, user }) => {
     await seedProfile(user, { wallet: true })
+    const visited: string[] = []
+    page.on("request", (req) => {
+      if (req.isNavigationRequest()) visited.push(new URL(req.url()).pathname)
+    })
     await signIn(page, user, { lands: "circles" })
     await expect(page).toHaveURL(/\/es\/circles$/)
+    expect(visited).not.toContain("/es/onboarding")
   })
 
   test("signing out ends the session", async ({ page, user }) => {

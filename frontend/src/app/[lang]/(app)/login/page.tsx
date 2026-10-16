@@ -5,6 +5,10 @@ import { isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
 import { LoginForm } from "./login-form"
 
+// Decides on the server whether to redirect (signed in / onboarding state), so it must block
+// rather than stream a shell first: streaming would turn the redirect into a visible flash.
+export const instant = false
+
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDictionary()
   return { title: t.auth.title }

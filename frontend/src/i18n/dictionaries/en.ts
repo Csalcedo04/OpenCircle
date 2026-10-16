@@ -210,6 +210,7 @@ const en = {
       walletNotAllowed: "That wallet isn’t on the Interledger test network.",
       walletUnreachable: "We couldn’t reach that wallet. Check the address and try again.",
       walletTaken: "That wallet is already connected to another account.",
+      unavailable: "OpenCircle can’t reach its service right now. Try again in a moment.",
       generic: "Something went wrong. Try again.",
       consentRejected: "The wallet connection wasn’t approved. You can try again.",
       consentExpired: "That approval expired or was already used. Start again.",
@@ -232,6 +233,8 @@ const en = {
     },
   },
   common: {
+    unavailableTitle: "We’re getting things ready",
+    unavailableBody: "OpenCircle can’t reach its service right now. Please try again in a moment.",
     back: "Back",
     loading: "Loading…",
     errorTitle: "This page didn’t load",

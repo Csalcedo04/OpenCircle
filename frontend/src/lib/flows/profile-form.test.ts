@@ -69,5 +69,6 @@ describe("profileErrorKey", () => {
     expect(profileErrorKey("EMAIL_IN_USE")).toBe("emailInUse")
     expect(profileErrorKey("EMAIL_REQUIRED")).toBe("emailRequired")
     expect(profileErrorKey("SOMETHING_NEW")).toBe("generic")
+    expect(profileErrorKey("BACKEND_UNAVAILABLE")).toBe("unavailable")
   })
 })

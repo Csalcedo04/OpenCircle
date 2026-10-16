@@ -17,7 +17,7 @@ export default async function NewCirclePage() {
       <p className="mt-2 max-w-2xl text-muted-foreground">{t.create.lead}</p>
       <div className="mt-10">
         <Suspense fallback={<p className="text-muted-foreground">{t.common.loading}</p>}>
-          <KycGate locale={locale} t={t.kyc} returnPath={`/${locale}/circles/new`}>
+          <KycGate locale={locale} t={t.kyc} tc={t.common} returnPath={`/${locale}/circles/new`}>
             <CreateCircleForm locale={locale} t={t.create} />
           </KycGate>
         </Suspense>
