@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
-import { supabasePublicEnv } from "./env"
+import { isSupabaseConfigured, supabasePublicEnv } from "./env"
 
 /**
  * Refreshes the auth session on every matched request and forwards the
@@ -9,6 +9,8 @@ import { supabasePublicEnv } from "./env"
  */
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
   let response = NextResponse.next({ request })
+  // No Supabase env (fresh clone, preview deploy): serve the page without a session.
+  if (!isSupabaseConfigured()) return response
   const { url, publishableKey } = supabasePublicEnv()
 
   const supabase = createServerClient(url, publishableKey, {
