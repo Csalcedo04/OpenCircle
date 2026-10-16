@@ -2,9 +2,15 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "build": "tsc",
+    "start": "node --env-file=.env dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file=.env node_modules/drizzle-kit/bin.cjs migrate"
   },
   "keywords": [],
   "author": "",
@@ -13,9 +19,11 @@
   "dependencies": {
     "@interledger/open-payments": "7.4.0",
     "@supabase/server": "^1.9.2",
+    "@supabase/supabase-js": "2.117.3",
     "drizzle-orm": "0.45.4",
     "express": "^5.3.0",
-    "postgres": "3.4.9"
+    "postgres": "3.4.9",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
