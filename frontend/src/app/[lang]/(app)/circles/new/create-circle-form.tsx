@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, type FormEvent } from "react"
-import { CircleCheck } from "lucide-react"
-import { z } from "zod"
+import { CheckCircle2, CircleCheck, Coins, Sparkles, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
+import { cn } from "@/lib/utils"
 
 const COP = { assetCode: "COP", assetScale: 2 } as const
 const FEE_BPS = 200
@@ -18,6 +18,8 @@ const MAX = parseWholeUnits("10000000", COP.assetScale) ?? 0n
 type Props = { locale: Locale; t: Dictionary["create"] }
 type Field = "name" | "amount" | "size" | "frequency"
 
+const SIZES = ["3", "5", "8", "10", "12"]
+
 export function CreateCircleForm({ locale, t }: Props) {
   const [name, setName] = useState("")
   const [amountInput, setAmountInput] = useState("20000")
@@ -25,16 +27,6 @@ export function CreateCircleForm({ locale, t }: Props) {
   const [frequency, setFrequency] = useState("7")
   const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
   const [created, setCreated] = useState(false)
-
-  const schema = z.object({
-    name: z.string().trim().min(3, t.errors.name).max(60, t.errors.name),
-    amount: z
-      .string()
-      .transform((v) => parseWholeUnits(v, COP.assetScale))
-      .refine((v): v is bigint => v !== null && v >= MIN && v <= MAX, t.errors.amount),
-    size: z.coerce.number<string>().int(t.errors.size).min(3, t.errors.size).max(12, t.errors.size),
-    frequency: z.coerce.number<string>().int(t.errors.frequency).min(1, t.errors.frequency).max(60, t.errors.frequency),
-  })
 
   const contribution = parseWholeUnits(amountInput, COP.assetScale)
   const members = /^\d{1,2}$/.test(size) ? BigInt(size) : 0n
@@ -45,105 +37,159 @@ export function CreateCircleForm({ locale, t }: Props) {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const result = schema.safeParse({ name, amount: amountInput, size, frequency })
-    if (!result.success) {
-      const next: Partial<Record<Field, string>> = {}
-      for (const issue of result.error.issues) {
-        const key = issue.path[0]
-        if (typeof key === "string" && !(key in next)) next[key as Field] = issue.message
-      }
+    const next: Partial<Record<Field, string>> = {}
+
+    if (name.trim().length < 3 || name.trim().length > 60) next.name = t.errors.name
+    if (!contribution || contribution < MIN || contribution > MAX) next.amount = t.errors.amount
+    const sizeNum = Number(size)
+    if (!sizeNum || sizeNum < 3 || sizeNum > 12) next.size = t.errors.size
+    const freqNum = Number(frequency)
+    if (!freqNum || freqNum < 1 || freqNum > 60) next.frequency = t.errors.frequency
+
+    if (Object.keys(next).length > 0) {
       setErrors(next)
       setCreated(false)
       return
     }
+
     setErrors({})
     setCreated(true)
   }
 
   return (
-    <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr]">
-      <form onSubmit={onSubmit} noValidate className="space-y-6">
-        <FormField id="name" label={t.name} error={errors.name}>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t.namePlaceholder}
-            aria-invalid={errors.name ? true : undefined}
-            aria-describedby={describedBy("name", errors.name)}
-            className="h-11 text-base"
-          />
-        </FormField>
-        <FormField id="amount" label={t.amount} help={t.amountHelp} error={errors.amount}>
-          <Input
-            id="amount"
-            inputMode="numeric"
-            value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
-            aria-invalid={errors.amount ? true : undefined}
-            aria-describedby={describedBy("amount", errors.amount)}
-            className="h-11 text-base tabular-nums"
-          />
-        </FormField>
-        <div className="grid gap-6 sm:grid-cols-2">
-          <FormField id="size" label={t.size} help={t.sizeHelp} error={errors.size}>
+    <div className="grid gap-8 lg:grid-cols-12 items-start">
+      {/* Form Parameters Bento Card */}
+      <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
+        <form onSubmit={onSubmit} noValidate className="space-y-6">
+          <FormField id="name" label={t.name} error={errors.name}>
             <Input
-              id="size"
-              type="number"
-              min={3}
-              max={12}
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              aria-invalid={errors.size ? true : undefined}
-              aria-describedby={describedBy("size", errors.size)}
-              className="h-11 text-base"
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t.namePlaceholder}
+              aria-invalid={errors.name ? true : undefined}
+              aria-describedby={describedBy("name", errors.name)}
+              className="h-11 rounded-xl text-base"
             />
           </FormField>
-          <FormField id="frequency" label={t.frequency} error={errors.frequency}>
-            <Input
-              id="frequency"
-              type="number"
-              min={1}
-              max={60}
-              value={frequency}
-              onChange={(e) => setFrequency(e.target.value)}
-              aria-invalid={errors.frequency ? true : undefined}
-              aria-describedby={describedBy("frequency", errors.frequency)}
-              className="h-11 text-base"
-            />
-          </FormField>
-        </div>
-        <Button type="submit" size="lg" className="h-11 px-5 text-base">
-          {t.submit}
-        </Button>
-        {created && (
-          <p role="status" className="flex items-start gap-2 rounded-lg bg-brand-violet px-4 py-3 text-sm text-brand-white">
-            <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            {t.created}
-          </p>
-        )}
-      </form>
 
-      <aside className="h-fit rounded-2xl bg-brand-navy p-6 text-brand-white" aria-live="polite">
-        <h2 className="font-heading text-xl font-semibold">{t.preview}</h2>
-        <dl className="mt-4 space-y-2">
-          <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-brand-on-navy">{t.potLine}</dt>
-            <dd className="tabular-nums">{money(pot)}</dd>
+          <FormField id="amount" label={t.amount} help={t.amountHelp} error={errors.amount}>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-sm text-brand-slate">
+                $
+              </span>
+              <Input
+                id="amount"
+                inputMode="numeric"
+                value={amountInput}
+                onChange={(e) => setAmountInput(e.target.value)}
+                aria-invalid={errors.amount ? true : undefined}
+                aria-describedby={describedBy("amount", errors.amount)}
+                className="h-11 rounded-xl pl-8 text-base tabular-nums font-mono"
+              />
+            </div>
+          </FormField>
+
+          {/* Quick Size Picker Chips */}
+          <div>
+            <label className="text-sm font-semibold text-brand-navy block mb-2">{t.size}</label>
+            <div className="flex flex-wrap gap-2">
+              {SIZES.map((s) => (
+                <button
+                  type="button"
+                  key={s}
+                  onClick={() => setSize(s)}
+                  className={cn(
+                    "flex h-10 min-w-12 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition-all active:scale-95",
+                    size === s
+                      ? "border-brand-violet bg-brand-violet text-brand-white shadow-2xs"
+                      : "border-brand-line bg-brand-canvas text-brand-navy hover:border-brand-navy/30",
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            {errors.size && <p className="mt-1 text-xs text-destructive">{errors.size}</p>}
           </div>
+
+          <FormField id="frequency" label={t.frequency} error={errors.frequency}>
+            <div className="flex items-center gap-2">
+              <Input
+                id="frequency"
+                type="number"
+                min={1}
+                max={60}
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value)}
+                aria-invalid={errors.frequency ? true : undefined}
+                aria-describedby={describedBy("frequency", errors.frequency)}
+                className="h-11 w-32 rounded-xl text-base font-mono"
+              />
+              <span className="text-sm text-brand-slate">{locale === "es" ? "días por turno" : "days per round"}</span>
+            </div>
+          </FormField>
+
+          <Button
+            type="submit"
+            className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
+          >
+            <Sparkles className="size-4 shrink-0" />
+            <span>{t.submit}</span>
+          </Button>
+
+          {created && (
+            <div
+              role="status"
+              className="flex items-start gap-3 rounded-2xl bg-brand-mint/40 border border-brand-mint p-4 text-xs font-semibold text-brand-navy animate-in fade-in zoom-in-95"
+            >
+              <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <span>{t.created}</span>
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* Live Financial Projection Card (Bento Aside) */}
+      <aside className="rounded-[32px] border border-brand-navy bg-brand-navy p-6 text-brand-white shadow-sm sm:p-8 lg:col-span-5" aria-live="polite">
+        <div className="flex items-center justify-between">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-white/10 px-3 py-1 text-xs font-semibold text-brand-mint">
+            <Zap className="size-3 text-brand-mint" />
+            <span>{t.preview}</span>
+          </div>
+          <Coins className="size-5 text-brand-mint" />
+        </div>
+
+        <div className="mt-6">
+          <p className="text-xs font-medium text-brand-on-navy">{t.payoutLine}</p>
+          <p className="mt-1 font-mono text-4xl font-extrabold tracking-tight text-brand-mint tabular-nums">
+            {money(payout)}
+          </p>
+          <p className="mt-1 text-xs text-brand-on-navy">
+            {locale === "es" ? "Monto neto entregado a cada participante en su turno" : "Net amount paid to each member on their round"}
+          </p>
+        </div>
+
+        <dl className="mt-8 space-y-3 rounded-2xl bg-brand-white/5 p-4 border border-brand-white/10 text-xs">
+          <div className="flex items-baseline justify-between gap-4">
+            <dt className="text-brand-on-navy flex items-center gap-1.5">
+              <Users className="size-3 text-brand-mint" />
+              <span>{t.potLine}</span>
+            </dt>
+            <dd className="font-mono text-sm font-semibold tabular-nums text-brand-white">{money(pot)}</dd>
+          </div>
+
           <div className="flex items-baseline justify-between gap-4">
             <dt className="text-brand-on-navy">{t.feeLine}</dt>
-            <dd className="tabular-nums">− {money(fee)}</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-4 border-t border-brand-on-navy/40 pt-2">
-            <dt className="font-medium">{t.payoutLine}</dt>
-            <dd className="font-heading text-2xl font-semibold tabular-nums">{money(payout)}</dd>
+            <dd className="font-mono text-sm font-medium tabular-nums text-brand-on-navy">− {money(fee)}</dd>
           </div>
         </dl>
+
         {contribution !== null && members > 0n && (
-          <p className="mt-4 text-sm text-brand-on-navy">
-            {fill(t.totalLine, { size: members.toString(), paid: money(pot), received: money(payout) })}
-          </p>
+          <div className="mt-6 flex items-start gap-2.5 rounded-xl bg-brand-white/5 p-3 text-xs leading-relaxed text-brand-on-navy border border-brand-white/10">
+            <CheckCircle2 className="size-4 shrink-0 text-brand-mint mt-0.5" />
+            <p>{fill(t.totalLine, { size: members.toString(), paid: money(pot), received: money(payout) })}</p>
+          </div>
         )}
       </aside>
     </div>
