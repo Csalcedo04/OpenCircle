@@ -12,7 +12,7 @@ node_modules/
 out/
 dist/
 *.tsbuildinfo
-
+package-lock.json
 # Local tooling
 .claude/worktrees/
 graphify-out/
