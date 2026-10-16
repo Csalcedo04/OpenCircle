@@ -13,10 +13,13 @@ HEADING = "## Prompt Log"
 
 # Light redaction so obvious secrets never land in a versioned file.
 REDACTIONS = [
+    # Env-style lines: ANY_NAME_WITH_KEY/SECRET/TOKEN/PASSWORD=value
+    (re.compile(r"\b([A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|TOKEN|API_?KEY|PRIVATE_?KEY|_KEY)[A-Z0-9_]*)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
     (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S), "[REDACTED PRIVATE KEY]"),
     (re.compile(r"\b(sk|pk|rk)_(live|test)_[A-Za-z0-9]{8,}"), "[REDACTED KEY]"),
+    (re.compile(r"\bsb_(secret|publishable)_[A-Za-z0-9_-]{8,}"), "[REDACTED SUPABASE KEY]"),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}(\.[A-Za-z0-9_-]+)?"), "[REDACTED JWT]"),
     (re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,})"), "[REDACTED TOKEN]"),
-    (re.compile(r"(?i)\b(secret|password|passwd|token|api[_-]?key)\s*[:=]\s*\S+"), r"\1=[REDACTED]"),
 ]
 
 
