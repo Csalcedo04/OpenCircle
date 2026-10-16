@@ -1651,3 +1651,9 @@
 
 **2026-10-16 15:12 · Claude Code**
 > Confirma el commit cuando pase el test
+
+**2026-10-16 15:28 · Claude Code**
+> El frontend también es capaz de leer un .env?
+
+**2026-10-16 15:31 · Claude Code**
+> Sí, añádelo al wrapper del frontend
