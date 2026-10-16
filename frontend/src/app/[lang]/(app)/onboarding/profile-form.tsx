@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useState } from "react"
+import { LoaderCircle } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -172,11 +173,12 @@ export function ProfileForm({ locale, t, profile, countries, phone, maxDob }: Pr
       </FormField>
 
       {error("form") && (
-        <p role="alert" className="text-sm font-medium text-brand-violet-ink">
+        <p role="alert" className="oc-fade-in text-sm font-medium text-brand-violet-ink">
           {error("form")}
         </p>
       )}
       <Button type="submit" disabled={pending} className="h-11 w-full px-5 text-base sm:w-auto">
+        {pending && <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" />}
         {pending ? t.saving : t.saveProfile}
       </Button>
     </form>

@@ -12,6 +12,7 @@ import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
 import { ProfileForm } from "./profile-form"
+import { Stepper } from "./stepper"
 import { WalletForm } from "./wallet-form"
 
 // Decides on the server whether to redirect (signed in / onboarding state), so it must block
@@ -52,12 +53,12 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
 
   return (
     <div className="mx-auto max-w-xl px-4 py-12 sm:px-6">
-      <p className="text-sm font-medium text-brand-violet-ink">{fill(o.step, { n: step })}</p>
-      <h1 className="mt-2 font-heading text-4xl font-semibold tracking-[-0.03em]">{o.title}</h1>
+      <Stepper current={step} labels={[o.profileTitle, o.walletTitle]} stepText={o.step} />
+      <h1 className="mt-6 font-heading text-4xl font-semibold tracking-[-0.03em]">{o.title}</h1>
       <p className="mt-2 text-muted-foreground">{o.lead}</p>
 
       {step === 1 ? (
-        <section aria-labelledby="profile-title" className="mt-10">
+        <section key="profile" aria-labelledby="profile-title" className="oc-step-in mt-10">
           <h2 id="profile-title" className="text-xl font-semibold tracking-[-0.02em]">
             {o.profileTitle}
           </h2>
@@ -73,7 +74,7 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
           </div>
         </section>
       ) : (
-        <>
+        <div key="wallet" className="oc-step-in">
           <p className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl bg-brand-mint px-4 py-3 text-sm font-medium text-brand-navy">
             <CircleCheck className="size-4 shrink-0" aria-hidden="true" />
             <span className="min-w-0 break-words">{fill(o.profileDone, { name: profile?.fullName ?? "" })}</span>
@@ -90,7 +91,7 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
               <WalletForm locale={locale} t={o} initialError={consentError} />
             </div>
           </section>
-        </>
+        </div>
       )}
     </div>
   )
