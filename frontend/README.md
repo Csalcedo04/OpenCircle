@@ -20,6 +20,22 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Nix
+
+The app is packaged in `package.nix` and wired into the root `flake.nix` (run from the repo root):
+
+```bash
+nix build .#frontend        # result/bin/opencircle-frontend (Next.js standalone server)
+nix run .#frontend          # serves on http://localhost:3000 (override with PORT / HOSTNAME)
+nix develop                 # dev shell with the same node + pnpm
+```
+
+`NEXT_PUBLIC_*` values are inlined at build time, so pass the public Supabase
+config (see `.env.example`) with `frontend.override { nextPublicEnv = { ... }; }`.
+Without it the build serves demo data. Server-only secrets stay runtime env vars.
+After changing `pnpm-lock.yaml`, set `pnpmDeps.hash` to `""`, build, and copy the
+`got:` hash back into `package.nix`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

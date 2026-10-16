@@ -1,14 +1,20 @@
 import type { Metadata } from "next"
-import { Poppins } from "next/font/google"
+import localFont from "next/font/local"
 import { SiteHeader } from "@/components/site-header"
 import { locales } from "@/i18n/config"
 import { getDictionary, getLocale } from "@/i18n/get-dictionary"
 import "../globals.css"
 
-const poppins = Poppins({
+// Poppins (OFL) vendored in ../fonts so builds never reach Google Fonts.
+const poppins = localFont({
   variable: "--font-poppins",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  src: [
+    { path: "../fonts/poppins-400.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/poppins-500.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/poppins-600.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/poppins-700.woff2", weight: "700", style: "normal" },
+  ],
 })
 
 export function generateStaticParams() {

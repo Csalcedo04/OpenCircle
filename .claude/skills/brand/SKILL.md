@@ -25,7 +25,7 @@ There are no other colours: no status greens, reds or golds. Show state with the
 ## Typography
 
 - **Poppins**, the only family: titles, leads, display figures, paragraphs, buttons and links. Hierarchy comes from size and weight (400 / 500 / 600 / 700), not from a second family.
-- Loaded once with `next/font/google` in `frontend/src/app/[lang]/layout.tsx` as `--font-poppins`, exposed as Tailwind `font-sans` and `font-heading`.
+- Loaded once with `next/font/local` in `frontend/src/app/[lang]/layout.tsx` from the OFL woff2 files vendored in `frontend/src/app/fonts/` (no build-time call to Google Fonts, so the Nix build works offline), as `--font-poppins`, exposed as Tailwind `font-sans` and `font-heading`.
 
 ## Logo
 
