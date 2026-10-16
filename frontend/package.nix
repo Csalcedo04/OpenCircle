@@ -67,6 +67,12 @@ stdenv.mkDerivation (finalAttrs: {
   # Next's standalone output is a self-contained server (server.js + the traced
   # node_modules). Static assets and public/ are not included and must sit next
   # to it, mirroring what `next start` would serve.
+  #
+  # server.js chdirs into the (read-only) store path, so Next never finds a
+  # dotenv file there. Node loads one from the launch directory instead, when
+  # present, like `next start` in a checkout. Only runtime (server-only)
+  # variables matter here: NEXT_PUBLIC_* are already baked into the bundle.
+  # Exported variables take precedence over the file.
   installPhase = ''
     runHook preInstall
 
@@ -81,6 +87,7 @@ stdenv.mkDerivation (finalAttrs: {
       --set NEXT_TELEMETRY_DISABLED 1 \
       --set-default PORT 3000 \
       --set-default HOSTNAME 0.0.0.0 \
+      --add-flags "--env-file-if-exists=.env" \
       --add-flags "$app/server.js"
 
     runHook postInstall
