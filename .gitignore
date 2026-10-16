@@ -17,5 +17,6 @@ dist/
 
 # Local tooling
 .claude/worktrees/
+.direnv/
 graphify-out/
 .DS_Store
