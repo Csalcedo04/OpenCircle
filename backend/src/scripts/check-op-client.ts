@@ -14,7 +14,9 @@ const jwksSchema = z.object({ keys: z.array(z.object({ kid: z.string(), x: z.str
 async function main(): Promise<boolean> {
   const env = z
     .object({
-      OP_CLIENT_WALLET_ADDRESS: z.url({ protocol: /^https$/, error: "Use the https:// form of the wallet address" }),
+      OP_CLIENT_WALLET_ADDRESS: z
+        .url({ protocol: /^https$/, error: "Use the https:// form of the wallet address" })
+        .refine((url) => !url.includes("$"), "Drop the $: $ilp.example/x is written https://ilp.example/x"),
       OP_KEY_ID: z.string().min(1),
       OP_PRIVATE_KEY: z.string().min(1),
     })
