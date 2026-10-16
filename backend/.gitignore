@@ -1,0 +1,27 @@
+# Secrets
+.env*
+!.env.example
+!infra/.env.example
+*.pem
+*.key
+*.p12
+
+# Dependencies / builds
+result
+result-*
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+package-lock.json
+package.nix
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+
+# Local tooling
+.claude/worktrees/
+.direnv/
+graphify-out/
+.DS_Store
