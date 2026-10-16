@@ -13,6 +13,6 @@ export interface Services {
 export function apiRoutes(services: Services): Router {
   return Router()
     .use("/health", healthRoutes())
-    .use("/users", userRoutes(services.users))
+    .use("/users", userRoutes(services.users, services.walletAddresses))
     .use("/wallet-addresses", walletAddressRoutes(services.walletAddresses));
 }

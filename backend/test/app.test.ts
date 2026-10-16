@@ -6,7 +6,15 @@ import { createApp } from "../src/app";
 import type { Services } from "../src/routes";
 
 const services: Services = {
-  users: { findById: async () => null },
+  users: {
+    findById: async () => null,
+    updateProfile: async () => {
+      throw new Error("not called in these tests");
+    },
+    linkWallet: async () => {
+      throw new Error("not called in these tests");
+    },
+  },
   walletAddresses: {
     getByUrl: async () => {
       throw new Error("not called in these tests");
@@ -46,5 +54,23 @@ test("GET /api/users/me without token returns 401", async () => {
 
 test("GET /api/wallet-addresses without token returns 401", async () => {
   const res = await fetch(`${baseUrl}/api/wallet-addresses?url=https://example.com/alice`);
+  assert.equal(res.status, 401);
+});
+
+test("PATCH /api/users/me without token returns 401", async () => {
+  const res = await fetch(`${baseUrl}/api/users/me`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fullName: "Ana" }),
+  });
+  assert.equal(res.status, 401);
+});
+
+test("PUT /api/users/me/wallet without token returns 401", async () => {
+  const res = await fetch(`${baseUrl}/api/users/me/wallet`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ url: "https://example.com/alice" }),
+  });
   assert.equal(res.status, 401);
 });
