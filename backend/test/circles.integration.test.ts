@@ -6,6 +6,7 @@ import { createDb, type Db } from "../src/db/client";
 import { auditEvents, circleMembers, circles, contributions, reviews, rounds, users, wallets } from "../src/db/schema";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
+import { periodEnd, periodStart } from "../src/services/circles/period-schedule";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
 import { fakeServices } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
@@ -72,7 +73,7 @@ const validCircle = (overrides: Record<string, unknown> = {}) => ({
   city: "Medellín",
   contributionValue: "2000000",
   size: 3,
-  roundLengthDays: 7,
+  cadence: "WEEKLY",
   payoutRound: 1,
   ...overrides,
 });
@@ -172,7 +173,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         { size: 1 },
         { size: 51 },
         { payoutRound: 4 },
-        { roundLengthDays: 0 },
+        { cadence: "DAILY" },
+        { cadence: undefined },
+        { roundLengthDays: 7 },
         { name: " " },
         { feeBps: 0 },
         { status: "ACTIVE" },
@@ -267,7 +270,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
     test("filling the last seat starts the circle: rounds scheduled, round 1 contributions pending", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 3, roundLengthDays: 7, payoutRound: 3 });
+      const circle = await createCircle(owner.token, { size: 3, cadence: "WEEKLY", payoutRound: 3 });
       const bob = await member();
       const carol = await member();
       assert.equal((await join(circle.id, bob.token, { payoutRound: 1 })).status, 200);
@@ -289,9 +292,12 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         assert.equal(seat?.payoutRound, round.number);
       }
 
-      // Deadlines are one round length apart, starting one round after the start.
+      // Weekly periods: round n runs from start + (n − 1) weeks to start + n weeks.
       const start = Date.parse(started.startedAt ?? "");
-      started.rounds.forEach((r) => assert.equal(Date.parse(r.deadline) - start, r.number * 7 * 86_400_000));
+      for (const r of started.rounds) {
+        assert.equal(Date.parse(r.startsAt) - start, (r.number - 1) * 7 * 86_400_000);
+        assert.equal(Date.parse(r.deadline) - start, r.number * 7 * 86_400_000);
+      }
 
       // Everyone pays round 1, the beneficiary included.
       const first = started.rounds[0];
@@ -315,6 +321,21 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const closed = await join(circle.id, late.token, { payoutRound: 1 });
       assert.equal(closed.status, 409);
       assert.equal(errorCode(closed.body), "CIRCLE_NOT_OPEN");
+    });
+
+    test("a monthly circle's periods follow calendar months from its start", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3, cadence: "MONTHLY", payoutRound: 1 });
+      assert.equal(circle.cadence, "MONTHLY");
+      const [bob, carol] = await Promise.all([member(), member()]);
+      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      const started = (await join(circle.id, carol.token, { payoutRound: 3 })).body as CircleDto;
+
+      const start = new Date(started.startedAt ?? "");
+      assert.deepEqual(
+        started.rounds.map((r) => [r.startsAt, r.deadline]),
+        [1, 2, 3].map((n) => [periodStart(start, "MONTHLY", n).toISOString(), periodEnd(start, "MONTHLY", n).toISOString()]),
+      );
     });
 
     test("two users racing for the last seat: one wins, the circle starts once", async () => {

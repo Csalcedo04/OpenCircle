@@ -10,10 +10,12 @@ import {
   circles,
   contributions,
   rounds,
+  testClocks,
   users,
   wallets,
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
+import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
 
 export type CircleStatus = (typeof CIRCLE_STATUSES)[number];
@@ -23,7 +25,6 @@ type RoundState = (typeof ROUND_STATES)[number];
 // Defaults for new circles, matching the demo data. Placeholder policy until the team sets real values.
 const DEFAULT_FEE_BPS = 200;
 const DEFAULT_GRANT_WEIGHT_BPS = 5_000;
-const DAY_MS = 86_400_000;
 
 export interface SeatInput {
   payoutRound: number;
@@ -36,7 +37,9 @@ export interface CreateCircleInput extends SeatInput {
   city: string;
   contributionValue: bigint;
   size: number;
-  roundLengthDays: number;
+  cadence: Cadence;
+  /** Dev only: run this circle on a test clock the user owns. */
+  testClockId?: string | undefined;
 }
 
 export interface CircleSummaryDto {
@@ -47,7 +50,7 @@ export interface CircleSummaryDto {
   contribution: AmountDto;
   size: number;
   seatsTaken: number;
-  roundLengthDays: number;
+  cadence: Cadence;
   createdAt: string;
 }
 
@@ -64,6 +67,7 @@ export interface RoundDto {
   number: number;
   state: RoundState;
   beneficiaryMemberId: string;
+  startsAt: string;
   deadline: string;
   contributions: { memberId: string; status: string }[];
 }
@@ -74,6 +78,8 @@ export interface CircleDto extends CircleSummaryDto {
   grantWeightBps: number;
   poolWalletAddress: string;
   startedAt: string | null;
+  // Dev only (TEST_CLOCKS_ENABLED): the test clock this circle runs on.
+  testClockId: string | null;
   // The round being collected or paid out; null before the circle starts or once it is over.
   currentRound: number | null;
   seats: SeatDto[];
@@ -101,9 +107,13 @@ export interface CircleServiceDeps {
   db: Db;
   /** Resolves the pot wallet (OpenCircle's own wallet address). */
   resolvePoolWallet: () => Promise<ResolvedWallet>;
+  /** Whether circles may be attached to test clocks (TEST_CLOCKS_ENABLED). */
+  testClocksEnabled?: boolean;
+  /** Called after a circle starts, outside its transaction (test clocks request round 1 right away). */
+  onStarted?: (circleId: string) => Promise<void>;
 }
 
-export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps) {
+export function createCircleService({ db, resolvePoolWallet, testClocksEnabled = false, onStarted }: CircleServiceDeps) {
   const summaryColumns = {
     id: circles.id,
     name: circles.name,
@@ -113,7 +123,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
     assetCode: circles.assetCode,
     assetScale: circles.assetScale,
     size: circles.size,
-    roundLengthDays: circles.roundLengthDays,
+    cadence: circles.cadence,
     createdAt: circles.createdAt,
     seatsTaken: sql<number>`(select count(*)::int from ${circleMembers} where ${circleMembers.circleId} = ${circles.id})`,
   };
@@ -126,7 +136,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
     assetCode: string;
     assetScale: number;
     size: number;
-    roundLengthDays: number;
+    cadence: Cadence;
     createdAt: Date;
     seatsTaken: number;
   }
@@ -139,7 +149,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
     contribution: amount(r.contributionValue, r.assetCode, r.assetScale),
     size: r.size,
     seatsTaken: r.seatsTaken,
-    roundLengthDays: r.roundLengthDays,
+    cadence: r.cadence,
     createdAt: r.createdAt.toISOString(),
   });
 
@@ -151,6 +161,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         thresholdValue: circles.thresholdValue,
         grantWeightBps: circles.grantWeightBps,
         startedAt: circles.startedAt,
+        testClockId: circles.testClockId,
         poolWalletAddress: wallets.addressUrl,
       })
       .from(circles)
@@ -194,6 +205,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
       grantWeightBps: circle.grantWeightBps,
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
+      testClockId: testClocksEnabled ? circle.testClockId : null,
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
@@ -206,6 +218,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         number: r.number,
         state: r.state,
         beneficiaryMemberId: r.beneficiaryMemberId,
+        startsAt: r.startsAt.toISOString(),
         deadline: r.deadline.toISOString(),
         contributions: contributionRows
           .filter((c) => c.roundId === r.id)
@@ -242,6 +255,25 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
 
   type CircleRow = typeof circles.$inferSelect;
 
+  // A circle on a test clock lives at the clock's frozen time; every other circle at real time.
+  async function circleNow(tx: Tx, circle: CircleRow): Promise<Date> {
+    if (!circle.testClockId) return new Date();
+    const [clock] = await tx.select({ frozenTime: testClocks.frozenTime }).from(testClocks).where(eq(testClocks.id, circle.testClockId));
+    if (!clock) throw new Error("Circle's test clock is missing");
+    return clock.frozenTime;
+  }
+
+  async function ownedTestClock(userId: string, clockId: string): Promise<void> {
+    const notFound = new AppError(404, "TEST_CLOCK_NOT_FOUND", "Test clock not found");
+    if (!testClocksEnabled) throw notFound;
+    const [clock] = await db
+      .select({ id: testClocks.id })
+      .from(testClocks)
+      .where(and(eq(testClocks.id, clockId), eq(testClocks.ownerUserId, userId)))
+      .limit(1);
+    if (!clock) throw notFound;
+  }
+
   // The last seat is filled: schedule every round and open round 1. Same transaction as the join.
   async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
     const seats = await tx
@@ -260,7 +292,8 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
           number: seat.payoutRound,
           beneficiaryMemberId: seat.id,
           state: seat.payoutRound === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
-          deadline: new Date(now.getTime() + seat.payoutRound * circle.roundLengthDays * DAY_MS),
+          startsAt: periodStart(now, circle.cadence, seat.payoutRound),
+          deadline: periodEnd(now, circle.cadence, seat.payoutRound),
           openedAt: seat.payoutRound === 1 ? now : null,
         })),
       )
@@ -312,6 +345,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
       if (input.payoutRound > input.size) {
         throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
       }
+      if (input.testClockId !== undefined) await ownedTestClock(userId, input.testClockId);
       const remote = await resolvePoolWallet();
       const id = await db.transaction(async (tx) => {
         const pool = await poolWalletId(tx, remote);
@@ -327,10 +361,12 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
             feeBps: DEFAULT_FEE_BPS,
             thresholdValue: input.contributionValue,
             grantWeightBps: DEFAULT_GRANT_WEIGHT_BPS,
-            roundLengthDays: input.roundLengthDays,
+            cadence: input.cadence,
+            roundLengthDays: cadenceDays[input.cadence],
             size: input.size,
             poolWalletId: pool.id,
             createdBy: userId,
+            testClockId: input.testClockId ?? null,
           })
           .returning({ id: circles.id });
         if (!circle) throw new Error("Circle insert returned no row");
@@ -348,6 +384,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
 
     /** Takes a free seat; filling the last one starts the circle. */
     async join(userId: string, circleId: string, input: SeatInput): Promise<CircleDto> {
+      let started = false;
       try {
         await db.transaction(async (tx) => {
           // Lock the circle so concurrent joins count seats one at a time.
@@ -370,10 +407,17 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
             .select({ taken: sql<number>`count(*)::int` })
             .from(circleMembers)
             .where(eq(circleMembers.circleId, circleId));
-          if (taken === circle.size) await start(tx, circle, new Date());
+          if (taken === circle.size) {
+            await start(tx, circle, await circleNow(tx, circle));
+            started = true;
+          }
         });
       } catch (err) {
         throw seatConflict(err) ?? err;
+      }
+      if (started && onStarted) {
+        // The seat is taken either way; a failed first collection is retried by the next run.
+        await onStarted(circleId).catch(() => console.error("Circle start hook failed", circleId));
       }
       return get(circleId);
     },
