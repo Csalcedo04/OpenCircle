@@ -1,18 +1,15 @@
 {
   lib,
-  stdenv,
+  buildNpmPackage,
   nodejs_22,
-  pnpm_10,
-  fetchPnpmDeps,
-  pnpmConfigHook,
   makeBinaryWrapper,
-  writableTmpDirAsHomeHook,
 }:
 
 let
   packageJson = lib.importJSON ./package.json;
+  buildNpmPackage' = buildNpmPackage.override { nodejs = nodejs_22; };
 in
-stdenv.mkDerivation (finalAttrs: {
+buildNpmPackage' (finalAttrs: {
   pname = "opencircle-backend";
   version = packageJson.version;
 
@@ -21,7 +18,7 @@ stdenv.mkDerivation (finalAttrs: {
     root = ./.;
     fileset = lib.fileset.unions [
       ./package.json
-      ./pnpm-lock.yaml
+      ./package-lock.json
       ./tsconfig.json
       ./src
       ./test
@@ -29,32 +26,18 @@ stdenv.mkDerivation (finalAttrs: {
     ];
   };
 
-  pnpmDeps = fetchPnpmDeps {
-    inherit (finalAttrs) pname version src;
-    pnpm = pnpm_10;
-    fetcherVersion = 4;
-    hash = "sha256-WaOebxRnqIwLS8whQTXVnWzniLtU/DNtMPCqs3F3OwA=";
-  };
+  # Regenerate after changing package-lock.json: set to "", build, copy `got:`.
+  npmDepsHash = "sha256-W0Mds1rI3kKzpp71uZ9CjvL/UbgT5laeqly1jd554hA=";
 
-  nativeBuildInputs = [
-    nodejs_22
-    pnpm_10
-    pnpmConfigHook
-    makeBinaryWrapper
-    writableTmpDirAsHomeHook
-  ];
+  nativeBuildInputs = [ makeBinaryWrapper ];
 
-  buildPhase = ''
-    runHook preBuild
-    pnpm build
-    runHook postBuild
-  '';
+  # buildPhase defaults to `npm run build` (tsc → dist/).
 
   # The suite only needs loopback (allowed in the sandbox) and fake env values.
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    pnpm test
+    npm test
     runHook postCheck
   '';
 
@@ -64,7 +47,7 @@ stdenv.mkDerivation (finalAttrs: {
   installPhase = ''
     runHook preInstall
 
-    pnpm prune --prod --ignore-scripts
+    npm prune --omit=dev --no-save --ignore-scripts
 
     app=$out/share/opencircle-backend
     mkdir -p $out/bin $app
