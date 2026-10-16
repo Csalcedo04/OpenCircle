@@ -14,7 +14,7 @@ export function MobileDock({ locale, t }: MobileDockProps) {
   const home = `/${locale}`
 
   const items = [
-    { href: `${home}#hero`, label: "Círculo", icon: CircleDot },
+    { href: `${home}#hero`, label: t.circleMobile, icon: CircleDot },
     { href: `${home}#como-funciona`, label: t.how, icon: Zap },
     { href: `${home}#seguridad`, label: t.safety, icon: ShieldCheck },
     { href: `${home}#preguntas-frecuentes`, label: "FAQ", icon: HelpCircle },
@@ -22,10 +22,10 @@ export function MobileDock({ locale, t }: MobileDockProps) {
 
   return (
     <aside
-      aria-label="Navegación móvil rápida"
+      aria-label={t.quickNavAria}
       className="fixed inset-x-3 bottom-3 z-40 block pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden"
     >
-      <nav className="mx-auto flex max-w-md items-center justify-between gap-1 rounded-full border border-white/15 bg-brand-navy/92 px-2.5 py-1.5 shadow-[0_16px_40px_-10px_rgba(16,24,40,0.65)] backdrop-blur-xl">
+      <nav className="mx-auto flex max-w-md items-center justify-between gap-1 rounded-full border border-brand-white/15 bg-brand-navy/92 px-2.5 py-1.5 shadow-[0_16px_40px_-10px_color-mix(in_srgb,var(--color-brand-navy)_65%,transparent)] backdrop-blur-xl">
         <div className="flex items-center gap-0.5 sm:gap-1">
           {items.map(({ href, label, icon: Icon }) => (
             <a
@@ -45,7 +45,7 @@ export function MobileDock({ locale, t }: MobileDockProps) {
           className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-mint px-3.5 text-xs font-bold text-brand-navy shadow-xs outline-none transition-transform duration-150 hover:opacity-95 focus-visible:ring-2 focus-visible:ring-brand-violet active:scale-95"
         >
           <Sparkles className="size-3 text-brand-navy" />
-          <span>Demo</span>
+          <span>{t.demoMobile}</span>
         </Link>
       </nav>
     </aside>

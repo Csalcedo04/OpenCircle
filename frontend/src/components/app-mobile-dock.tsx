@@ -11,6 +11,9 @@ interface AppMobileDockProps {
   t: {
     circles: string
     create: string
+    appQuickNavAria?: string
+    interledger?: string
+    safety?: string
   }
 }
 
@@ -33,13 +36,13 @@ export function AppMobileDock({ locale, t }: AppMobileDockProps) {
     },
     {
       href: `/${locale}#como-funciona`,
-      label: "Interledger",
+      label: t.interledger ?? "Interledger",
       icon: CircleDot,
       isActive: false,
     },
     {
       href: `/${locale}#seguridad`,
-      label: "Seguridad",
+      label: t.safety ?? "Seguridad",
       icon: ShieldCheck,
       isActive: false,
     },
@@ -47,10 +50,10 @@ export function AppMobileDock({ locale, t }: AppMobileDockProps) {
 
   return (
     <aside
-      aria-label="Navegación móvil del demo"
+      aria-label={t.appQuickNavAria ?? "Navegación móvil del demo"}
       className="fixed inset-x-3 bottom-3 z-40 block pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden"
     >
-      <nav className="mx-auto flex max-w-md items-center justify-around gap-1 rounded-full border border-brand-navy/10 bg-brand-navy/95 px-3 py-2 shadow-[0_16px_40px_-10px_rgba(16,24,40,0.65)] backdrop-blur-xl">
+      <nav className="mx-auto flex max-w-md items-center justify-around gap-1 rounded-full border border-brand-navy/10 bg-brand-navy/95 px-3 py-2 shadow-[0_16px_40px_-10px_color-mix(in_srgb,var(--color-brand-navy)_65%,transparent)] backdrop-blur-xl">
         {items.map(({ href, label, icon: Icon, isActive, highlight }) => {
           if (highlight) {
             return (

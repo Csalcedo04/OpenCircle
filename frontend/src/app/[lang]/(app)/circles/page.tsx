@@ -81,7 +81,7 @@ export default async function CirclesPage() {
                       <span>{circle.city}</span>
                       <span className="text-brand-line">•</span>
                       <Calendar className="size-3.5 text-brand-slate" aria-hidden="true" />
-                      <span>{circle.roundLengthDays}d {locale === "es" ? "por turno" : "per round"}</span>
+                      <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>
                     </div>
 
                     <div>
@@ -158,8 +158,8 @@ export default async function CirclesPage() {
                       {Array.from({ length: open }, (_, i) => (
                         <span
                           key={i}
-                          title="Cupo disponible"
-                          className="size-7.5 rounded-full border border-dashed border-brand-slate/50 bg-brand-white flex items-center justify-center text-[10px] text-brand-slate"
+                          title={t.circles.openSeatTooltip}
+                          className="size-7 rounded-full border border-dashed border-brand-slate/50 bg-brand-white flex items-center justify-center text-[10px] text-brand-slate"
                         >
                           +
                         </span>

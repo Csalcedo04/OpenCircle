@@ -54,7 +54,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
               aria-hidden="true"
               className={cn("size-1.5 rounded-full", completedJuan ? "bg-brand-navy" : "bg-brand-violet oc-pulse")}
             />
-            {completedJuan ? "5/5 Liquidado vía Rafiki" : t.status}
+            {completedJuan ? t.simSuccessBadge : t.status}
           </span>
         </div>
 
@@ -73,17 +73,17 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
             {completedJuan ? (
               <>
                 <RefreshCw className="size-3" />
-                Reiniciar simulación
+                {t.simReset}
               </>
             ) : isSimulating ? (
               <>
                 <RefreshCw className="size-3 animate-spin" />
-                Negociando GNAP...
+                {t.simActive}
               </>
             ) : (
               <>
                 <Zap className="size-3 text-brand-mint" />
-                Simular débito Juan
+                {t.simAction}
               </>
             )}
           </button>
@@ -158,7 +158,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
             <p className="text-xs sm:text-[13px] font-medium text-brand-slate">{t.activity}</p>
             <span className="flex items-center gap-1 text-[10px] sm:text-[11px] text-brand-slate font-mono">
               <ShieldCheck className="size-3 text-brand-violet" />
-              HMAC SHA-256 verificado
+              {t.hashVerified}
             </span>
           </div>
           <ul className="mt-2 divide-y divide-brand-line">
@@ -188,7 +188,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
                   {completedJuan ? (
                     <>
                       <CircleCheck className="size-3 text-brand-violet-ink" aria-hidden="true" />
-                      {t.confirmed} · justo ahora
+                      {t.confirmed} · {t.justNow}
                     </>
                   ) : (
                     <>
@@ -219,7 +219,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
             <Check className="size-3.5 text-brand-navy" strokeWidth={3} aria-hidden="true" />
           </span>
           <p className="text-xs font-semibold text-brand-navy">
-            {completedJuan ? "Ronda 2 completada · Payout emitido" : t.notifyPaid}
+            {completedJuan ? t.notifySettled : t.notifyPaid}
           </p>
         </div>
       </div>

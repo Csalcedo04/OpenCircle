@@ -38,13 +38,6 @@ export function Benefits({ t, locale }: { t: T; locale: Locale }) {
             </Card>
           )}
         </div>
-        {/* Mobile App Carousel Indicator */}
-        <div className="mt-2 flex justify-center gap-1.5 md:hidden" aria-hidden="true">
-          <span className="size-1.5 rounded-full bg-brand-navy" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-        </div>
       </div>
     </section>
   )
