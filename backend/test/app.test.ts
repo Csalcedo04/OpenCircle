@@ -195,3 +195,16 @@ test("Didit webhook answers 503 when no secret is configured", async () => {
     await unconfigured.close();
   }
 });
+
+test("test clock routes don't exist unless TEST_CLOCKS_ENABLED", async () => {
+  const token = await auth.token("11111111-1111-4111-8111-111111111111");
+  for (const [method, path] of [
+    ["POST", "/api/test-clocks"],
+    ["GET", "/api/test-clocks/11111111-1111-4111-8111-111111111111"],
+    ["POST", "/api/test-clocks/11111111-1111-4111-8111-111111111111/advance"],
+  ] as const) {
+    const res = await server.request(path, { method, token, body: method === "POST" ? { name: "x" } : undefined });
+    assert.equal(res.status, 404, path);
+    assert.equal(errorCode(res.body), "NOT_FOUND");
+  }
+});
