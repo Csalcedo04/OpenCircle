@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq, exists, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
-import { creditProfiles, documentType, users, wallets } from "../db/schema";
+import { circleApplications, circleMembers, creditProfiles, documentType, users, wallets } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { icsFromStored } from "./credit/credit-score";
 
@@ -45,6 +46,19 @@ export interface PublicProfileDto {
 
 export type PublicProfileLookup = { id: string } | { walletAddress: string };
 
+// Select these from `users` inner-joined with `wallets` and left-joined with `credit_profiles`.
+export const publicProfileColumns = {
+  fullName: users.fullName,
+  walletAddress: wallets.addressUrl,
+  score: creditProfiles.internalCreditScore,
+};
+
+export const toPublicProfile = (row: { fullName: string | null; walletAddress: string; score: number | null }): PublicProfileDto => ({
+  fullName: row.fullName,
+  walletAddress: row.walletAddress,
+  ics: icsFromStored(row.score),
+});
+
 const profileNotFound = () => new AppError(404, "PROFILE_NOT_FOUND", "User profile not found");
 
 const conflictByConstraint: Record<string, () => AppError> = {
@@ -80,26 +94,43 @@ export function createUserService(db: Db) {
     return profile;
   }
 
-  // Users without a linked wallet have no ICS and cannot apply, so they are not found either.
-  async function getPublicProfile(lookup: PublicProfileLookup): Promise<PublicProfileDto> {
+  /**
+   * Visible only to the user themselves, to members of a circle they share, and to members
+   * of a circle the user has a pending application to. Anyone else gets the same 404 as for
+   * an unknown user. Users without a linked wallet have no ICS and cannot apply, so they are
+   * not found either.
+   */
+  async function getPublicProfile(viewerId: string, lookup: PublicProfileLookup): Promise<PublicProfileDto> {
+    const viewer = alias(circleMembers, "viewer");
+    const peer = alias(circleMembers, "peer");
+    const sharesCircle = db
+      .select({ one: sql`1` })
+      .from(viewer)
+      .innerJoin(peer, eq(peer.circleId, viewer.circleId))
+      .where(and(eq(viewer.userId, viewerId), eq(peer.userId, users.id)));
+    const appliedToViewersCircle = db
+      .select({ one: sql`1` })
+      .from(viewer)
+      .innerJoin(circleApplications, eq(circleApplications.circleId, viewer.circleId))
+      .where(
+        and(eq(viewer.userId, viewerId), eq(circleApplications.userId, users.id), eq(circleApplications.status, "PENDING")),
+      );
+
     const [row] = await db
-      .select({
-        fullName: users.fullName,
-        walletAddress: wallets.addressUrl,
-        score: creditProfiles.internalCreditScore,
-      })
+      .select(publicProfileColumns)
       .from(users)
       .innerJoin(wallets, eq(users.opWallet, wallets.id))
       .leftJoin(creditProfiles, eq(creditProfiles.walletId, wallets.id))
-      .where("id" in lookup ? eq(users.id, lookup.id) : eq(wallets.addressUrl, lookup.walletAddress))
+      .where(
+        and(
+          "id" in lookup ? eq(users.id, lookup.id) : eq(wallets.addressUrl, lookup.walletAddress),
+          or(eq(users.id, viewerId), exists(sharesCircle), exists(appliedToViewersCircle)),
+        ),
+      )
       .limit(1);
 
     if (!row) throw profileNotFound();
-    return {
-      fullName: row.fullName,
-      walletAddress: row.walletAddress,
-      ics: icsFromStored(row.score),
-    };
+    return toPublicProfile(row);
   }
 
   return {

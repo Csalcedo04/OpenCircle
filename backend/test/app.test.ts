@@ -118,6 +118,50 @@ test("public profile lookups are rate limited per user across both routes → 42
   assert.equal(other.status, 200);
 });
 
+test("circle application routes require a token → 401", async () => {
+  const circle = "11111111-1111-4111-8111-111111111111";
+  const app = "22222222-2222-4222-8222-222222222222";
+  for (const [method, path, body] of [
+    ["POST", `/api/circles/${circle}/applications`, {}],
+    ["GET", `/api/circles/${circle}/applications`, undefined],
+    ["POST", `/api/circles/${circle}/applications/${app}/votes`, { decision: "ACCEPT" }],
+    ["PUT", `/api/circles/${circle}/approvers`, { memberIds: [] }],
+  ] as const) {
+    const res = await server.request(path, { method, body });
+    assert.equal(res.status, 401, `${method} ${path}`);
+  }
+});
+
+test("circle application routes validate ids and bodies before reaching the service", async () => {
+  const token = await auth.token("66666666-6666-4666-8666-666666666666");
+  const circle = "11111111-1111-4111-8111-111111111111";
+  const app = "22222222-2222-4222-8222-222222222222";
+  for (const [method, path, body, status, code] of [
+    ["POST", `/api/circles/${circle}/applications/${app}/votes`, { decision: "MAYBE" }, 400, "VALIDATION_ERROR"],
+    ["POST", `/api/circles/${circle}/applications/${app}/votes`, { decision: "ACCEPT", extra: 1 }, 400, "VALIDATION_ERROR"],
+    ["POST", `/api/circles/${circle}/applications/not-a-uuid/votes`, { decision: "ACCEPT" }, 404, "APPLICATION_NOT_FOUND"],
+    ["POST", `/api/circles/not-a-uuid/applications/${app}/votes`, { decision: "ACCEPT" }, 404, "CIRCLE_NOT_FOUND"],
+    ["GET", `/api/circles/${circle}/applications?status=DONE`, undefined, 400, "VALIDATION_ERROR"],
+    ["GET", `/api/circles/not-a-uuid/applications`, undefined, 404, "CIRCLE_NOT_FOUND"],
+    ["PUT", `/api/circles/${circle}/approvers`, { memberIds: ["x"] }, 400, "VALIDATION_ERROR"],
+    ["PUT", `/api/circles/${circle}/approvers`, { memberIds: Array.from({ length: 51 }, () => app) }, 400, "VALIDATION_ERROR"],
+  ] as const) {
+    const res = await server.request(path, { method, token, body });
+    assert.equal(res.status, status, `${method} ${path} ${JSON.stringify(body)}`);
+    assert.equal(errorCode(res.body), code);
+  }
+});
+
+test("POST /api/circles/:id/join is gone: seats are taken through applications", async () => {
+  const token = await auth.token("66666666-6666-4666-8666-666666666666");
+  const res = await server.request("/api/circles/11111111-1111-4111-8111-111111111111/join", {
+    method: "POST",
+    token,
+    body: { payoutRound: 1 },
+  });
+  assert.equal(res.status, 404);
+});
+
 test("PUT /api/users/me/wallet is gone: wallets are linked only through consent", async () => {
   const token = await auth.token("33333333-3333-4333-8333-333333333333");
   const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: "$wallet.test/x" } });

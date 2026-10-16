@@ -1,11 +1,11 @@
 import { Router } from "express";
 import type { WalletAddressService } from "../services/open-payments/wallet-address.service";
-import { circleRoutes } from "./circles";
+import { circleRoutes, type CircleRouteServices } from "./circles";
 import { healthRoutes } from "./health";
 import { userRoutes, type UserRouteServices } from "./users";
 import { walletAddressRoutes } from "./wallet-addresses";
 
-export interface Services extends UserRouteServices {
+export interface Services extends UserRouteServices, CircleRouteServices {
   walletAddresses: WalletAddressService;
 }
 

@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
 import { createCircleService } from "./services/circle.service";
+import { createApplicationService } from "./services/circles/application.service";
 import { createDiditClient } from "./services/didit/client";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
@@ -23,6 +24,11 @@ async function main(): Promise<void> {
 
   const users = createUserService(db);
   const walletAddresses = createWalletAddressService(openPayments);
+  const circles = createCircleService({
+    db,
+    // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
+    resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
+  });
   const app = createApp(
     {
       users,
@@ -35,11 +41,8 @@ async function main(): Promise<void> {
         users,
         frontendUrl: env.FRONTEND_URL,
       }),
-      circles: createCircleService({
-        db,
-        // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
-        resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
-      }),
+      circles,
+      applications: createApplicationService({ db, circles }),
       kyc: createKycService({
         db,
         didit: createDiditClient({ apiKey: env.DIDIT_API_KEY, workflowId: env.DIDIT_WORKFLOW_ID }),

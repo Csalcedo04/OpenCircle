@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
 import {
+  APPROVAL_MODES,
   CIRCLE_STATUSES,
   GRANT_MODES,
   ROUND_STATES,
@@ -18,6 +19,7 @@ import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
 
 export type CircleStatus = (typeof CIRCLE_STATUSES)[number];
 export type GrantMode = (typeof GRANT_MODES)[number];
+export type ApprovalMode = (typeof APPROVAL_MODES)[number];
 type RoundState = (typeof ROUND_STATES)[number];
 
 // Defaults for new circles, matching the demo data. Placeholder policy until the team sets real values.
@@ -31,12 +33,16 @@ export interface SeatInput {
   grantMode: GrantMode | null;
 }
 
+// An applicant's seat preferences: with no payout round they get the next free one.
+export type SeatRequest = Omit<SeatInput, "payoutRound"> & { payoutRound: number | null };
+
 export interface CreateCircleInput extends SeatInput {
   name: string;
   city: string;
   contributionValue: bigint;
   size: number;
   roundLengthDays: number;
+  approvalMode: ApprovalMode;
 }
 
 export interface CircleSummaryDto {
@@ -58,6 +64,8 @@ export interface SeatDto {
   payoutRound: number;
   collateral: AmountDto;
   grantMode: GrantMode | null;
+  // Accepts or rejects applicants when the circle uses DELEGATES.
+  isApprover: boolean;
 }
 
 export interface RoundDto {
@@ -72,6 +80,7 @@ export interface CircleDto extends CircleSummaryDto {
   feeBps: number;
   threshold: AmountDto;
   grantWeightBps: number;
+  approvalMode: ApprovalMode;
   poolWalletAddress: string;
   startedAt: string | null;
   // The round being collected or paid out; null before the circle starts or once it is over.
@@ -150,6 +159,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         feeBps: circles.feeBps,
         thresholdValue: circles.thresholdValue,
         grantWeightBps: circles.grantWeightBps,
+        approvalMode: circles.approvalMode,
         startedAt: circles.startedAt,
         poolWalletAddress: wallets.addressUrl,
       })
@@ -166,6 +176,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         payoutRound: circleMembers.payoutRound,
         collateralValue: circleMembers.collateralValue,
         grantMode: circleMembers.grantMode,
+        isApprover: circleMembers.isApprover,
       })
       .from(circleMembers)
       .innerJoin(users, eq(circleMembers.userId, users.id))
@@ -192,6 +203,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
       feeBps: circle.feeBps,
       threshold: amount(circle.thresholdValue, assetCode, assetScale),
       grantWeightBps: circle.grantWeightBps,
+      approvalMode: circle.approvalMode,
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
@@ -201,6 +213,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         payoutRound: s.payoutRound,
         collateral: amount(s.collateralValue, assetCode, assetScale),
         grantMode: s.grantMode ?? null,
+        isApprover: s.isApprover,
       })),
       rounds: roundRows.map((r) => ({
         number: r.number,
@@ -228,63 +241,6 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
     return wallet;
   }
 
-  // Seat conflicts surface as unique violations; turn them into 409s the client can act on.
-  function seatConflict(err: unknown): AppError | null {
-    const constraint = uniqueViolation(err);
-    if (constraint === "circle_members_circle_user_unique") {
-      return new AppError(409, "ALREADY_MEMBER", "You already have a seat in this circle");
-    }
-    if (constraint === "circle_members_circle_payout_round_unique") {
-      return new AppError(409, "SEAT_TAKEN", "That payout round is already taken");
-    }
-    return null;
-  }
-
-  type CircleRow = typeof circles.$inferSelect;
-
-  // The last seat is filled: schedule every round and open round 1. Same transaction as the join.
-  async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
-    const seats = await tx
-      .select({ id: circleMembers.id, payoutRound: circleMembers.payoutRound })
-      .from(circleMembers)
-      .where(eq(circleMembers.circleId, circle.id))
-      .orderBy(asc(circleMembers.payoutRound));
-
-    await tx.update(circles).set({ status: "ACTIVE", startedAt: now }).where(eq(circles.id, circle.id));
-
-    const created = await tx
-      .insert(rounds)
-      .values(
-        seats.map((seat) => ({
-          circleId: circle.id,
-          number: seat.payoutRound,
-          beneficiaryMemberId: seat.id,
-          state: seat.payoutRound === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
-          deadline: new Date(now.getTime() + seat.payoutRound * circle.roundLengthDays * DAY_MS),
-          openedAt: seat.payoutRound === 1 ? now : null,
-        })),
-      )
-      .returning({ id: rounds.id, number: rounds.number });
-
-    const first = created.find((r) => r.number === 1);
-    if (!first) throw new Error("Round 1 missing after scheduling");
-    // Everyone pays every round, the beneficiary included (pot = contribution × size).
-    await tx.insert(contributions).values(
-      seats.map((seat) => ({
-        roundId: first.id,
-        memberId: seat.id,
-        value: circle.contributionValue,
-        assetCode: circle.assetCode,
-        assetScale: circle.assetScale,
-        // Deterministic: the same round and member always map to the same key.
-        idempotencyKey: `contribution:${first.id}:${seat.id}`,
-      })),
-    );
-    await tx
-      .insert(auditEvents)
-      .values({ walletId: circle.poolWalletId, eventType: "circle.started", externalId: `circle.started:${circle.id}` });
-  }
-
   return {
     get,
 
@@ -307,11 +263,9 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
       return rows.map(toSummary);
     },
 
-    /** Creates an OPEN circle with its creator in the payout round they chose. */
+    /** Creates an OPEN circle with its creator in the payout round they chose; the creator approves applicants. */
     async create(userId: string, input: CreateCircleInput): Promise<CircleDto> {
-      if (input.payoutRound > input.size) {
-        throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
-      }
+      if (input.payoutRound > input.size) throw invalidPayoutRound();
       const remote = await resolvePoolWallet();
       const id = await db.transaction(async (tx) => {
         const pool = await poolWalletId(tx, remote);
@@ -329,6 +283,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
             grantWeightBps: DEFAULT_GRANT_WEIGHT_BPS,
             roundLengthDays: input.roundLengthDays,
             size: input.size,
+            approvalMode: input.approvalMode,
             poolWalletId: pool.id,
             createdBy: userId,
           })
@@ -340,44 +295,111 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
           payoutRound: input.payoutRound,
           collateralValue: input.collateralValue,
           grantMode: input.grantMode,
+          isApprover: true,
         });
         return circle.id;
       });
       return get(id);
     },
-
-    /** Takes a free seat; filling the last one starts the circle. */
-    async join(userId: string, circleId: string, input: SeatInput): Promise<CircleDto> {
-      try {
-        await db.transaction(async (tx) => {
-          // Lock the circle so concurrent joins count seats one at a time.
-          const [circle] = await tx.select().from(circles).where(eq(circles.id, circleId)).for("update");
-          if (!circle) throw new AppError(404, "CIRCLE_NOT_FOUND", "Circle not found");
-          if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
-          if (input.payoutRound > circle.size) {
-            throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
-          }
-
-          await tx.insert(circleMembers).values({
-            circleId,
-            userId,
-            payoutRound: input.payoutRound,
-            collateralValue: input.collateralValue,
-            grantMode: input.grantMode,
-          });
-
-          const [{ taken } = { taken: 0 }] = await tx
-            .select({ taken: sql<number>`count(*)::int` })
-            .from(circleMembers)
-            .where(eq(circleMembers.circleId, circleId));
-          if (taken === circle.size) await start(tx, circle, new Date());
-        });
-      } catch (err) {
-        throw seatConflict(err) ?? err;
-      }
-      return get(circleId);
-    },
   };
 }
 
 export type CircleService = ReturnType<typeof createCircleService>;
+
+export type CircleRow = typeof circles.$inferSelect;
+
+const invalidPayoutRound = () =>
+  new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
+
+// Seat conflicts surface as unique violations; turn them into 409s the client can act on.
+export function seatConflict(err: unknown): AppError | null {
+  const constraint = uniqueViolation(err);
+  if (constraint === "circle_members_circle_user_unique") {
+    return new AppError(409, "ALREADY_MEMBER", "You already have a seat in this circle");
+  }
+  if (constraint === "circle_members_circle_payout_round_unique") {
+    return new AppError(409, "SEAT_TAKEN", "That payout round is already taken");
+  }
+  return null;
+}
+
+/**
+ * Seats an accepted applicant. The caller holds the circle row lock (FOR UPDATE), so seats
+ * are counted one at a time. A preferred payout round that is taken falls back to the next
+ * free one. Filling the last seat starts the circle; returns whether it did.
+ */
+export async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: SeatRequest, now: Date): Promise<boolean> {
+  if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+  if (seat.payoutRound !== null && seat.payoutRound > circle.size) throw invalidPayoutRound();
+
+  const taken = new Set(
+    (await tx.select({ payoutRound: circleMembers.payoutRound }).from(circleMembers).where(eq(circleMembers.circleId, circle.id))).map(
+      (m) => m.payoutRound,
+    ),
+  );
+  if (taken.size >= circle.size) throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+  const payoutRound =
+    seat.payoutRound !== null && !taken.has(seat.payoutRound)
+      ? seat.payoutRound
+      : Array.from({ length: circle.size }, (_, i) => i + 1).find((n) => !taken.has(n));
+  if (payoutRound === undefined) throw new Error("No free payout round in a circle with free seats");
+
+  try {
+    await tx.insert(circleMembers).values({
+      circleId: circle.id,
+      userId,
+      payoutRound,
+      collateralValue: seat.collateralValue,
+      grantMode: seat.grantMode,
+    });
+  } catch (err) {
+    throw seatConflict(err) ?? err;
+  }
+
+  if (taken.size + 1 < circle.size) return false;
+  await start(tx, circle, now);
+  return true;
+}
+
+// The last seat is filled: schedule every round and open round 1. Same transaction as the seating.
+async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
+  const seats = await tx
+    .select({ id: circleMembers.id, payoutRound: circleMembers.payoutRound })
+    .from(circleMembers)
+    .where(eq(circleMembers.circleId, circle.id))
+    .orderBy(asc(circleMembers.payoutRound));
+
+  await tx.update(circles).set({ status: "ACTIVE", startedAt: now }).where(eq(circles.id, circle.id));
+
+  const created = await tx
+    .insert(rounds)
+    .values(
+      seats.map((seat) => ({
+        circleId: circle.id,
+        number: seat.payoutRound,
+        beneficiaryMemberId: seat.id,
+        state: seat.payoutRound === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
+        deadline: new Date(now.getTime() + seat.payoutRound * circle.roundLengthDays * DAY_MS),
+        openedAt: seat.payoutRound === 1 ? now : null,
+      })),
+    )
+    .returning({ id: rounds.id, number: rounds.number });
+
+  const first = created.find((r) => r.number === 1);
+  if (!first) throw new Error("Round 1 missing after scheduling");
+  // Everyone pays every round, the beneficiary included (pot = contribution × size).
+  await tx.insert(contributions).values(
+    seats.map((seat) => ({
+      roundId: first.id,
+      memberId: seat.id,
+      value: circle.contributionValue,
+      assetCode: circle.assetCode,
+      assetScale: circle.assetScale,
+      // Deterministic: the same round and member always map to the same key.
+      idempotencyKey: `contribution:${first.id}:${seat.id}`,
+    })),
+  );
+  await tx
+    .insert(auditEvents)
+    .values({ walletId: circle.poolWalletId, eventType: "circle.started", externalId: `circle.started:${circle.id}` });
+}
