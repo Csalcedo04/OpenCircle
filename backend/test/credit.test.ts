@@ -4,13 +4,14 @@ import { calculateCreditScore, DEFAULT_SCORE_CONFIG } from "../src/services/cred
 import {
   averageRatingTenths,
   calculateLoanLimit,
+  cop,
   DEFAULT_LOAN_LIMIT_CONFIG,
   fullMonthsBetween,
+  toLoanLimitDto,
   type MemberCreditProfile,
   type Money,
 } from "../src/services/credit/loan-limit";
 
-const cop = (whole: bigint): Money => ({ value: whole * 100n, assetCode: "COP", assetScale: 2 });
 const whole = (m: Money) => m.value / 100n;
 const NOW = new Date("2026-10-16T12:00:00Z");
 
@@ -43,6 +44,13 @@ describe("calculateCreditScore", () => {
     const r = calculateCreditScore(80, { expectedPayments: 2, paidOnTime: 1, paidLate: 1, missedPayments: 0 });
     assert.equal(r.newScore, 76);
     assert.equal(r.status, "good");
+  });
+
+  test("paying late never costs more than not paying, however many payments the round has", () => {
+    const allLate = calculateCreditScore(50, { expectedPayments: 13, paidOnTime: 0, paidLate: 13, missedPayments: 0 });
+    const allMissed = calculateCreditScore(50, { expectedPayments: 13, paidOnTime: 0, paidLate: 0, missedPayments: 13 });
+    assert.ok(allLate.newScore >= allMissed.newScore);
+    assert.equal(allMissed.newScore, 35);
   });
 
   test("clamps to 0–100", () => {
@@ -142,6 +150,32 @@ describe("calculateLoanLimit", () => {
     assert.equal(r.limit.value, 9_007_199_254_740_993n);
   });
 
+  test("rejects an out-of-range or non-finite score", () => {
+    for (const score of [150, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      assert.throws(() => calculateLoanLimit({ ...newMember, score }, NOW), RangeError);
+    }
+  });
+
+  test("rejects a review floor that leaves no room up to 5.0", () => {
+    for (const reviewFloorTenths of [50, 55, -1, 30.5]) {
+      assert.throws(() => calculateLoanLimit(newMember, NOW, { ...DEFAULT_LOAN_LIMIT_CONFIG, reviewFloorTenths }), RangeError);
+    }
+  });
+
+  test("does not alias the config into the result", () => {
+    const r = calculateLoanLimit(newMember, NOW);
+    assert.notEqual(r.breakdown.base, DEFAULT_LOAN_LIMIT_CONFIG.baseLimit);
+    assert.deepEqual(r.breakdown.base, DEFAULT_LOAN_LIMIT_CONFIG.baseLimit);
+  });
+
+  test("toLoanLimitDto is JSON-serializable with string amounts", () => {
+    const dto = toLoanLimitDto(calculateLoanLimit(newMember, NOW));
+    assert.equal(dto.limit.value, "5000000");
+    assert.equal(dto.breakdown.base.assetScale, 2);
+    assert.equal(dto.eligible, dto.reasons.length === 0);
+    assert.equal(JSON.parse(JSON.stringify(dto)).available.value, "5000000");
+  });
+
   test("rejects money in a different asset", () => {
     assert.throws(
       () => calculateLoanLimit({ ...newMember, collateral: { value: 100n, assetCode: "USD", assetScale: 2 } }, NOW),
@@ -152,10 +186,17 @@ describe("calculateLoanLimit", () => {
 
 describe("helpers", () => {
   test("fullMonthsBetween counts only completed months", () => {
-    assert.equal(fullMonthsBetween(new Date("2026-01-31T00:00:00Z"), new Date("2026-02-28T00:00:00Z")), 0);
+    assert.equal(fullMonthsBetween(new Date("2026-01-31T00:00:00Z"), new Date("2026-02-27T00:00:00Z")), 0);
     assert.equal(fullMonthsBetween(new Date("2026-01-15T00:00:00Z"), new Date("2026-03-15T00:00:00Z")), 2);
     assert.equal(fullMonthsBetween(new Date("2026-01-15T12:00:00Z"), new Date("2026-03-15T11:00:00Z")), 1);
     assert.equal(fullMonthsBetween(NOW, new Date("2025-01-01T00:00:00Z")), 0);
+  });
+
+  test("fullMonthsBetween treats the last day of a shorter month as the anniversary", () => {
+    assert.equal(fullMonthsBetween(new Date("2026-01-31T00:00:00Z"), new Date("2026-02-28T00:00:00Z")), 1);
+    assert.equal(fullMonthsBetween(new Date("2026-01-31T00:00:00Z"), new Date("2026-04-30T00:00:00Z")), 3);
+    assert.equal(fullMonthsBetween(new Date("2026-01-30T00:00:00Z"), new Date("2026-04-30T00:00:00Z")), 3);
+    assert.equal(fullMonthsBetween(new Date("2026-01-31T00:00:00Z"), new Date("2026-04-29T00:00:00Z")), 2);
   });
 
   test("averageRatingTenths rounds down and validates ratings", () => {
