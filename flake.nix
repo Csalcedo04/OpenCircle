@@ -44,5 +44,29 @@
       devShells = forEachSystem (pkgs: {
         default = import ./shell.nix { inherit pkgs; };
       });
+
+      # NixOS: `imports = [ opencircle.nixosModules.default ];` then enable
+      # services.opencircle-frontend / services.opencircle-backend. The package
+      # defaults to this flake's build for the host system.
+      nixosModules = {
+        frontend = { pkgs, lib, ... }: {
+          imports = [ ./nix/modules/frontend.nix ];
+          services.opencircle-frontend.package =
+            lib.mkDefault inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.frontend;
+        };
+        backend = { pkgs, lib, ... }: {
+          imports = [ ./nix/modules/backend.nix ];
+          services.opencircle-backend.package =
+            lib.mkDefault inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.backend;
+        };
+        default = {
+          imports = [ inputs.self.nixosModules.frontend inputs.self.nixosModules.backend ];
+        };
+      };
+
+      # `nix flake check` / `nix build .#checks.<system>.services`: VM test of both modules.
+      checks = forEachSystem (pkgs: pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+        services = pkgs.testers.runNixOSTest (import ./nix/tests/services.nix { inherit (inputs) self; });
+      });
     };
 }
