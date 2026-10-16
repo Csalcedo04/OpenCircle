@@ -4,24 +4,13 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { CircleCheck } from "lucide-react"
 import { fill } from "@/i18n/config"
-import type { Dictionary } from "@/i18n/dictionaries/en"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { getMyProfile } from "@/lib/api/backend"
+import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
 import { ProfileForm } from "./profile-form"
 import { WalletForm } from "./wallet-form"
-
-type ErrorKey = keyof Dictionary["onboarding"]["errors"]
-
-// `?consent=` values set by the consent callback route.
-const consentErrors: Record<string, ErrorKey> = {
-  rejected: "consentRejected",
-  expired: "consentExpired",
-  invalid: "consentInvalid",
-  taken: "walletTaken",
-  error: "generic",
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDictionary()
@@ -42,7 +31,7 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
 
   const { consent, edit } = await searchParams
   const step = profile && edit !== "profile" ? 2 : 1
-  const consentError = typeof consent === "string" ? (consentErrors[consent] ?? null) : null
+  const consentError = consentMessageKey(consent)
   const o = t.onboarding
 
   return (
