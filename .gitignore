@@ -1,0 +1,19 @@
+# Secrets
+.env*
+!.env.example
+!infra/.env.example
+*.pem
+*.key
+*.p12
+
+# Dependencies / builds
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+
+# Local tooling
+.claude/worktrees/
+graphify-out/
+.DS_Store

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "op-sandbox": {
+      "command": "python3",
+      "args": [".claude/skills/rafiki-local-playground/scripts/mcp-op-sandbox.py"],
+      "env": { "OP_SANDBOX_AUDIT_LOG": ".claude/state/op-sandbox-audit.log" }
+    }
+  }
+}
