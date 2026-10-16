@@ -1,4 +1,11 @@
-import { DEFAULT_SCORE_CONFIG, scoreStatus, type ScoreConfig, type ScoreStatus } from "./credit-score";
+import {
+  assertValidScore,
+  DEFAULT_SCORE_CONFIG,
+  scoreStatus,
+  type ScoreBounds,
+  type ScoreStatus,
+  type ScoreStatusConfig,
+} from "./credit-score";
 
 /**
  * Micro-loan limit. Everyone starts at the same base limit; it grows with
@@ -8,11 +15,19 @@ import { DEFAULT_SCORE_CONFIG, scoreStatus, type ScoreConfig, type ScoreStatus }
  * recurring approval (the same coverage rule the Safe Round Engine applies).
  *
  * Money is integer-only: `bigint` in the asset's minor unit, always paired
- * with `assetCode` and `assetScale`. Never `number`.
+ * with `assetCode` and `assetScale`. Never `number`. Over the wire `value`
+ * travels as a decimal string (see `toLoanLimitDto`).
  */
 
 export interface Money {
   value: bigint;
+  assetCode: string;
+  assetScale: number;
+}
+
+/** JSON shape of `Money`: same tuple, `value` as a decimal string. */
+export interface MoneyDto {
+  value: string;
   assetCode: string;
   assetScale: number;
 }
@@ -26,7 +41,7 @@ export interface LoanLimitConfig {
   /** Growth per full month of membership, in basis points of the base limit. */
   perMonthBps: number;
   maxCountedMonths: number;
-  /** Growth at a 5.0 average rating; scales linearly from 0 at `reviewFloorTenths`. */
+  /** Growth at a 5.0 average rating; scales linearly from 0 at `reviewFloorTenths` (0–49). */
   maxReviewBps: number;
   reviewFloorTenths: number;
   minReviews: number;
@@ -34,10 +49,12 @@ export interface LoanLimitConfig {
   statusMultiplierBps: Record<ScoreStatus, number>;
   /** Weight of an active recurring approval as coverage of circle debt. */
   grantWeightBps: number;
-  score: ScoreConfig;
+  /** Only what this module reads from the score config. */
+  score: ScoreBounds & ScoreStatusConfig;
 }
 
-const cop = (whole: bigint): Money => ({ value: whole * 100n, assetCode: "COP", assetScale: 2 });
+/** Colombian pesos (scale 2) from a whole-peso amount. */
+export const cop = (whole: bigint): Money => ({ value: whole * 100n, assetCode: "COP", assetScale: 2 });
 
 /** Placeholder values until the team sets real policy. */
 export const DEFAULT_LOAN_LIMIT_CONFIG: LoanLimitConfig = {
@@ -69,8 +86,21 @@ export interface MemberCreditProfile {
 
 export type LimitReason = "poor_score" | "debt_exceeds_limit";
 
+export interface LoanLimitBreakdown {
+  base: Money;
+  circlesBonus: Money;
+  tenureBonus: Money;
+  reviewsBonus: Money;
+  countedCircles: number;
+  countedMonths: number;
+  averageRatingTenths: number | null;
+  statusMultiplierBps: number;
+  capped: boolean;
+}
+
 export interface LoanLimitResult {
   status: ScoreStatus;
+  /** True exactly when `reasons` is empty. */
   eligible: boolean;
   reasons: LimitReason[];
   /** Limit after growth, score multiplier and cap. */
@@ -79,30 +109,40 @@ export interface LoanLimitResult {
   uncoveredDebt: Money;
   /** What the member can borrow now: limit − uncovered debt, never negative. */
   available: Money;
-  breakdown: {
-    base: Money;
-    circlesBonus: Money;
-    tenureBonus: Money;
-    reviewsBonus: Money;
-    countedCircles: number;
-    countedMonths: number;
-    averageRatingTenths: number | null;
-    statusMultiplierBps: number;
-    capped: boolean;
+  breakdown: LoanLimitBreakdown;
+}
+
+/** `LoanLimitResult` with every `Money` as `MoneyDto`, safe for `res.json`. */
+export interface LoanLimitDto extends Omit<LoanLimitResult, "limit" | "uncoveredDebt" | "available" | "breakdown"> {
+  limit: MoneyDto;
+  uncoveredDebt: MoneyDto;
+  available: MoneyDto;
+  breakdown: Omit<LoanLimitBreakdown, "base" | "circlesBonus" | "tenureBonus" | "reviewsBonus"> & {
+    base: MoneyDto;
+    circlesBonus: MoneyDto;
+    tenureBonus: MoneyDto;
+    reviewsBonus: MoneyDto;
   };
 }
 
 const bps = (value: bigint, points: number): bigint => (value * BigInt(points)) / 10_000n;
 const maxBig = (a: bigint, b: bigint) => (a > b ? a : b);
 const minBig = (a: bigint, b: bigint) => (a < b ? a : b);
+const MS_PER_DAY = 86_400_000;
+const daysInMonthOf = (d: Date): number => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
 
-/** Whole calendar months between two instants, in UTC. */
+/**
+ * Whole calendar months between two instants, in UTC. When `from` falls on a
+ * day the target month does not have (the 31st → February), the last day of
+ * that month counts as the anniversary, so joining at month-end is not penalized.
+ */
 export function fullMonthsBetween(from: Date, to: Date): number {
   if (to <= from) return 0;
   let months = (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
+  const anniversaryDay = Math.min(from.getUTCDate(), daysInMonthOf(to));
   const dayOrTimeNotReached =
-    to.getUTCDate() < from.getUTCDate() ||
-    (to.getUTCDate() === from.getUTCDate() && to.getTime() % 86_400_000 < from.getTime() % 86_400_000);
+    to.getUTCDate() < anniversaryDay ||
+    (to.getUTCDate() === anniversaryDay && to.getTime() % MS_PER_DAY < from.getTime() % MS_PER_DAY);
   if (dayOrTimeNotReached) months -= 1;
   return Math.max(0, months);
 }
@@ -115,6 +155,24 @@ export function averageRatingTenths(ratings: readonly number[], minReviews: numb
   return Math.floor((sum * 10) / ratings.length);
 }
 
+export const toMoneyDto = (m: Money): MoneyDto => ({ value: m.value.toString(), assetCode: m.assetCode, assetScale: m.assetScale });
+
+export function toLoanLimitDto(r: LoanLimitResult): LoanLimitDto {
+  return {
+    ...r,
+    limit: toMoneyDto(r.limit),
+    uncoveredDebt: toMoneyDto(r.uncoveredDebt),
+    available: toMoneyDto(r.available),
+    breakdown: {
+      ...r.breakdown,
+      base: toMoneyDto(r.breakdown.base),
+      circlesBonus: toMoneyDto(r.breakdown.circlesBonus),
+      tenureBonus: toMoneyDto(r.breakdown.tenureBonus),
+      reviewsBonus: toMoneyDto(r.breakdown.reviewsBonus),
+    },
+  };
+}
+
 function assertSameAsset(money: Money, like: Money, label: string): void {
   if (money.assetCode !== like.assetCode || money.assetScale !== like.assetScale) {
     throw new RangeError(`${label} must be in ${like.assetCode} (scale ${like.assetScale})`);
@@ -122,15 +180,24 @@ function assertSameAsset(money: Money, like: Money, label: string): void {
   if (money.value < 0n) throw new RangeError(`${label} cannot be negative`);
 }
 
+function assertValidConfig(config: LoanLimitConfig): void {
+  assertSameAsset(config.maxLimit, config.baseLimit, "maxLimit");
+  const floor = config.reviewFloorTenths;
+  if (!Number.isInteger(floor) || floor < 0 || floor >= 50) {
+    throw new RangeError("reviewFloorTenths must be an integer from 0 to 49");
+  }
+}
+
 export function calculateLoanLimit(
   profile: MemberCreditProfile,
   asOf: Date,
   config: LoanLimitConfig = DEFAULT_LOAN_LIMIT_CONFIG,
 ): LoanLimitResult {
+  assertValidConfig(config);
   const base = config.baseLimit;
-  assertSameAsset(config.maxLimit, base, "maxLimit");
   assertSameAsset(profile.outstandingObligations, base, "outstandingObligations");
   assertSameAsset(profile.collateral, base, "collateral");
+  assertValidScore(profile.score, config.score);
   if (!Number.isInteger(profile.circlesCompleted) || profile.circlesCompleted < 0) {
     throw new RangeError("circlesCompleted must be a non-negative integer");
   }
@@ -166,13 +233,13 @@ export function calculateLoanLimit(
 
   return {
     status,
-    eligible: available > 0n,
+    eligible: reasons.length === 0,
     reasons,
     limit: money(limit),
     uncoveredDebt: money(uncoveredDebt),
     available: money(available),
     breakdown: {
-      base,
+      base: money(base.value),
       circlesBonus: money(circlesBonus),
       tenureBonus: money(tenureBonus),
       reviewsBonus: money(reviewsBonus),

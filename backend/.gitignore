@@ -14,8 +14,7 @@ node_modules/
 out/
 dist/
 *.tsbuildinfo
-package-lock.json
-package.nix
+# npm is the package manager here; keep pnpm artefacts out.
 pnpm-lock.yaml
 pnpm-workspace.yaml
 
