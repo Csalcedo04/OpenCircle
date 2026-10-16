@@ -5,12 +5,17 @@ import { redirect } from "next/navigation"
 import { CircleCheck } from "lucide-react"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { getMyProfile } from "@/lib/api/backend"
+import { ServiceUnavailable } from "@/components/service-unavailable"
+import { getMyProfile, isBackendUnavailable, type Profile } from "@/lib/api/backend"
 import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
 import { ProfileForm } from "./profile-form"
 import { WalletForm } from "./wallet-form"
+
+// Decides on the server whether to redirect (signed in / onboarding state), so it must block
+// rather than stream a shell first: streaming would turn the redirect into a visible flash.
+export const instant = false
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getDictionary()
@@ -23,7 +28,17 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
   const { data } = await supabase.auth.getClaims()
   if (!data?.claims) redirect(`/${locale}/login`)
 
-  const profile = await getMyProfile()
+  let profile: Profile | null
+  try {
+    profile = await getMyProfile()
+  } catch (err) {
+    if (!isBackendUnavailable(err)) throw err
+    return (
+      <div className="mx-auto max-w-xl px-4 py-12 sm:px-6">
+        <ServiceUnavailable t={t.common} retryHref={`/${locale}/onboarding`} />
+      </div>
+    )
+  }
   if (profile?.walletAddress) {
     const next = (await cookies()).get(RETURN_PATH_COOKIE)?.value
     redirect(isInAppPath(next) ? next : `/${locale}/circles`)

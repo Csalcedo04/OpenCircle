@@ -36,7 +36,7 @@ export default async function JoinPage({ params }: PageProps<"/[lang]/circles/[i
       <p className="mt-2 max-w-2xl text-muted-foreground">{t.join.lead}</p>
       <div className="mt-10">
         <Suspense fallback={<p className="text-muted-foreground">{t.common.loading}</p>}>
-          <KycGate locale={locale} t={t.kyc} returnPath={`/${locale}/circles/${circle.id}/join`}>
+          <KycGate locale={locale} t={t.kyc} tc={t.common} returnPath={`/${locale}/circles/${circle.id}/join`}>
             <JoinCircleForm
               locale={locale}
               circle={circle}

@@ -54,6 +54,7 @@ export function parseProfileForm(fields: ProfileFormFields, mode: "create" | "up
 }
 
 const profileErrors: Record<string, ProfileErrorKey> = {
+  BACKEND_UNAVAILABLE: "unavailable",
   DOCUMENT_IN_USE: "documentInUse",
   EMAIL_IN_USE: "emailInUse",
   EMAIL_REQUIRED: "emailRequired",

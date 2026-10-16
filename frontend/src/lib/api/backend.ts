@@ -15,6 +15,13 @@ const backendUrl = z.url()
 
 const errorBodySchema = z.object({ error: z.object({ code: z.string(), message: z.string() }) })
 
+/** The API can't be reached (not configured, down, timing out): show "try again shortly". */
+export const BACKEND_UNAVAILABLE = "BACKEND_UNAVAILABLE"
+
+export const isBackendUnavailable = (err: unknown): boolean => err instanceof BackendError && err.code === BACKEND_UNAVAILABLE
+
+const unavailable = (why: string) => new BackendError(503, BACKEND_UNAVAILABLE, why)
+
 export class BackendError extends Error {
   constructor(
     readonly status: number,
@@ -69,13 +76,27 @@ async function backendFetch<T>(path: string, schema: z.ZodType<T>, init: Request
   headers.set("authorization", `Bearer ${session.access_token}`)
   if (init.body !== undefined) headers.set("content-type", "application/json")
 
-  const res = await fetch(new URL(`/api${path}`, backendUrl.parse(process.env.BACKEND_API_URL)), {
-    ...init,
-    headers,
-    cache: "no-store",
-  })
+  const base = backendUrl.safeParse(process.env.BACKEND_API_URL)
+  if (!base.success) throw unavailable("BACKEND_API_URL is not configured")
+
+  let res: Response
+  try {
+    res = await fetch(new URL(`/api${path}`, base.data), {
+      ...init,
+      headers,
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch {
+    // Connection refused, DNS failure or timeout.
+    throw unavailable("Backend request failed to connect")
+  }
   const body: unknown = await res.json().catch(() => null)
 
+  // A gateway answering for a backend that is down or deploying.
+  if ([502, 503, 504].includes(res.status) && !errorBodySchema.safeParse(body).success) {
+    throw unavailable(`Backend answered ${res.status}`)
+  }
   if (!res.ok) {
     const parsed = errorBodySchema.safeParse(body)
     throw parsed.success

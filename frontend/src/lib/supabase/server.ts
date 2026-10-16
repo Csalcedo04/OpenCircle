@@ -2,6 +2,7 @@ import "server-only"
 
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
+import { connection } from "next/server"
 import { supabasePublicEnv } from "./env"
 
 /**
@@ -10,6 +11,9 @@ import { supabasePublicEnv } from "./env"
  * request; never share it across requests.
  */
 export async function createClient() {
+  // Session handling reads the clock: mark the request as dynamic first so prerendering
+  // never meets Date.now() (Next.js "blocking-prerender-current-time").
+  await connection()
   const cookieStore = await cookies()
   const { url, publishableKey } = supabasePublicEnv()
 

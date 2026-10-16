@@ -17,6 +17,7 @@ describe("walletErrorKey", () => {
     expect(walletErrorKey("OPEN_PAYMENTS_ERROR")).toBe("walletUnreachable")
     expect(walletErrorKey("VALIDATION_ERROR")).toBe("wallet")
     expect(walletErrorKey("PROFILE_NOT_FOUND")).toBe("generic")
+    expect(walletErrorKey("BACKEND_UNAVAILABLE")).toBe("unavailable")
   })
 })
 
