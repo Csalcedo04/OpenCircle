@@ -1,6 +1,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { AppError } from "../errors/app-error";
+import { publicProfileRateLimit } from "../middleware/rate-limit";
 import { requireUser } from "../middleware/require-user";
 import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
@@ -145,6 +146,9 @@ export function userRoutes({ users, wallets, walletConsent, kyc }: UserRouteServ
     res.status(201).json(await kyc.startSession(currentUserId(res), body));
   };
 
+  // One counter shared by both lookups, so switching between id and wallet doesn't reset it.
+  const publicProfileLimit = publicProfileRateLimit();
+
   const getPublicById: RequestHandler = async (req, res) => {
     const { id }: PublicProfileParams = publicProfileParamsSchema.parse(req.params);
     res.json(await users.getPublicProfile({ id }));
@@ -169,6 +173,6 @@ export function userRoutes({ users, wallets, walletConsent, kyc }: UserRouteServ
     .get("/me/kyc", getMyKyc)
     .post("/me/kyc/session", startMyKyc)
     .get("/me/savings", getMySavings)
-    .get("/public", getPublicByWallet)
-    .get("/:id/public", getPublicById);
+    .get("/public", publicProfileLimit, getPublicByWallet)
+    .get("/:id/public", publicProfileLimit, getPublicById);
 }

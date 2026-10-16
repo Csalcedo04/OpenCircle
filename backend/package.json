@@ -23,6 +23,7 @@
     "@supabase/supabase-js": "2.117.3",
     "drizzle-orm": "0.45.4",
     "express": "^5.3.0",
+    "express-rate-limit": "8.7.0",
     "postgres": "3.4.9",
     "zod": "4.6.7"
   },
