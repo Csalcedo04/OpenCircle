@@ -11,11 +11,16 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "express": "^5.3.0"
+    "@interledger/open-payments": "7.4.0",
+    "@supabase/server": "^1.9.2",
+    "drizzle-orm": "0.45.4",
+    "express": "^5.3.0",
+    "postgres": "3.4.9"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",
+    "drizzle-kit": "0.31.11",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }
