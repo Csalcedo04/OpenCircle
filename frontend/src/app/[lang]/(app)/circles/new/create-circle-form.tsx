@@ -117,31 +117,31 @@ export function CreateCircleForm({ locale, t }: Props) {
           {t.submit}
         </Button>
         {created && (
-          <p role="status" className="flex items-start gap-2 rounded-lg bg-brand-baltic-blue px-4 py-3 text-sm text-brand-white-smoke">
+          <p role="status" className="flex items-start gap-2 rounded-lg bg-brand-violet px-4 py-3 text-sm text-brand-white">
             <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             {t.created}
           </p>
         )}
       </form>
 
-      <aside className="h-fit rounded-2xl bg-brand-deep-space-blue p-6 text-brand-white-smoke" aria-live="polite">
+      <aside className="h-fit rounded-2xl bg-brand-navy p-6 text-brand-white" aria-live="polite">
         <h2 className="font-heading text-xl font-semibold">{t.preview}</h2>
         <dl className="mt-4 space-y-2">
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-brand-cool-steel">{t.potLine}</dt>
+            <dt className="text-brand-on-navy">{t.potLine}</dt>
             <dd className="tabular-nums">{money(pot)}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-brand-cool-steel">{t.feeLine}</dt>
+            <dt className="text-brand-on-navy">{t.feeLine}</dt>
             <dd className="tabular-nums">− {money(fee)}</dd>
           </div>
-          <div className="flex items-baseline justify-between gap-4 border-t border-brand-cool-steel/40 pt-2">
+          <div className="flex items-baseline justify-between gap-4 border-t border-brand-on-navy/40 pt-2">
             <dt className="font-medium">{t.payoutLine}</dt>
             <dd className="font-heading text-2xl font-semibold tabular-nums">{money(payout)}</dd>
           </div>
         </dl>
         {contribution !== null && members > 0n && (
-          <p className="mt-4 text-sm text-brand-cool-steel">
+          <p className="mt-4 text-sm text-brand-on-navy">
             {fill(t.totalLine, { size: members.toString(), paid: money(pot), received: money(payout) })}
           </p>
         )}

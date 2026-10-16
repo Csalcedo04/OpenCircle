@@ -122,23 +122,23 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
             />
             <ul className="mt-2 flex flex-wrap justify-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
               <li className="flex items-center gap-2">
-                <span aria-hidden="true" className="size-3 rounded-full bg-brand-baltic-blue" />
+                <span aria-hidden="true" className="size-3 rounded-full bg-brand-violet" />
                 {t.circle.legend.verified}
               </li>
               <li className="flex items-center gap-2">
-                <span aria-hidden="true" className="size-3 rounded-full border border-dashed border-brand-grey" />
+                <span aria-hidden="true" className="size-3 rounded-full border border-dashed border-brand-slate" />
                 {t.circle.legend.pending}
               </li>
               <li className="flex items-center gap-2">
-                <span aria-hidden="true" className="size-3 rounded-full ring-2 ring-brand-deep-space-blue ring-offset-2 ring-offset-brand-white-smoke" />
+                <span aria-hidden="true" className="size-3 rounded-full ring-2 ring-brand-navy ring-offset-2 ring-offset-brand-canvas" />
                 {t.circle.legend.beneficiary}
               </li>
             </ul>
 
-            <div className="mt-8 rounded-2xl bg-brand-deep-space-blue p-6 text-brand-white-smoke">
-              <p className="text-sm text-brand-cool-steel">{t.circle.poolBalance}</p>
+            <div className="mt-8 rounded-2xl bg-brand-navy p-6 text-brand-white">
+              <p className="text-sm text-brand-on-navy">{t.circle.poolBalance}</p>
               <p className="mt-1 font-heading text-4xl font-semibold tabular-nums">{money(balance.total)}</p>
-              <p className="mt-2 text-sm text-brand-cool-steel">
+              <p className="mt-2 text-sm text-brand-on-navy">
                 {fill(t.circle.balanceParts, { round: money(balance.round), collateral: money(balance.collateral), fees: money(balance.fees) })}
               </p>
             </div>
@@ -164,7 +164,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
                       <span
                         className={cn(
                           "h-1.5 rounded-full",
-                          done ? "bg-brand-baltic-blue" : current ? (held ? "bg-brand-black" : "bg-brand-deep-space-blue") : "bg-brand-cool-steel/50",
+                          done ? "bg-brand-violet" : current ? "bg-brand-navy" : "bg-brand-line",
                         )}
                       />
                       <span className={cn("text-xs", current ? "font-semibold" : "text-muted-foreground")}>
@@ -190,7 +190,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
                       </Link>
                       <span className="flex shrink-0 items-center gap-3 text-sm">
                         <span className="tabular-nums">{formatAmount(circle.contribution, locale)}</span>
-                        <span className={cn("inline-flex w-28 items-center gap-1.5", c.status === "VERIFIED" ? "text-brand-baltic-blue" : "text-foreground")}>
+                        <span className={cn("inline-flex w-28 items-center gap-1.5", c.status === "VERIFIED" ? "text-brand-violet-ink" : "text-foreground")}>
                           <Icon className="size-4" aria-hidden="true" />
                           {t.circle.contribution[c.status]}
                         </span>
@@ -204,9 +204,9 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
 
             <Breakdown t={t} pot={money(pot)} fee={money(feeFor(circle))} payout={money(payoutFor(circle))} rate={formatBps(circle.feeBps, locale)} />
 
-            <div className={cn("rounded-2xl border-2 p-5", coverage && !coverage.eligible && ENGINE_STATES.includes(round.status) ? "border-brand-black" : "border-brand-cool-steel")}>
+            <div className={cn("rounded-2xl border-2 p-5", coverage && !coverage.eligible && ENGINE_STATES.includes(round.status) ? "border-brand-navy" : "border-brand-line")}>
               <h2 className="flex items-center gap-2 font-heading text-xl font-semibold">
-                <ShieldCheck className="size-5 text-brand-baltic-blue" aria-hidden="true" />
+                <ShieldCheck className="size-5 text-brand-violet-ink" aria-hidden="true" />
                 {t.circle.engineTitle}
               </h2>
               {coverage && ENGINE_STATES.includes(round.status) ? (
@@ -222,7 +222,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
                   <p
                     className={cn(
                       "mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm font-medium",
-                      coverage.eligible ? "bg-brand-baltic-blue text-brand-white-smoke" : "bg-brand-black text-brand-white-smoke",
+                      coverage.eligible ? "bg-brand-violet text-brand-white" : "bg-brand-navy text-brand-white",
                     )}
                   >
                     {coverage.eligible ? <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}

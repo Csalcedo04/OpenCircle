@@ -1,6 +1,10 @@
 import type { Dictionary } from "./en"
+import landing from "./landing.es"
+import legal from "./legal.es"
 
 const es: Dictionary = {
+  landing,
+  legal,
   meta: {
     title: "OpenCircle — ahorren juntos, recibe la natillera completa en tu turno",
     description:
@@ -14,34 +18,6 @@ const es: Dictionary = {
     home: "Inicio de OpenCircle",
   },
   testFunds: "Demo solo con fondos de prueba. No se mueve dinero real.",
-  home: {
-    title: "Ahorren juntos. Recibe el pozo completo cuando sea tu turno.",
-    lead:
-      "OpenCircle lleva tu natillera sobre Open Payments. Todos pagan al fondo propio del círculo, cada pago se verifica y el pozo solo se entrega cuando la ronda está completa.",
-    explore: "Ver círculos",
-    start: "Crear un círculo",
-    ringCaption: "{circle}: ronda {round} de {size}. {verified} de {size} pagos verificados.",
-    howTitle: "Cómo funciona una ronda",
-    howLead: "Una ronda se paga completa o se devuelve a todos. Nunca se entrega a medias.",
-    steps: [
-      { title: "Todos pagan", body: "Cada miembro, incluido quien recibe en esta ronda, paga el monto fijo al fondo del círculo desde cualquier billetera Open Payments." },
-      { title: "Se verifica cada pago", body: "OpenCircle revisa cada pago entrante en el fondo hasta que llega el monto completo." },
-      { title: "Corre la revisión de seguridad", body: "Antes de entregar el pozo, el Safe Round Engine revisa que los pagos futuros de quien recibe estén cubiertos." },
-      { title: "Se entrega el pozo", body: "Quien recibe obtiene el pozo menos una comisión del 2%. La comisión se muestra antes de unirte y en cada entrega." },
-      { title: "O se devuelve a todos", body: "Si al cierre falta un pago, los pagos que sí llegaron vuelven a quienes los hicieron." },
-    ],
-    trustTitle: "Hecho para no depender de un organizador",
-    trustLead: "Las natilleras suelen fallar cuando alguien desaparece con el pozo. Aquí, las reglas cuidan el dinero.",
-    trust: [
-      { title: "Un fondo por círculo", body: "Cada círculo tiene su propia billetera. El dinero nunca se mezcla entre círculos." },
-      { title: "Ves el saldo", body: "Cada miembro ve el saldo del fondo y cada pago verificado cuando llega." },
-      { title: "Una regla de entrega fija", body: "El pozo solo sale cuando todos los pagos están verificados y la revisión de seguridad lo aprueba." },
-      { title: "Puntaje de confianza y reseñas", body: "Cada miembro construye su historial con pagos a tiempo y reseñas de quienes ahorraron con él." },
-    ],
-    yieldTitle: "Próximamente: gana rendimientos con tu ahorro",
-    yieldBody: "Mientras el pozo espera en el fondo, podría generar rendimientos con un custodio financiero autorizado. Lo agregaremos cuando el círculo básico funcione.",
-    soon: "Próximamente",
-  },
   circles: {
     title: "Círculos",
     lead: "Únete a un círculo abierto o sigue los tuyos.",

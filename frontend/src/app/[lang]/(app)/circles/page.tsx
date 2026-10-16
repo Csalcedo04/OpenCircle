@@ -58,13 +58,13 @@ export default async function CirclesPage() {
                     {seatMembers.map((m) => (
                       <span
                         key={m.id}
-                        className="grid size-8 place-items-center rounded-full border-2 border-brand-white-smoke bg-brand-baltic-blue text-xs font-semibold text-brand-white-smoke"
+                        className="grid size-8 place-items-center rounded-full border-2 border-brand-white bg-brand-violet text-xs font-semibold text-brand-white"
                       >
                         {initials(m.name)}
                       </span>
                     ))}
                     {Array.from({ length: open }, (_, i) => (
-                      <span key={i} className="size-8 rounded-full border-2 border-dashed border-brand-grey bg-brand-white-smoke" />
+                      <span key={i} className="size-8 rounded-full border-2 border-dashed border-brand-slate bg-brand-white" />
                     ))}
                   </div>
                 </div>
@@ -77,7 +77,7 @@ export default async function CirclesPage() {
                 <div className="flex flex-col items-start gap-1.5 text-sm">
                   {circle.status === "OPEN" ? (
                     <>
-                      <span className="rounded-full bg-brand-cool-steel/40 px-2.5 py-1 text-xs font-medium">{t.circles.status.OPEN}</span>
+                      <span className="rounded-full bg-brand-mint px-2.5 py-1 text-xs font-medium">{t.circles.status.OPEN}</span>
                       <span className="text-muted-foreground">{fill(t.circles.seatsLeft, { count: open })}</span>
                     </>
                   ) : (

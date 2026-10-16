@@ -49,7 +49,7 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
         <TrustDial trust={trust} label={t.member.trustScore} size="lg" />
         <div className="min-w-0">
           <h1 className="font-heading text-4xl font-semibold tracking-tight">{member.name}</h1>
-          <p className="mt-1 font-medium text-brand-baltic-blue">
+          <p className="mt-1 font-medium text-brand-violet-ink">
             {t.member.trustScore}: {t.member.levels[trust.level]}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">{t.member.scoreHelp}</p>
@@ -61,7 +61,7 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
 
       <dl className="mt-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-4">
         {stats.map((s) => (
-          <div key={s.label} className="bg-brand-white-smoke p-5">
+          <div key={s.label} className="bg-brand-white p-5">
             <dt className="text-sm text-muted-foreground">{s.label}</dt>
             <dd className="mt-1 font-heading text-3xl font-semibold tabular-nums">{s.value}</dd>
           </div>
@@ -113,7 +113,7 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
                     {round ? (
                       <RoundStatusBadge status={round.status} label={t.circle.states[round.status]} />
                     ) : (
-                      <span className="rounded-full bg-brand-cool-steel/40 px-2.5 py-1 text-xs font-medium text-foreground">{t.circles.status[c.status]}</span>
+                      <span className="rounded-full bg-brand-mint px-2.5 py-1 text-xs font-medium text-foreground">{t.circles.status[c.status]}</span>
                     )}
                   </div>
                 </li>

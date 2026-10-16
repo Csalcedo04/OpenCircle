@@ -13,7 +13,7 @@ export function TrustDial({ trust, label, size = "sm" }: { trust: TrustSummary; 
   return (
     <span className={cn("relative inline-grid place-items-center", big ? "size-28" : "size-11")} role="img" aria-label={`${label}: ${trust.score}/100`}>
       <svg viewBox="0 0 40 40" className="absolute inset-0 size-full -rotate-90" aria-hidden="true">
-        <circle cx="20" cy="20" r="17" fill="none" className="stroke-brand-cool-steel" strokeWidth={3} />
+        <circle cx="20" cy="20" r="17" fill="none" className="stroke-brand-line" strokeWidth={3} />
         <circle
           cx="20"
           cy="20"
@@ -22,7 +22,7 @@ export function TrustDial({ trust, label, size = "sm" }: { trust: TrustSummary; 
           pathLength={100}
           strokeDasharray={`${trust.score} 100`}
           strokeLinecap="round"
-          className="stroke-brand-baltic-blue"
+          className="stroke-brand-violet"
           strokeWidth={3}
         />
       </svg>
@@ -38,7 +38,7 @@ export function Stars({ rating, label }: { rating: number; label: string }) {
         <Star
           key={n}
           aria-hidden="true"
-          className={cn("size-4", n <= rating ? "fill-brand-baltic-blue text-brand-baltic-blue" : "text-brand-grey")}
+          className={cn("size-4", n <= rating ? "fill-brand-violet text-brand-violet-ink" : "text-brand-slate")}
         />
       ))}
     </span>

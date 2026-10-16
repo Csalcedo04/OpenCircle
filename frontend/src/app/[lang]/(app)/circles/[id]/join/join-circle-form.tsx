@@ -93,9 +93,9 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
                   key={n}
                   className={cn(
                     "flex min-w-24 cursor-pointer flex-col rounded-xl border-2 px-3 py-2 text-sm has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
-                    isTaken && "cursor-not-allowed border-dashed border-brand-grey text-muted-foreground",
-                    !isTaken && seat === n && "border-brand-deep-space-blue bg-brand-deep-space-blue text-brand-white-smoke",
-                    !isTaken && seat !== n && "border-brand-cool-steel",
+                    isTaken && "cursor-not-allowed border-dashed border-brand-slate text-muted-foreground",
+                    !isTaken && seat === n && "border-brand-navy bg-brand-navy text-brand-white",
+                    !isTaken && seat !== n && "border-brand-line",
                   )}
                 >
                   <input
@@ -113,7 +113,7 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
               )
             })}
           </div>
-          {errors.seat && <p className="mt-1.5 text-sm font-medium text-brand-black">{errors.seat}</p>}
+          {errors.seat && <p className="mt-1.5 text-sm font-medium text-brand-violet-ink">{errors.seat}</p>}
         </fieldset>
 
         <fieldset>
@@ -129,14 +129,14 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
                 key={mode}
                 className={cn(
                   "cursor-pointer rounded-xl border-2 p-3 has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
-                  grant === mode ? "border-brand-deep-space-blue" : "border-brand-cool-steel",
+                  grant === mode ? "border-brand-navy" : "border-brand-line",
                 )}
               >
                 <input type="radio" name="grant" value={mode} checked={grant === mode} onChange={() => setGrant(mode)} className="sr-only" />
                 <span className="flex items-center gap-2 font-medium">
                   <span
                     aria-hidden="true"
-                    className={cn("size-4 rounded-full border-2 border-brand-deep-space-blue", grant === mode && "border-[5px]")}
+                    className={cn("size-4 rounded-full border-2 border-brand-navy", grant === mode && "border-[5px]")}
                   />
                   {title}
                 </span>
@@ -164,7 +164,7 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
           {t.submit}
         </Button>
         {submitted && (
-          <p role="status" className="flex items-start gap-2 rounded-lg bg-brand-baltic-blue px-4 py-3 text-sm text-brand-white-smoke">
+          <p role="status" className="flex items-start gap-2 rounded-lg bg-brand-violet px-4 py-3 text-sm text-brand-white">
             <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
             {t.submitted}
           </p>
@@ -172,7 +172,7 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
       </form>
 
       {coverage && (
-        <aside className="h-fit rounded-2xl border-2 border-brand-cool-steel p-6" aria-live="polite">
+        <aside className="h-fit rounded-2xl border-2 border-brand-line p-6" aria-live="polite">
           <h2 className="font-heading text-xl font-semibold">{t.coverageTitle}</h2>
           <p className="mt-1 text-sm text-muted-foreground">{t.coverageLead}</p>
           <dl className="mt-4 space-y-1.5 text-sm">
@@ -191,8 +191,8 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
           </dl>
           <p
             className={cn(
-              "mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-white-smoke",
-              coverage.eligible ? "bg-brand-baltic-blue" : "bg-brand-black",
+              "mt-4 flex items-start gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-white",
+              coverage.eligible ? "bg-brand-violet" : "bg-brand-navy",
             )}
           >
             {coverage.eligible ? <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" /> : <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />}
