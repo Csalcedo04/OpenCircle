@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { calculateCreditScore, DEFAULT_SCORE_CONFIG } from "../src/services/credit/credit-score";
+import { calculateCreditScore, DEFAULT_SCORE_CONFIG, scoreFromFraction } from "../src/services/credit/credit-score";
 import {
   averageRatingTenths,
   calculateLoanLimit,
@@ -62,6 +62,21 @@ describe("calculateCreditScore", () => {
     assert.throws(() => calculateCreditScore(101, { expectedPayments: 1, paidOnTime: 1, paidLate: 0, missedPayments: 0 }), RangeError);
     assert.throws(() => calculateCreditScore(50, { expectedPayments: 2, paidOnTime: 1, paidLate: 0, missedPayments: 0 }), RangeError);
     assert.throws(() => calculateCreditScore(50, { expectedPayments: 1, paidOnTime: 0.5, paidLate: 0.5, missedPayments: 0 }), RangeError);
+  });
+});
+
+describe("scoreFromFraction", () => {
+  test("maps the stored 0..1 fraction to the 0..100 score", () => {
+    assert.equal(scoreFromFraction("0.8734"), 87.34);
+    assert.equal(scoreFromFraction("0.0001"), 0.01);
+    assert.equal(scoreFromFraction("0.0000"), 0);
+    assert.equal(scoreFromFraction("1.0000"), 100);
+  });
+
+  test("rejects out-of-range or non-numeric values", () => {
+    assert.throws(() => scoreFromFraction("1.0001"), RangeError);
+    assert.throws(() => scoreFromFraction("-0.1"), RangeError);
+    assert.throws(() => scoreFromFraction("abc"), RangeError);
   });
 });
 

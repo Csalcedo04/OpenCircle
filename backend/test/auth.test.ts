@@ -14,6 +14,7 @@ before(async () => {
   server = await startServer(
     fakeServices({
       users: {
+        ...fakeServices().users,
         // Echoes the caller id so tests can see which identity reached the service.
         getProfile: async (id) => ({
           id,

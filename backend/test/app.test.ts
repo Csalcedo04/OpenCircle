@@ -73,6 +73,30 @@ test("consent and KYC routes require a token → 401", async () => {
   }
 });
 
+test("public profile routes require a token → 401", async () => {
+  for (const path of [
+    "/api/users/11111111-1111-4111-8111-111111111111/public",
+    "/api/users/public?walletAddress=%24wallet.test%2Fx",
+  ]) {
+    const res = await server.request(path);
+    assert.equal(res.status, 401, path);
+  }
+});
+
+test("public profile routes validate the id and wallet address → 400", async () => {
+  const token = await auth.token("33333333-3333-4333-8333-333333333333");
+  for (const path of [
+    "/api/users/not-a-uuid/public",
+    "/api/users/public",
+    "/api/users/public?walletAddress=http%3A%2F%2Fwallet.test%2Fx",
+    "/api/users/public?walletAddress=%24wallet.test%2Fx&extra=1",
+  ]) {
+    const res = await server.request(path, { token });
+    assert.equal(res.status, 400, path);
+    assert.equal(errorCode(res.body), "VALIDATION_ERROR");
+  }
+});
+
 test("PUT /api/users/me/wallet is gone: wallets are linked only through consent", async () => {
   const token = await auth.token("33333333-3333-4333-8333-333333333333");
   const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: "$wallet.test/x" } });

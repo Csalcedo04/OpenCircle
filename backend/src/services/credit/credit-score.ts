@@ -55,6 +55,13 @@ export function assertValidScore(score: number, config: ScoreBounds = DEFAULT_SC
   }
 }
 
+/** Converts the stored 0..1 fraction (`credit_profiles.internal_credit_score`) to the 0..100 score. */
+export function scoreFromFraction(fraction: string, config: ScoreBounds = DEFAULT_SCORE_CONFIG): number {
+  const score = round2(config.minScore + Number(fraction) * (config.maxScore - config.minScore));
+  assertValidScore(score, config);
+  return score;
+}
+
 export function scoreStatus(score: number, config: ScoreStatusConfig = DEFAULT_SCORE_CONFIG): ScoreStatus {
   const { excellent, good, fair } = config.statusThresholds;
   if (score >= excellent) return "excellent";
