@@ -1,9 +1,71 @@
 {
-  "id": "aa47298f-ca5f-4745-a75c-cde135e80b9f",
+  "id": "aa7a2010-958f-4837-a35c-0406e5037b85",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.credit_profiles": {
+      "name": "credit_profiles",
+      "schema": "",
+      "columns": {
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "internal_credit_score": {
+          "name": "internal_credit_score",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "borrowing_capacity": {
+          "name": "borrowing_capacity",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "credit_profiles_wallet_id_wallets_id_fk": {
+          "name": "credit_profiles_wallet_id_wallets_id_fk",
+          "tableFrom": "credit_profiles",
+          "tableTo": "wallets",
+          "columnsFrom": [
+            "wallet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "credit_profiles_score_range": {
+          "name": "credit_profiles_score_range",
+          "value": "\"credit_profiles\".\"internal_credit_score\" between 0 and 1"
+        },
+        "credit_profiles_borrowing_capacity_non_negative": {
+          "name": "credit_profiles_borrowing_capacity_non_negative",
+          "value": "\"credit_profiles\".\"borrowing_capacity\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.users": {
       "name": "users",
       "schema": "",
@@ -56,9 +118,69 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "users_op_wallet_unique": {
+          "name": "users_op_wallet_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "op_wallet"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.wallet_balances": {
+      "name": "wallet_balances",
+      "schema": "",
+      "columns": {
+        "wallet_id": {
+          "name": "wallet_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "balance": {
+          "name": "balance",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "0"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "wallet_balances_wallet_id_wallets_id_fk": {
+          "name": "wallet_balances_wallet_id_wallets_id_fk",
+          "tableFrom": "wallet_balances",
+          "tableTo": "wallets",
+          "columnsFrom": [
+            "wallet_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "wallet_balances_balance_non_negative": {
+          "name": "wallet_balances_balance_non_negative",
+          "value": "\"wallet_balances\".\"balance\" >= 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.wallets": {
@@ -111,7 +233,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "wallets_asset_scale_range": {
+          "name": "wallets_asset_scale_range",
+          "value": "\"wallets\".\"asset_scale\" between 0 and 255"
+        }
+      },
       "isRLSEnabled": false
     }
   },
