@@ -7,7 +7,7 @@
  */
 import { createPublicKey } from "node:crypto";
 import { z } from "zod";
-import { loadPrivateKey } from "../lib/client-key";
+import { loadPrivateKey } from "../services/open-payments/client-key";
 
 const jwksSchema = z.object({ keys: z.array(z.object({ kid: z.string(), x: z.string().optional() })) });
 

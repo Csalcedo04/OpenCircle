@@ -1,14 +1,20 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, gt, ne } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { isFinalizedGrantWithAccessToken, isPendingGrant, type WalletAddress } from "@interledger/open-payments";
 import type { Db } from "../db/client";
-import { auditEvents, consentChallenges, users, walletGrants, wallets } from "../db/schema";
+import { auditEvents, consentChallenges, walletGrants } from "../db/schema";
 import { AppError } from "../errors/app-error";
-import { verifyInteractHash } from "../lib/gnap-hash";
-import { isAllowedOpenPaymentsUrl, type OpenPaymentsGrantClient } from "../lib/open-payments";
-import type { TokenCipher } from "../lib/token-cipher";
-import type { CompleteConsentInput } from "../schemas/wallet-consent.schema";
+import { isAllowedOpenPaymentsUrl, type OpenPaymentsGrantClient } from "./open-payments/client";
+import { verifyInteractHash } from "./open-payments/gnap-hash";
+import type { TokenCipher } from "./open-payments/token-cipher";
 import type { ProfileDto, UserService } from "./user.service";
+import { linkWalletInTx, walletInUse } from "./wallet.service";
+
+export interface CompleteConsentInput {
+  state: string;
+  interactRef: string;
+  hash: string;
+}
 
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
@@ -16,7 +22,7 @@ export interface WalletConsentDeps {
   db: Db;
   client: OpenPaymentsGrantClient;
   cipher: TokenCipher;
-  users: Pick<UserService, "getById">;
+  users: Pick<UserService, "getProfile">;
   /** Next app origin; the wallet redirects to `<frontendUrl>/consent/callback/<state>`. */
   frontendUrl: string;
 }
@@ -26,6 +32,7 @@ export interface WalletConsentDeps {
  * payments on their wallet (no limits, by product decision), so contributions can
  * be charged without asking each round. Linking the wallet happens only here,
  * after the wallet's own authorization server confirms the user approved.
+ * A user keeps one wallet (see linkWalletInTx); consenting again renews the grant.
  */
 export function createWalletConsentService({ db, client, cipher, users: userService, frontendUrl }: WalletConsentDeps) {
   const callbackBase = new URL("/consent/callback/", frontendUrl).toString();
@@ -54,6 +61,8 @@ export function createWalletConsentService({ db, client, cipher, users: userServ
   return {
     /** Starts consent; the caller sends the user to `redirectUrl` (their wallet's consent screen). */
     async start(userId: string, walletUrl: string): Promise<{ redirectUrl: string }> {
+      // The profile (POST /users/me) must exist first: consent rows reference it.
+      await userService.getProfile(userId);
       const wallet = await resolveWallet(walletUrl);
       const state = randomBytes(32).toString("base64url");
       const clientNonce = randomBytes(24).toString("base64url");
@@ -77,7 +86,6 @@ export function createWalletConsentService({ db, client, cipher, users: userServ
         throw new AppError(502, "CONSENT_NOT_INTERACTIVE", "Wallet did not ask the user for consent");
       }
 
-      await db.insert(users).values({ id: userId }).onConflictDoNothing();
       await db.insert(consentChallenges).values({
         userId,
         state,
@@ -145,26 +153,9 @@ export function createWalletConsentService({ db, client, cipher, users: userServ
       try {
         const wallet = await resolveWallet(challenge.walletAddressUrl);
         replaced = await db.transaction(async (tx) => {
-          const [stored] = await tx
-            .insert(wallets)
-            .values({ addressUrl: wallet.id, assetCode: wallet.assetCode, assetScale: wallet.assetScale })
-            .onConflictDoUpdate({
-              target: wallets.addressUrl,
-              set: { assetCode: wallet.assetCode, assetScale: wallet.assetScale },
-            })
-            .returning({ id: wallets.id });
-          if (!stored) throw new Error("Wallet upsert returned no row");
+          const { wallet: stored } = await linkWalletInTx(tx, userId, wallet);
 
-          const [owner] = await tx
-            .select({ id: users.id })
-            .from(users)
-            .where(and(eq(users.opWallet, stored.id), ne(users.id, userId)))
-            .limit(1);
-          if (owner) throw new AppError(409, "WALLET_ALREADY_LINKED", "Wallet address is linked to another account");
-
-          await tx.update(users).set({ opWallet: stored.id }).where(eq(users.id, userId));
-
-          // One standing grant per user: a new consent replaces the previous one.
+          // One standing grant per user: a new consent on the same wallet replaces the previous one.
           const previous = await tx
             .update(walletGrants)
             .set({ status: "REVOKED" })
@@ -185,18 +176,18 @@ export function createWalletConsentService({ db, client, cipher, users: userServ
           });
 
           await tx.insert(auditEvents).values([
-            ...previous.map((p) => ({ walletId: p.walletId, eventType: "WALLET_GRANT_REVOKED" })),
-            { walletId: stored.id, eventType: "WALLET_GRANT_ACTIVE" },
+            ...previous.map((p) => ({ walletId: p.walletId, eventType: "wallet.grant_revoked" })),
+            { walletId: stored.id, eventType: "wallet.grant_active" },
           ]);
           return previous;
         });
       } catch (err) {
         await revokeRemote(manageUri, accessToken);
-        throw err;
+        throw walletInUse(err) ?? err;
       }
 
       for (const old of replaced) await revokeRemote(old.manageUri, cipher.decrypt(old.accessTokenCiphertext));
-      return userService.getById(userId);
+      return userService.getProfile(userId);
     },
   };
 }

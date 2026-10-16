@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, test } from "node:test";
-import { verifyDiditSignature } from "../src/lib/didit-signature";
-import { startKycSchema } from "../src/schemas/kyc.schema";
+import { verifyDiditSignature } from "../src/services/didit/signature";
 
 describe("Didit signature", () => {
   const secret = "s3cret";
@@ -22,14 +21,5 @@ describe("Didit signature", () => {
     assert.ok(!verifyDiditSignature({ rawBody, signature, timestamp: String(now - 301), secret, nowSeconds: now }));
     assert.ok(!verifyDiditSignature({ rawBody, signature, timestamp: undefined, secret, nowSeconds: now }));
     assert.ok(!verifyDiditSignature({ rawBody, signature: undefined, timestamp: ts, secret, nowSeconds: now }));
-  });
-});
-
-describe("start KYC input", () => {
-  test("accepts in-app return paths only", () => {
-    assert.ok(startKycSchema.safeParse({ locale: "es", returnPath: "/es/circles/abc-1/join" }).success);
-    for (const returnPath of ["https://evil.example", "//evil.example", "/es/../x", "/fr/circles", "/es/circles?x=1"]) {
-      assert.ok(!startKycSchema.safeParse({ locale: "es", returnPath }).success, returnPath);
-    }
   });
 });

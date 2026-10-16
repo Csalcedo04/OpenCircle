@@ -2,8 +2,17 @@ import { desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { auditEvents, kycVerifications, users } from "../db/schema";
 import { AppError } from "../errors/app-error";
-import { FINAL_KYC_STATUSES, type DiditClient, type KycStatus } from "../lib/didit";
-import type { StartKycInput } from "../schemas/kyc.schema";
+import { FINAL_KYC_STATUSES, type DiditClient, type KycStatus } from "./didit/client";
+import type { DocumentType } from "./user.service";
+
+export interface StartKycInput {
+  locale: "en" | "es";
+  /** In-app path to return to after Didit (validated at the HTTP boundary). */
+  returnPath: string;
+}
+
+// Colombian IDs (cc, ti, ce) are national ID cards for Didit; pp is a passport.
+const diditDocumentType: Record<DocumentType, "ID" | "P"> = { cc: "ID", ti: "ID", ce: "ID", pp: "P" };
 
 export interface KycView {
   /** Latest session's status; null if the user never started KYC. */
@@ -14,7 +23,7 @@ export interface KycView {
 
 type KycRow = typeof kycVerifications.$inferSelect;
 
-const auditType = (status: KycStatus) => `KYC_${status.toUpperCase().replace(/ /g, "_")}`;
+const auditType = (status: KycStatus) => `kyc.${status.toLowerCase().replace(/ /g, "_")}`;
 
 /**
  * Identity verification with Didit. The status comes only from Didit itself:
@@ -70,14 +79,32 @@ export function createKycService({ db, didit, frontendUrl }: { db: Db; didit: Di
 
     /** Creates (or resumes) a Didit session; the caller sends the user to `url`. */
     async startSession(userId: string, { locale, returnPath }: StartKycInput): Promise<{ url: string }> {
-      const [user] = await db.select({ wallet: users.opWallet }).from(users).where(eq(users.id, userId)).limit(1);
+      const [user] = await db
+        .select({
+          wallet: users.opWallet,
+          documentType: users.documentType,
+          documentNumber: users.documentNumber,
+          dob: users.dob,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
       if (!user?.wallet) throw new AppError(409, "ONBOARDING_REQUIRED", "Finish onboarding before verifying your identity");
       if ((await getStatus(userId)).approved) throw new AppError(409, "KYC_ALREADY_APPROVED", "Identity already verified");
 
       const callback = new URL(`/${locale}/kyc/callback`, frontendUrl);
       callback.searchParams.set("next", returnPath);
       // vendor_data is our user id only, no PII. Didit returns the unfinished session for it if one exists.
-      const session = await didit.createSession({ vendorData: userId, callback: callback.toString(), language: locale });
+      const session = await didit.createSession({
+        vendorData: userId,
+        callback: callback.toString(),
+        language: locale,
+        expected: {
+          identificationNumber: user.documentNumber,
+          dateOfBirth: user.dob,
+          documentTypes: [diditDocumentType[user.documentType]],
+        },
+      });
 
       const inserted = await db
         .insert(kycVerifications)

@@ -27,8 +27,22 @@ export const FINAL_KYC_STATUSES: readonly KycStatus[] = ["Approved", "Declined",
 const sessionSchema = z.object({ session_id: z.uuid(), url: z.url(), status: z.enum(KYC_STATUSES) });
 const decisionSchema = z.object({ session_id: z.uuid(), status: z.enum(KYC_STATUSES), vendor_data: z.string().nullable() });
 
+/** What the user entered at onboarding; Didit compares it with the scanned document (mismatches are warnings). */
+export interface ExpectedDetails {
+  identificationNumber: string;
+  /** YYYY-MM-DD */
+  dateOfBirth: string | null;
+  /** Didit document codes: ID (national ID card), P (passport). */
+  documentTypes: ("ID" | "P")[];
+}
+
 export interface DiditClient {
-  createSession(args: { vendorData: string; callback: string; language: string }): Promise<{ sessionId: string; url: string; status: KycStatus }>;
+  createSession(args: {
+    vendorData: string;
+    callback: string;
+    language: string;
+    expected: ExpectedDetails;
+  }): Promise<{ sessionId: string; url: string; status: KycStatus }>;
   getDecision(sessionId: string): Promise<{ status: KycStatus; vendorData: string | null }>;
 }
 
@@ -51,8 +65,18 @@ export function createDiditClient({ apiKey, workflowId }: { apiKey: string; work
   }
 
   return {
-    async createSession({ vendorData, callback, language }) {
-      const body = { workflow_id: workflowId, vendor_data: vendorData, callback, language };
+    async createSession({ vendorData, callback, language, expected }) {
+      const body = {
+        workflow_id: workflowId,
+        vendor_data: vendorData,
+        callback,
+        language,
+        expected_details: {
+          identification_number: expected.identificationNumber,
+          ...(expected.dateOfBirth === null ? {} : { date_of_birth: expected.dateOfBirth }),
+          expected_document_types: expected.documentTypes,
+        },
+      };
       const session = sessionSchema.parse(await call("/session/", { method: "POST", body: JSON.stringify(body) }));
       return { sessionId: session.session_id, url: session.url, status: session.status };
     },

@@ -1,22 +1,16 @@
 import { Router } from "express";
-import type { KycService } from "../services/kyc.service";
-import type { UserService } from "../services/user.service";
-import type { WalletAddressService } from "../services/wallet-address.service";
-import type { WalletConsentService } from "../services/wallet-consent.service";
-import { healthRoutes } from "./health.routes";
-import { userRoutes } from "./user.routes";
-import { walletAddressRoutes } from "./wallet-address.routes";
+import type { WalletAddressService } from "../services/open-payments/wallet-address.service";
+import { healthRoutes } from "./health";
+import { userRoutes, type UserRouteServices } from "./users";
+import { walletAddressRoutes } from "./wallet-addresses";
 
-export interface Services {
-  users: UserService;
+export interface Services extends UserRouteServices {
   walletAddresses: WalletAddressService;
-  walletConsent: WalletConsentService;
-  kyc: KycService;
 }
 
 export function apiRoutes(services: Services): Router {
   return Router()
     .use("/health", healthRoutes())
-    .use("/users", userRoutes(services.users, services.walletConsent, services.kyc))
+    .use("/users", userRoutes(services))
     .use("/wallet-addresses", walletAddressRoutes(services.walletAddresses));
 }

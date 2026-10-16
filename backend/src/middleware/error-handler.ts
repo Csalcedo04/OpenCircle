@@ -7,7 +7,19 @@ export const notFound: RequestHandler = (_req, _res, next) => {
   next(new AppError(404, "NOT_FOUND", "Route not found"));
 };
 
+// Client errors raised by express.json() (malformed JSON, body too large) carry a 4xx status
+// and `expose: true`, meaning their message is safe to return.
+function isExposedClientError(err: unknown): err is { status: number; message: string } {
+  if (typeof err !== "object" || err === null) return false;
+  const { status, expose } = err as { status?: unknown; expose?: unknown };
+  return expose === true && typeof status === "number" && status >= 400 && status < 500;
+}
+
 export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, _next) => {
+  if (isExposedClientError(err)) {
+    res.status(err.status).json({ error: { code: "INVALID_REQUEST_BODY", message: err.message } });
+    return;
+  }
   if (err instanceof AppError) {
     res.status(err.status).json({ error: { code: err.code, message: err.message } });
     return;

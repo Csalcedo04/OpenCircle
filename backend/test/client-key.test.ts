@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { test } from "node:test";
-import { loadPrivateKey } from "../src/lib/client-key";
+import { loadPrivateKey } from "../src/services/open-payments/client-key";
 
 const { privateKey } = generateKeyPairSync("ed25519");
 

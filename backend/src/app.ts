@@ -1,7 +1,7 @@
 import express, { type Express } from "express";
 import { errorHandler, notFound } from "./middleware/error-handler";
 import { apiRoutes, type Services } from "./routes";
-import { webhookRoutes } from "./routes/webhook.routes";
+import { webhookRoutes } from "./routes/webhooks";
 
 export function createApp(services: Services, options: { diditWebhookSecret: string | undefined }): Express {
   const app = express();

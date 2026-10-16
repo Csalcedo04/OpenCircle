@@ -30,3 +30,8 @@ preferences; treat a violation the same way you treat a lint error.
 
 When a request conflicts with one of these principles, say so explicitly in the
 plan and propose the compliant alternative before implementing.
+
+- **Type Safety**: Use TypeScript strictly. Avoid `any`.
+- **Error Handling**: Implement robust error handling with appropriate status codes and messages.
+- **types, interfaces, schemas, routes, and controller** the code should be organized in a way that the types, schemas, routes, and controller are in the same file. Use zod for schema validation. 
+- **database** Use drizzle for database operations. 

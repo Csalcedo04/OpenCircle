@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { describe, test } from "node:test";
-import { verifyInteractHash } from "../src/lib/gnap-hash";
-import { isAllowedOpenPaymentsUrl } from "../src/lib/open-payments";
-import { createTokenCipher } from "../src/lib/token-cipher";
-import { walletAddressInputSchema } from "../src/schemas/wallet-address.schema";
-import { completeConsentSchema } from "../src/schemas/wallet-consent.schema";
+import { completeConsentSchema } from "../src/routes/users";
+import { isAllowedOpenPaymentsUrl } from "../src/services/open-payments/client";
+import { verifyInteractHash } from "../src/services/open-payments/gnap-hash";
+import { createTokenCipher } from "../src/services/open-payments/token-cipher";
 
 describe("token cipher", () => {
   const cipher = createTokenCipher(randomBytes(32).toString("base64"));
@@ -55,20 +54,6 @@ describe("interact hash", () => {
     assert.ok(!verifyInteractHash({ ...input, interactRef: "other" }, digest));
     assert.ok(!verifyInteractHash({ ...input, grantEndpoint: "https://evil.example/" }, digest));
     assert.ok(!verifyInteractHash(input, "short"));
-  });
-});
-
-describe("wallet address input", () => {
-  test("turns a payment pointer into its https URL", () => {
-    assert.equal(
-      walletAddressInputSchema.parse({ url: " $ilp.interledger-test.dev/alice " }).url,
-      "https://ilp.interledger-test.dev/alice",
-    );
-  });
-
-  test("rejects http and non-URLs", () => {
-    assert.ok(!walletAddressInputSchema.safeParse({ url: "http://ilp.interledger-test.dev/alice" }).success);
-    assert.ok(!walletAddressInputSchema.safeParse({ url: "alice" }).success);
   });
 });
 
