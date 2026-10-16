@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { ShieldCheck } from "lucide-react"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
@@ -22,11 +23,31 @@ export default async function LoginPage({ searchParams }: PageProps<"/[lang]/log
 
   const { error, next } = await searchParams
   return (
-    <div className="mx-auto max-w-md px-4 py-16 sm:px-6">
-      <h1 className="font-heading text-4xl font-semibold tracking-[-0.03em]">{t.auth.title}</h1>
-      <p className="mt-2 text-muted-foreground">{t.auth.lead}</p>
-      <div className="mt-10">
-        <LoginForm locale={locale} t={t.auth} linkError={error === "link"} next={isInAppPath(next) ? next : null} />
+    <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 sm:py-16">
+      {/* Bento Container Card */}
+      <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
+        <div className="text-center">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-brand-violet/20 bg-brand-violet/10 px-3 py-1 text-xs font-semibold text-brand-violet-ink">
+            <ShieldCheck className="size-3.5 shrink-0" aria-hidden="true" />
+            <span>{t.auth.badge}</span>
+          </div>
+
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-brand-navy sm:text-3xl">
+            {t.auth.title}
+          </h1>
+          <p className="mt-2 text-sm text-brand-slate">
+            {t.auth.lead}
+          </p>
+        </div>
+
+        <div className="mt-8">
+          <LoginForm
+            locale={locale}
+            t={t.auth}
+            linkError={error === "link"}
+            next={isInAppPath(next) ? next : null}
+          />
+        </div>
       </div>
     </div>
   )
