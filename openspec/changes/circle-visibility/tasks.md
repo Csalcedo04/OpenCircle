@@ -7,7 +7,7 @@
 
 ## 2. Backend
 
-- [ ] 2.1 Add an `optionalUser` middleware factored out of `requireUser`. Verify: unit tests for no token, a valid token, and an invalid token (401).
+- [x] 2.1 Add an `optionalUser` middleware factored out of `requireUser`. Verify: unit tests for no token, a valid token, and an invalid token (401).
 - [ ] 2.2 Add the `canSee` access check in `circle.service.ts`. `list` returns only PUBLIC; `get` and `join` take a userId and an invite, and a miss throws CIRCLE_NOT_FOUND. Verify: integration tests for a stranger (404), the invite (200 and join), a member without the invite (200), and the public list excluding private circles.
 - [ ] 2.3 Add `visibility` on the create schema, with `inviteUrl` in the DTO for the creator only. Verify: an integration test where the default is PRIVATE and a non-creator gets no `inviteUrl`.
 - [ ] 2.4 Add `PATCH /:id/visibility` and `POST /:id/invite-code` (creator only, OPEN only). Verify: tests where the old code gives 404 after a rotation and a non-OPEN circle gives 409.

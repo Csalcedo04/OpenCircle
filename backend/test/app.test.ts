@@ -208,3 +208,30 @@ test("test clock routes don't exist unless TEST_CLOCKS_ENABLED", async () => {
     assert.equal(errorCode(res.body), "NOT_FOUND");
   }
 });
+
+test("GET /api/circles/:id is optional-auth: anonymous, signed in, or 401 for a bad token", async () => {
+  const seen: unknown[] = [];
+  const circles: Services["circles"] = {
+    ...fakeServices().circles,
+    get: async (_id, viewer) => {
+      seen.push(viewer);
+      return {} as Awaited<ReturnType<Services["circles"]["get"]>>;
+    },
+  };
+  const circleServer = await startServer(fakeServices({ circles }));
+  try {
+    const id = "22222222-2222-4222-8222-222222222222";
+    assert.equal((await circleServer.request(`/api/circles/${id}?invite=abc`)).status, 200);
+    const userId = "11111111-1111-4111-8111-111111111111";
+    assert.equal((await circleServer.request(`/api/circles/${id}`, { token: await auth.token(userId) })).status, 200);
+    assert.deepEqual(seen, [
+      { userId: undefined, invite: "abc" },
+      { userId, invite: undefined },
+    ]);
+    const bad = await circleServer.request(`/api/circles/${id}`, { token: "not-a-jwt" });
+    assert.equal(bad.status, 401);
+    assert.equal(seen.length, 2);
+  } finally {
+    await circleServer.close();
+  }
+});
