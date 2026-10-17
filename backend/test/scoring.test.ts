@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { envSchema } from "../src/config/env-schema";
+import { decidersOf } from "../src/services/circles/application-notices";
 import { createCircleCycle } from "../src/services/circles/circle-cycle";
 import { reminderKind } from "../src/services/circles/reminders.service";
 import { outcomeChange, penaltyAt, scoreAction, type PaymentOutcome, type ScoredContribution } from "../src/services/circles/scoring.service";
@@ -140,6 +141,55 @@ describe("createLogSender", () => {
     assert.match(lines[0] ?? "", /c-1/);
     assert.ok(!(lines[0] ?? "").includes("+57"), "phone logged");
     assert.ok(!(lines[0] ?? "").includes("2000000"), "amount logged");
+  });
+
+  test("application emails log the application, never the address or the names", async () => {
+    const lines: string[] = [];
+    const sender = createLogSender((message, data) => lines.push(`${message} ${JSON.stringify(data)}`));
+    await sender.send({
+      channel: "EMAIL",
+      to: "ana@example.test",
+      kind: "APPLICATION_ACCEPTED",
+      circleName: "Natillera",
+      circleId: "c-1",
+      applicationId: "a-1",
+      applicantName: "Bob R.",
+      acceptedByName: "Ana G.",
+    });
+    const line = lines[0] ?? "";
+    assert.match(line, /APPLICATION_ACCEPTED/);
+    assert.match(line, /a-1/);
+    for (const leaked of ["ana@example.test", "Bob R.", "Ana G."]) assert.ok(!line.includes(leaked), `${leaked} logged`);
+  });
+});
+
+describe("decidersOf", () => {
+  const members = [
+    { memberId: "creator", userId: "u1", isApprover: true },
+    { memberId: "delegate", userId: "u2", isApprover: true },
+    { memberId: "plain", userId: "u3", isApprover: false },
+  ];
+
+  test("DELEGATES: the creator and the delegates; MAJORITY: every member", () => {
+    assert.deepEqual(
+      decidersOf("DELEGATES", members).map((m) => m.memberId),
+      ["creator", "delegate"],
+    );
+    assert.deepEqual(
+      decidersOf("MAJORITY", members).map((m) => m.memberId),
+      ["creator", "delegate", "plain"],
+    );
+  });
+
+  test("leaves out the excluded members (e.g. who just accepted)", () => {
+    assert.deepEqual(
+      decidersOf("DELEGATES", members, ["delegate"]).map((m) => m.memberId),
+      ["creator"],
+    );
+    assert.deepEqual(
+      decidersOf("MAJORITY", members, ["creator", "plain"]).map((m) => m.memberId),
+      ["delegate"],
+    );
   });
 });
 

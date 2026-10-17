@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
 import { createCircleService } from "./services/circle.service";
+import { createApplicationNotices } from "./services/circles/application-notices";
 import { createApplicationService } from "./services/circles/application.service";
 import { createCircleCycle, createCircleTick } from "./services/circles/circle-cycle";
 import { createReminders } from "./services/circles/reminders.service";
@@ -38,13 +39,15 @@ async function main(): Promise<void> {
   // Contributions: the pool (OpenCircle's wallet) charges each member through their standing grant.
   const payments = createContributionPayments({ client: openPaymentsAuth, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS });
   const engine = createPeriodEngine({ db, payments, memberAccess: createMemberAccess({ db, cipher, payments }) });
+  // Real providers (email, WhatsApp) come later; until then notifications are only logged.
+  const sender = createLogSender();
+  const notices = createApplicationNotices({ db, sender });
   // Periods, then scores (ICS), then payment reminders. The scheduler runs it for real-time
   // circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
     engine,
     scoring: createScoring({ db }),
-    // Real providers (email, WhatsApp) come later; until then reminders are only logged.
-    reminders: createReminders({ db, sender: createLogSender() }),
+    reminders: createReminders({ db, sender }),
   });
   const testClocks = env.TEST_CLOCKS_ENABLED ? createTestClockService({ db, engine: cycle }) : null;
   const circles = createCircleService({
@@ -69,10 +72,10 @@ async function main(): Promise<void> {
         frontendUrl: env.FRONTEND_URL,
       }),
       circles,
-      applications: createApplicationService({ db, circles }),
+      applications: createApplicationService({ db, circles, notices }),
       members: createMemberService({ db, circles }),
       testClocks,
-      circleTick: createCircleTick({ db, cycle }),
+      circleTick: createCircleTick({ db, cycle, notices }),
       kyc: createKycService({
         db,
         didit: createDiditClient({ apiKey: env.DIDIT_API_KEY, workflowId: env.DIDIT_WORKFLOW_ID }),

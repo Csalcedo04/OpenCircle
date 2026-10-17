@@ -17,6 +17,7 @@ import { AppError } from "../../errors/app-error";
 import type { CircleDto, CircleService, SeatRequest } from "../circle.service";
 import { publicProfileColumns, toPublicProfile, type PublicProfileDto } from "../user.service";
 import type { Tx } from "../wallet.service";
+import type { ApplicationNotices } from "./application-notices";
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type VoteDecision = (typeof VOTE_DECISIONS)[number];
@@ -48,9 +49,15 @@ export function majorityOutcome(votes: { accept: number; reject: number }, membe
 export interface ApplicationServiceDeps {
   db: Db;
   circles: Pick<CircleService, "get" | "takeSeat" | "afterStarted">;
+  notices: Pick<ApplicationNotices, "received" | "accepted">;
 }
 
-export function createApplicationService({ db, circles: circleService }: ApplicationServiceDeps) {
+// Emails go out after the commit; a failure never fails the request (the tick retries them).
+async function notify(send: () => Promise<number>): Promise<void> {
+  await send().catch((err: unknown) => console.error("Application notice failed", err instanceof Error ? err.name : "unknown"));
+}
+
+export function createApplicationService({ db, circles: circleService, notices }: ApplicationServiceDeps) {
   const voteCount = (decision: VoteDecision) =>
     sql<number>`(select count(*)::int from ${applicationVotes} where ${applicationVotes.applicationId} = ${circleApplications.id} and ${applicationVotes.decision} = ${decision})`;
 
@@ -151,6 +158,7 @@ export function createApplicationService({ db, circles: circleService }: Applica
           throw err;
         }
       });
+      await notify(() => notices.received(id));
       return findOne(id);
     },
 
@@ -169,7 +177,7 @@ export function createApplicationService({ db, circles: circleService }: Applica
      */
     async vote(viewerId: string, circleId: string, applicationId: string, decision: VoteDecision): Promise<ApplicationDto> {
       const now = new Date();
-      const started = await db.transaction(async (tx): Promise<boolean> => {
+      const result = await db.transaction(async (tx): Promise<{ accepted: boolean; started: boolean }> => {
         // Lock order: circle, then application (same as apply), so concurrent votes serialize.
         const circle = await lockCircle(tx, circleId);
         const voter = await membership(tx, circleId, viewerId);
@@ -214,7 +222,7 @@ export function createApplicationService({ db, circles: circleService }: Applica
             .where(eq(circleMembers.circleId, circleId));
           outcome = majorityOutcome(votes, members);
         }
-        if (outcome === null) return false;
+        if (outcome === null) return { accepted: false, started: false };
 
         if (outcome === "ACCEPT") {
           // A preferred payout round taken since applying falls back to the next free one.
@@ -241,12 +249,14 @@ export function createApplicationService({ db, circles: circleService }: Applica
               );
             for (const other of others) await decide(tx, circle, other.id, "REJECT", now);
           }
-          return filled;
+          return { accepted: true, started: filled };
         }
         await decide(tx, circle, applicationId, "REJECT", now);
-        return false;
+        return { accepted: false, started: false };
       });
-      if (started) await circleService.afterStarted(circleId);
+      if (result.started) await circleService.afterStarted(circleId);
+      // The other deciders learn who accepted whom.
+      if (result.accepted) await notify(() => notices.accepted(applicationId));
       return findOne(applicationId);
     },
 

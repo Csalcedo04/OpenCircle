@@ -4,30 +4,55 @@ export const NOTIFICATION_CHANNELS = ["EMAIL", "SMS", "WHATSAPP"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 // DUE_SOON: the pay date is close. DUE_TODAY: it is the pay date. LATE: the pay date passed unpaid.
-export const NOTIFICATION_KINDS = ["DUE_SOON", "DUE_TODAY", "LATE"] as const;
-export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+export const REMINDER_KINDS = ["DUE_SOON", "DUE_TODAY", "LATE"] as const;
+export type ReminderKind = (typeof REMINDER_KINDS)[number];
 
-export interface Notification {
+interface Delivery {
   channel: NotificationChannel;
   // Email address or phone number. Providers use it to deliver; it is never logged or stored.
   to: string;
-  kind: NotificationKind;
   circleName: string;
+}
+
+/** A member hasn't paid a contribution yet. */
+export interface PaymentReminder extends Delivery {
+  kind: ReminderKind;
   deadline: Date;
   amount: AmountDto;
   contributionId: string;
 }
+
+/** Someone applied to a circle; sent to who can decide. Names are display names ("Ana G."). */
+export interface ApplicationReceived extends Delivery {
+  kind: "APPLICATION_RECEIVED";
+  circleId: string;
+  applicationId: string;
+  applicantName: string;
+}
+
+/** An approver accepted an applicant; sent to the other deciders. */
+export interface ApplicationAccepted extends Delivery {
+  kind: "APPLICATION_ACCEPTED";
+  circleId: string;
+  applicationId: string;
+  applicantName: string;
+  acceptedByName: string;
+}
+
+export type Notification = PaymentReminder | ApplicationReceived | ApplicationAccepted;
+export type NotificationKind = Notification["kind"];
 
 /** Delivers one notification; throws when it could not, so the caller retries later. */
 export interface NotificationSender {
   send(notification: Notification): Promise<void>;
 }
 
-/** Development sender: logs what would be sent, without contact data. */
+/** Development sender: logs what would be sent, without contact data or names. */
 export function createLogSender(log: (message: string, data: Record<string, string>) => void = console.info): NotificationSender {
   return {
-    async send({ channel, kind, contributionId }) {
-      log("Notification", { kind, channel, contributionId });
+    async send(n) {
+      const subject = "contributionId" in n ? { contributionId: n.contributionId } : { applicationId: n.applicationId };
+      log("Notification", { kind: n.kind, channel: n.channel, ...subject });
     },
   };
 }

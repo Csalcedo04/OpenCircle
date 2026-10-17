@@ -21,7 +21,8 @@ import { createCircleTick } from "../src/services/circles/circle-cycle";
 import { createReminders } from "../src/services/circles/reminders.service";
 import { createScoring } from "../src/services/circles/scoring.service";
 import { scoreFromFraction } from "../src/services/credit/credit-score";
-import type { Notification } from "../src/services/notifications/sender";
+import type { Notification, PaymentReminder } from "../src/services/notifications/sender";
+import { createApplicationNotices } from "../src/services/circles/application-notices";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
 import { createApplicationService, type ApplicationDto } from "../src/services/circles/application.service";
@@ -46,6 +47,11 @@ let server: TestServer;
 let auth: TestAuth;
 const createdUserIds: string[] = [];
 const approved = new Set<string>();
+
+// Every email the application flow sends; `noticeFailures` makes the next sends throw.
+const outbox: Notification[] = [];
+let noticeFailures = 0;
+let notices: ReturnType<typeof createApplicationNotices>;
 
 async function deleteTestData(): Promise<void> {
   const userFilter = createdUserIds.length > 0 ? inArray(circles.createdBy, createdUserIds) : undefined;
@@ -207,10 +213,22 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "COP", assetScale: 2 }),
       frontendUrl: FRONTEND_URL,
     });
+    notices = createApplicationNotices({
+      db,
+      sender: {
+        send: async (n) => {
+          if (noticeFailures > 0) {
+            noticeFailures--;
+            throw new Error("provider down");
+          }
+          outbox.push(n);
+        },
+      },
+    });
     server = await startServer(
       fakeServices({
         circles: circleService,
-        applications: createApplicationService({ db, circles: circleService }),
+        applications: createApplicationService({ db, circles: circleService, notices }),
         users: createUserService(db),
         kyc,
         members: createMemberService({ db, circles: circleService }),
@@ -1253,8 +1271,8 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
     test("reminders: due soon, due today and late, by email and WhatsApp, once each, only to who hasn't paid", async () => {
       const { circle, owner, deadline, contributionOf } = await startedCircle();
-      const sent: Notification[] = [];
-      const reminders = createReminders({ db, sender: { send: async (n) => void sent.push(n) } });
+      const sent: PaymentReminder[] = [];
+      const reminders = createReminders({ db, sender: { send: async (n) => void ("contributionId" in n && sent.push(n)) } });
 
       assert.equal(await reminders.remindCircle(circle.id, at(deadline, -4)), 0);
 
@@ -1318,6 +1336,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const tick = createCircleTick({
         db,
         now: () => now,
+        notices: { retryRecent: async () => 0 },
         cycle: {
           advanceCircle: async (id, t) => {
             assert.equal(t.getTime(), now.getTime());
@@ -1333,6 +1352,100 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.ok(!seen.includes(waiting.id), "open circle ticked");
       assert.equal(result.circles, seen.length);
       assert.ok(result.failed >= 1);
+    });
+  });
+
+  describe("application emails", () => {
+    const sentFor = (applicationId: string) =>
+      outbox.filter((n): n is Exclude<Notification, PaymentReminder> => "applicationId" in n && n.applicationId === applicationId);
+    const emailOf = (m: Member) => `${m.id}@example.test`;
+
+    test("DELEGATES: applying emails the creator and the delegates; one accepting tells the others who accepted whom", async () => {
+      const owner = await member({ name: "Olga Pérez" });
+      const circle = await createCircle(owner.token, { size: 5 });
+      const [bob, dave] = await Promise.all([member({ name: "Bob Ruiz" }), member({ name: "Dave Mora" })]);
+      await seated(circle.id, owner, bob);
+      await seated(circle.id, owner, dave);
+      const bobSeat = (await getCircle(circle.id)).seats.find((s) => s.userId === bob.id);
+      await server.request(`/api/circles/${circle.id}/approvers`, { method: "PUT", token: owner.token, body: { memberIds: [bobSeat?.memberId] } });
+
+      const carol = await member({ name: "Carol Díaz" });
+      const application = await applied(circle.id, carol);
+      const received = sentFor(application.id);
+      assert.deepEqual(received.map((n) => n.to).sort(), [emailOf(owner), emailOf(bob)].sort(), "only the deciders");
+      for (const n of received) {
+        assert.equal(n.kind, "APPLICATION_RECEIVED");
+        assert.equal(n.channel, "EMAIL");
+        assert.equal(n.circleId, circle.id);
+        assert.equal(n.circleName, circle.name);
+        assert.equal(n.applicantName, displayName(`${PREFIX}Carol Díaz`));
+      }
+
+      assert.equal((await voteOn(circle.id, application.id, bob.token, "ACCEPT")).status, 200);
+      const accepted = sentFor(application.id).filter((n) => n.kind === "APPLICATION_ACCEPTED");
+      assert.deepEqual(
+        accepted.map((n) => n.to),
+        [emailOf(owner)],
+        "the acceptor, the newcomer and non-approvers aren't told",
+      );
+      const notice = accepted[0];
+      assert.ok(notice && notice.kind === "APPLICATION_ACCEPTED");
+      assert.equal(notice.acceptedByName, displayName(`${PREFIX}Bob Ruiz`));
+      assert.equal(notice.applicantName, displayName(`${PREFIX}Carol Díaz`));
+    });
+
+    test("MAJORITY: every member is asked; the one whose vote settles it is named to the others", async () => {
+      const owner = await member({ name: "Olga Pérez" });
+      const circle = await createCircle(owner.token, { size: 4, approvalMode: "MAJORITY" });
+      const ana = await member({ name: "Ana Gómez" });
+      await seated(circle.id, owner, ana);
+
+      const bob = await member({ name: "Bob Ruiz" });
+      const application = await applied(circle.id, bob);
+      assert.deepEqual(
+        sentFor(application.id).map((n) => n.to).sort(),
+        [emailOf(owner), emailOf(ana)].sort(),
+      );
+
+      await voteOn(circle.id, application.id, owner.token, "ACCEPT");
+      assert.equal(sentFor(application.id).filter((n) => n.kind === "APPLICATION_ACCEPTED").length, 0, "told before it was settled");
+      await voteOn(circle.id, application.id, ana.token, "ACCEPT");
+      const accepted = sentFor(application.id).filter((n) => n.kind === "APPLICATION_ACCEPTED");
+      assert.deepEqual(
+        accepted.map((n) => n.to),
+        [emailOf(owner)],
+      );
+      assert.equal(accepted[0]?.kind === "APPLICATION_ACCEPTED" && accepted[0].acceptedByName, displayName(`${PREFIX}Ana Gómez`));
+    });
+
+    test("a rejection sends no acceptance email; repeating a notice sends nothing new", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const bob = await member();
+      const application = await applied(circle.id, bob);
+      assert.equal(sentFor(application.id).length, 1);
+      assert.equal(await notices.received(application.id), 0, "sent twice");
+
+      await voteOn(circle.id, application.id, owner.token, "REJECT");
+      assert.equal(sentFor(application.id).length, 1);
+      assert.equal(await notices.accepted(application.id), 0);
+    });
+
+    test("a failed email doesn't fail the application and is re-sent by the retry", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const bob = await member();
+      const since = new Date(Date.now() - 60_000);
+
+      noticeFailures = 1;
+      const res = await applyTo(circle.id, bob.token);
+      assert.equal(res.status, 201, res.text);
+      const application = res.body as ApplicationDto;
+      assert.equal(sentFor(application.id).length, 0);
+
+      assert.ok((await notices.retryRecent(since)) >= 1);
+      assert.equal(sentFor(application.id).length, 1);
+      assert.equal(await notices.received(application.id), 0);
     });
   });
 });

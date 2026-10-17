@@ -162,7 +162,7 @@ test("POST /api/internal/circles/tick checks x-cron-secret and returns the run s
   const secret = "s".repeat(40);
   let runs = 0;
   const cron = await startServer(
-    fakeServices({ circleTick: { run: async () => (runs++, { circles: 3, failed: 1 }) } }),
+    fakeServices({ circleTick: { run: async () => (runs++, { circles: 3, failed: 1, noticesResent: 2 }) } }),
     { diditWebhookSecret: undefined, cronSecret: secret },
   );
   try {
@@ -178,7 +178,7 @@ test("POST /api/internal/circles/tick checks x-cron-secret and returns the run s
 
     const ok = await tick({ "x-cron-secret": secret });
     assert.equal(ok.status, 200);
-    assert.deepEqual(await ok.json(), { circles: 3, failed: 1 });
+    assert.deepEqual(await ok.json(), { circles: 3, failed: 1, noticesResent: 2 });
     assert.equal(runs, 1);
 
     // Only POST: other methods don't reach the job.

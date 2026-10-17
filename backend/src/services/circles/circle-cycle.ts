@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { circles } from "../../db/schema";
+import type { ApplicationNotices } from "./application-notices";
 import type { PeriodEngine } from "./period-engine";
 import type { RemindersService } from "./reminders.service";
 import type { ScoringService } from "./scoring.service";
@@ -29,10 +30,27 @@ export function createCircleCycle(deps: {
 export interface TickResult {
   circles: number;
   failed: number;
+  // Application emails re-sent because an earlier send failed.
+  noticesResent: number;
 }
 
-/** Runs the cycle for every active real-time circle (test-clock circles move with their clock). */
-export function createCircleTick({ db, cycle, now = () => new Date() }: { db: Db; cycle: CircleCycle; now?: () => Date }) {
+const NOTICE_RETRY_MS = 7 * 86_400_000;
+
+/**
+ * Runs the cycle for every active real-time circle (test-clock circles move with their clock),
+ * then re-sends application emails of the last 7 days that failed.
+ */
+export function createCircleTick({
+  db,
+  cycle,
+  notices,
+  now = () => new Date(),
+}: {
+  db: Db;
+  cycle: CircleCycle;
+  notices: Pick<ApplicationNotices, "retryRecent">;
+  now?: () => Date;
+}) {
   return {
     async run(): Promise<TickResult> {
       const active = await db
@@ -49,7 +67,11 @@ export function createCircleTick({ db, cycle, now = () => new Date() }: { db: Db
           console.error("Circle tick failed", id, err instanceof Error ? err.name : "unknown");
         }
       }
-      return { circles: active.length, failed };
+      const noticesResent = await notices.retryRecent(new Date(now().getTime() - NOTICE_RETRY_MS)).catch((err: unknown) => {
+        console.error("Application notice retry failed", err instanceof Error ? err.name : "unknown");
+        return 0;
+      });
+      return { circles: active.length, failed, noticesResent };
     },
   };
 }
