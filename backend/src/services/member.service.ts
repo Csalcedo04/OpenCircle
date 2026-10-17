@@ -116,10 +116,13 @@ export async function findReviews(db: Db, where: SQL): Promise<ReviewDto[]> {
   }));
 }
 
-export function createMemberService({ db, circles: circleService }: { db: Db; circles: Pick<CircleService, "listForUser"> }) {
+export function createMemberService({ db, circles: circleService }: { db: Db; circles: Pick<CircleService, "listForUser" | "visibleIds"> }) {
   return {
-    /** A member's profile for signed-in users: record, reviews received and their circles. */
-    async get(userId: string): Promise<MemberDto> {
+    /**
+     * A member's profile for signed-in users: record, reviews received and their circles.
+     * Private circles the viewer can't see are left out, and so are reviews from them.
+     */
+    async get(userId: string, viewerId: string): Promise<MemberDto> {
       const [user] = await db
         .select({ id: users.id, fullName: users.fullName, walletAddress: wallets.addressUrl })
         .from(users)
@@ -128,11 +131,16 @@ export function createMemberService({ db, circles: circleService }: { db: Db; ci
         .limit(1);
       if (!user) throw new AppError(404, "MEMBER_NOT_FOUND", "Member not found");
 
-      const [record, received, memberCircles] = await Promise.all([
+      const [record, allReceived, memberCircles] = await Promise.all([
         memberRecords(db, [userId]),
         findReviews(db, eq(reviews.subjectId, userId)),
-        circleService.listForUser(userId),
+        circleService.listForUser(userId, viewerId),
       ]);
+      const visible = await circleService.visibleIds(
+        viewerId,
+        allReceived.map((r) => r.circleId),
+      );
+      const received = allReceived.filter((r) => visible.has(r.circleId));
       return {
         id: user.id,
         displayName: displayName(user.fullName),

@@ -40,6 +40,7 @@ async function main(): Promise<void> {
     // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
     resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
     testClocksEnabled: testClocks !== null,
+    frontendUrl: env.FRONTEND_URL,
     ...(testClocks ? { onStarted: testClocks.runCircle } : {}),
   });
 

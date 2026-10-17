@@ -75,12 +75,18 @@ export async function createClockCircleAction(locale: string, clockId: string, _
   return { error: null }
 }
 
-export async function joinCircleAction(locale: string, circleId: string, _prev: DevState, formData: FormData): Promise<DevState> {
+export async function joinCircleAction(
+  locale: string,
+  circleId: string,
+  invite: string | undefined,
+  _prev: DevState,
+  formData: FormData,
+): Promise<DevState> {
   if (!testClocksEnabled() || !hasLocale(locale)) return { error: "generic" }
   const payoutRound = Number(text(formData.get("payoutRound")))
   if (!Number.isInteger(payoutRound) || payoutRound < 1) return { error: "invalid" }
   try {
-    await joinCircle(circleId, payoutRound)
+    await joinCircle(circleId, payoutRound, invite)
   } catch (err) {
     return failed("Circle join", err)
   }

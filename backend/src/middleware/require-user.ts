@@ -1,4 +1,4 @@
-import type { RequestHandler, Response } from "express";
+import type { Request, RequestHandler, Response } from "express";
 import { verifyCredentials } from "@supabase/server/core";
 import { AppError } from "../errors/app-error";
 
@@ -9,7 +9,7 @@ function bearerToken(header: string | undefined): string | null {
 
 // Verifies the Supabase Auth JWT (Authorization: Bearer <token>) and exposes
 // the caller's claims as `res.locals.user`.
-export const requireUser: RequestHandler = async (req, res, next) => {
+async function authenticate(req: Request, res: Response): Promise<void> {
   const credentials = {
     token: bearerToken(req.get("authorization")),
     apikey: req.get("apikey") ?? null,
@@ -26,6 +26,17 @@ export const requireUser: RequestHandler = async (req, res, next) => {
   }
 
   res.locals.user = data.userClaims;
+}
+
+export const requireUser: RequestHandler = async (req, res, next) => {
+  await authenticate(req, res);
+  next();
+};
+
+// For routes that are public but show more to a signed-in caller: no token → anonymous,
+// a token that doesn't verify → 401 (never silently treated as anonymous).
+export const optionalUser: RequestHandler = async (req, res, next) => {
+  if (req.get("authorization") !== undefined) await authenticate(req, res);
   next();
 };
 

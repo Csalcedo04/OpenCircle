@@ -24,6 +24,8 @@ export interface TestClockCircleDto {
   cadence: string;
   size: number;
   seatsTaken: number;
+  // For the join link: the clock (and its circles) belong to the viewer, who created them.
+  inviteCode: string;
   // The period being collected; null before the circle starts or once every period has closed.
   currentPeriod: {
     number: number;
@@ -94,6 +96,7 @@ export function createTestClockService({ db, engine }: { db: Db; engine: Pick<Pe
       cadence: circle.cadence,
       size: circle.size,
       seatsTaken: seats.length,
+      inviteCode: circle.inviteCode,
       currentPeriod: current && {
         number: current.number,
         state: current.state,

@@ -16,18 +16,21 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t.devClock.joinTitle, robots: { index: false } }
 }
 
-export default async function DevCirclePage({ params }: PageProps<"/[lang]/dev/circles/[id]">) {
+export default async function DevCirclePage({ params, searchParams }: PageProps<"/[lang]/dev/circles/[id]">) {
   // Read the flag per request, never baked into a prerendered shell.
   await connection()
   if (!testClocksEnabled()) notFound()
   const { id } = await params
+  const inviteParam = (await searchParams).invite
+  // A private circle's link carries its invite code.
+  const invite = typeof inviteParam === "string" ? inviteParam : undefined
   const { locale, t } = await getDictionary()
   const d = t.devClock
-  const path = `/${locale}/dev/circles/${id}`
+  const path = `/${locale}/dev/circles/${id}${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`
 
   let circle: ApiCircle
   try {
-    circle = await getApiCircle(id)
+    circle = await getApiCircle(id, invite)
   } catch (err) {
     if (isBackendUnavailable(err)) return <ServiceUnavailable t={t.common} retryHref={path} />
     if (err instanceof BackendError && err.status === 401) {
@@ -68,7 +71,7 @@ export default async function DevCirclePage({ params }: PageProps<"/[lang]/dev/c
           <h2 className="font-heading text-xl font-semibold">{d.joinTitle}</h2>
           <div className="mt-5">
             {circle.status === "OPEN" && free.length > 0 ? (
-              <JoinForm locale={locale} t={d} circleId={circle.id} rounds={free} />
+              <JoinForm locale={locale} t={d} circleId={circle.id} rounds={free} invite={invite} />
             ) : (
               <p className="text-muted-foreground">{d.full}</p>
             )}
