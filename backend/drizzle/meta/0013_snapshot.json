@@ -1,163 +1,9 @@
 {
-  "id": "332a9300-996c-406d-b7af-26e3d830924b",
+  "id": "4a83625b-a287-4c41-8665-2e0f4de2a4b1",
   "prevId": "fcaf93c6-2bc1-4da5-8f25-6ac131d4d572",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.account_deposits": {
-      "name": "account_deposits",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_code": {
-          "name": "asset_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_scale": {
-          "name": "asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'PENDING'"
-        },
-        "failure_code": {
-          "name": "failure_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "incoming_payment_url": {
-          "name": "incoming_payment_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "account_deposits_account_id_created_idx": {
-          "name": "account_deposits_account_id_created_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "account_deposits_account_id_ledger_accounts_id_fk": {
-          "name": "account_deposits_account_id_ledger_accounts_id_fk",
-          "tableFrom": "account_deposits",
-          "tableTo": "ledger_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "account_deposits_incoming_payment_url_unique": {
-          "name": "account_deposits_incoming_payment_url_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "incoming_payment_url"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "account_deposits_status": {
-          "name": "account_deposits_status",
-          "value": "\"account_deposits\".\"status\" in ('PENDING', 'COMPLETED', 'FAILED')"
-        },
-        "account_deposits_value_positive": {
-          "name": "account_deposits_value_positive",
-          "value": "\"account_deposits\".\"value\" > 0"
-        },
-        "account_deposits_asset_scale_range": {
-          "name": "account_deposits_asset_scale_range",
-          "value": "\"account_deposits\".\"asset_scale\" between 0 and 255"
-        },
-        "account_deposits_completed_at": {
-          "name": "account_deposits_completed_at",
-          "value": "(\"account_deposits\".\"status\" = 'COMPLETED') = (\"account_deposits\".\"completed_at\" is not null)"
-        },
-        "account_deposits_failure_code": {
-          "name": "account_deposits_failure_code",
-          "value": "\"account_deposits\".\"failure_code\" is null or \"account_deposits\".\"status\" = 'FAILED'"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "public.application_votes": {
       "name": "application_votes",
       "schema": "",
@@ -251,13 +97,7 @@
           "name": "wallet_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "event_type": {
           "name": "event_type",
@@ -306,27 +146,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "audit_events_account_id_created_at_idx": {
-          "name": "audit_events_account_id_created_at_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -336,19 +155,6 @@
           "tableTo": "wallets",
           "columnsFrom": [
             "wallet_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "audit_events_account_id_ledger_accounts_id_fk": {
-          "name": "audit_events_account_id_ledger_accounts_id_fk",
-          "tableFrom": "audit_events",
-          "tableTo": "ledger_accounts",
-          "columnsFrom": [
-            "account_id"
           ],
           "columnsTo": [
             "id"
@@ -368,12 +174,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "audit_events_subject": {
-          "name": "audit_events_subject",
-          "value": "\"audit_events\".\"wallet_id\" is not null or \"audit_events\".\"account_id\" is not null"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "public.circle_applications": {
@@ -503,7 +304,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -693,7 +494,7 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "circle_invites_user_id_users_id_fk": {
           "name": "circle_invites_user_id_users_id_fk",
@@ -706,7 +507,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "circle_invites_accepted_member_id_circle_members_id_fk": {
           "name": "circle_invites_accepted_member_id_circle_members_id_fk",
@@ -811,13 +612,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "funding_source": {
-          "name": "funding_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'EXTERNAL_WALLET'"
-        },
         "is_approver": {
           "name": "is_approver",
           "type": "boolean",
@@ -875,7 +669,7 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -910,10 +704,6 @@
         "circle_members_grant_mode": {
           "name": "circle_members_grant_mode",
           "value": "\"circle_members\".\"grant_mode\" is null or \"circle_members\".\"grant_mode\" in ('RECURRING', 'PER_ROUND')"
-        },
-        "circle_members_funding_source": {
-          "name": "circle_members_funding_source",
-          "value": "\"circle_members\".\"funding_source\" in ('INTERNAL_ACCOUNT', 'EXTERNAL_WALLET')"
         }
       },
       "isRLSEnabled": true
@@ -1157,7 +947,7 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "circles_test_clock_id_test_clocks_id_fk": {
           "name": "circles_test_clock_id_test_clocks_id_fk",
@@ -1361,7 +1151,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1728,7 +1518,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "friendships_addressee_id_users_id_fk": {
           "name": "friendships_addressee_id_users_id_fk",
@@ -1741,7 +1531,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1842,7 +1632,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1857,327 +1647,6 @@
       },
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": true
-    },
-    "public.ledger_accounts": {
-      "name": "ledger_accounts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "circle_id": {
-          "name": "circle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "system_code": {
-          "name": "system_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "asset_code": {
-          "name": "asset_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_scale": {
-          "name": "asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "balance": {
-          "name": "balance",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "0"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "ledger_accounts_owner_user_id_users_id_fk": {
-          "name": "ledger_accounts_owner_user_id_users_id_fk",
-          "tableFrom": "ledger_accounts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ledger_accounts_circle_id_circles_id_fk": {
-          "name": "ledger_accounts_circle_id_circles_id_fk",
-          "tableFrom": "ledger_accounts",
-          "tableTo": "circles",
-          "columnsFrom": [
-            "circle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ledger_accounts_owner_user_id_unique": {
-          "name": "ledger_accounts_owner_user_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "owner_user_id"
-          ]
-        },
-        "ledger_accounts_circle_id_unique": {
-          "name": "ledger_accounts_circle_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "circle_id"
-          ]
-        },
-        "ledger_accounts_system_unique": {
-          "name": "ledger_accounts_system_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "system_code",
-            "asset_code",
-            "asset_scale"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ledger_accounts_kind": {
-          "name": "ledger_accounts_kind",
-          "value": "\"ledger_accounts\".\"kind\" in ('USER', 'CIRCLE_POOL', 'SYSTEM')"
-        },
-        "ledger_accounts_user_owner": {
-          "name": "ledger_accounts_user_owner",
-          "value": "(\"ledger_accounts\".\"kind\" = 'USER') = (\"ledger_accounts\".\"owner_user_id\" is not null)"
-        },
-        "ledger_accounts_pool_circle": {
-          "name": "ledger_accounts_pool_circle",
-          "value": "(\"ledger_accounts\".\"kind\" = 'CIRCLE_POOL') = (\"ledger_accounts\".\"circle_id\" is not null)"
-        },
-        "ledger_accounts_system_code": {
-          "name": "ledger_accounts_system_code",
-          "value": "(\"ledger_accounts\".\"kind\" = 'SYSTEM') = (\"ledger_accounts\".\"system_code\" is not null)"
-        },
-        "ledger_accounts_system_code_values": {
-          "name": "ledger_accounts_system_code_values",
-          "value": "\"ledger_accounts\".\"system_code\" is null or \"ledger_accounts\".\"system_code\" in ('DEMO_SEED', 'OP_WALLET')"
-        },
-        "ledger_accounts_balance_non_negative": {
-          "name": "ledger_accounts_balance_non_negative",
-          "value": "\"ledger_accounts\".\"kind\" = 'SYSTEM' or \"ledger_accounts\".\"balance\" >= 0"
-        },
-        "ledger_accounts_asset_scale_range": {
-          "name": "ledger_accounts_asset_scale_range",
-          "value": "\"ledger_accounts\".\"asset_scale\" between 0 and 255"
-        }
-      },
-      "isRLSEnabled": true
-    },
-    "public.ledger_transfers": {
-      "name": "ledger_transfers",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "from_account_id": {
-          "name": "from_account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_account_id": {
-          "name": "to_account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_code": {
-          "name": "asset_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_scale": {
-          "name": "asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "ledger_transfers_from_account_created_idx": {
-          "name": "ledger_transfers_from_account_created_idx",
-          "columns": [
-            {
-              "expression": "from_account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "ledger_transfers_to_account_created_idx": {
-          "name": "ledger_transfers_to_account_created_idx",
-          "columns": [
-            {
-              "expression": "to_account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "ledger_transfers_from_account_id_ledger_accounts_id_fk": {
-          "name": "ledger_transfers_from_account_id_ledger_accounts_id_fk",
-          "tableFrom": "ledger_transfers",
-          "tableTo": "ledger_accounts",
-          "columnsFrom": [
-            "from_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ledger_transfers_to_account_id_ledger_accounts_id_fk": {
-          "name": "ledger_transfers_to_account_id_ledger_accounts_id_fk",
-          "tableFrom": "ledger_transfers",
-          "tableTo": "ledger_accounts",
-          "columnsFrom": [
-            "to_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ledger_transfers_idempotency_key_unique": {
-          "name": "ledger_transfers_idempotency_key_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "idempotency_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ledger_transfers_kind": {
-          "name": "ledger_transfers_kind",
-          "value": "\"ledger_transfers\".\"kind\" in ('SEED', 'DEPOSIT', 'CONTRIBUTION')"
-        },
-        "ledger_transfers_value_positive": {
-          "name": "ledger_transfers_value_positive",
-          "value": "\"ledger_transfers\".\"value\" > 0"
-        },
-        "ledger_transfers_distinct_accounts": {
-          "name": "ledger_transfers_distinct_accounts",
-          "value": "\"ledger_transfers\".\"from_account_id\" <> \"ledger_transfers\".\"to_account_id\""
-        },
-        "ledger_transfers_asset_scale_range": {
-          "name": "ledger_transfers_asset_scale_range",
-          "value": "\"ledger_transfers\".\"asset_scale\" between 0 and 255"
-        }
-      },
       "isRLSEnabled": true
     },
     "public.payouts": {
@@ -2509,7 +1978,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "reviews_subject_id_users_id_fk": {
           "name": "reviews_subject_id_users_id_fk",
@@ -2522,7 +1991,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "reviews_circle_id_circles_id_fk": {
           "name": "reviews_circle_id_circles_id_fk",
@@ -2776,7 +2245,7 @@
             "id"
           ],
           "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -3045,7 +2514,7 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "cascade"
         },
         "wallet_grants_wallet_id_wallets_id_fk": {
           "name": "wallet_grants_wallet_id_wallets_id_fk",

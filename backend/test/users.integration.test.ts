@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomInt, randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { eq, inArray, like, or } from "drizzle-orm";
+import { eq, inArray, like, or, sql } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
 import { auditEvents, consentChallenges, creditProfiles, kycVerifications, users, walletBalances, walletGrants, wallets } from "../src/db/schema";
 import type { DiditClient } from "../src/services/didit/client";
@@ -202,6 +202,69 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       });
       assert.equal(second.status, 409);
       assert.equal(errorCode(second.body), "EMAIL_IN_USE");
+    });
+
+    describe("signing up again with the email of an existing profile", () => {
+      const authIds: string[] = [];
+      // A Supabase Auth user; deleting it (after) also deletes its profile (trigger on auth.users).
+      async function authUser(email: string, confirmed: boolean): Promise<string> {
+        const id = randomUUID();
+        authIds.push(id);
+        createdUserIds.push(id);
+        await db.execute(sql`insert into auth.users (id, email, email_confirmed_at) values (${id}, ${email}, ${confirmed ? sql`now()` : null})`);
+        return id;
+      }
+      after(async () => {
+        if (authIds.length > 0) await db.execute(sql`delete from auth.users where id in ${authIds}`);
+      });
+
+      test("the profile's Auth user was deleted → the new Auth user takes it back (201)", async () => {
+        const email = `saver-${randomUUID()}@example.test`;
+        const oldId = randomUUID();
+        createdUserIds.push(oldId);
+        const original = validProfile();
+        const first = await server.request("/api/users/me", { method: "POST", token: await auth.token(oldId, { email }), body: original });
+        assert.equal(first.status, 201);
+
+        const newId = await authUser(email, true);
+        const res = await server.request("/api/users/me", {
+          method: "POST",
+          token: await auth.token(newId, { email }),
+          body: { ...validProfile(), fullName: `${TEST_NAME_PREFIX}Someone Else` },
+        });
+        assert.equal(res.status, 201);
+        // The stored profile, identity included, now under the new id.
+        assert.deepEqual(res.body, { ...(first.body as object), id: newId });
+        assert.equal((await db.select().from(users).where(eq(users.id, oldId))).length, 0);
+      });
+
+      test("the new Auth user has not confirmed the email → 409 EMAIL_IN_USE, profile untouched", async () => {
+        const email = `saver-${randomUUID()}@example.test`;
+        const oldId = randomUUID();
+        createdUserIds.push(oldId);
+        const first = await server.request("/api/users/me", { method: "POST", token: await auth.token(oldId, { email }), body: validProfile() });
+        assert.equal(first.status, 201);
+
+        const newId = await authUser(email, false);
+        const res = await server.request("/api/users/me", { method: "POST", token: await auth.token(newId, { email }), body: validProfile() });
+        assert.equal(res.status, 409);
+        assert.equal(errorCode(res.body), "EMAIL_IN_USE");
+        assert.equal((await db.select().from(users).where(eq(users.id, oldId))).length, 1);
+      });
+
+      test("the profile's Auth user still exists → 409 EMAIL_IN_USE, profile untouched", async () => {
+        const email = `saver-${randomUUID()}@example.test`;
+        const ownerId = await authUser(email, true);
+        const first = await server.request("/api/users/me", { method: "POST", token: await auth.token(ownerId, { email }), body: validProfile() });
+        assert.equal(first.status, 201);
+
+        // Supabase keeps Auth emails unique, so the second account carries another address in auth.users.
+        const otherId = await authUser(`other-${randomUUID()}@example.test`, true);
+        const res = await server.request("/api/users/me", { method: "POST", token: await auth.token(otherId, { email }), body: validProfile() });
+        assert.equal(res.status, 409);
+        assert.equal(errorCode(res.body), "EMAIL_IN_USE");
+        assert.equal((await db.select().from(users).where(eq(users.id, ownerId))).length, 1);
+      });
     });
 
     test("the same document type and number cannot be registered twice → 409 DOCUMENT_IN_USE", async () => {
