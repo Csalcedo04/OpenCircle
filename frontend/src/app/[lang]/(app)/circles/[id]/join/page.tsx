@@ -6,25 +6,24 @@ import { ArrowLeft } from "lucide-react"
 import { KycGate } from "@/components/kyc-gate"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { getCircle, listCircles } from "@/lib/data"
+import { getCircleView } from "@/lib/data"
 import { JoinCircleForm } from "./join-circle-form"
-
-export async function generateStaticParams() {
-  const circles = await listCircles()
-  return circles.map((c) => ({ id: c.id }))
-}
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/circles/[id]/join">): Promise<Metadata> {
   const { t } = await getDictionary()
-  const circle = await getCircle((await params).id)
-  return { title: circle ? fill(t.join.title, { circle: circle.name }) : "OpenCircle" }
+  const view = await getCircleView((await params).id)
+  return { title: view ? fill(t.join.title, { circle: view.circle.name }) : "OpenCircle" }
 }
 
-export default async function JoinPage({ params }: PageProps<"/[lang]/circles/[id]/join">) {
+export default async function JoinPage({ params, searchParams }: PageProps<"/[lang]/circles/[id]/join">) {
   const { id } = await params
+  // A private circle's link carries ?invite=; it's needed to see and join it.
+  const { invite } = await searchParams
+  const inviteCode = typeof invite === "string" ? invite : undefined
   const { locale, t } = await getDictionary()
-  const circle = await getCircle(id)
-  if (!circle) notFound()
+  const view = await getCircleView(id, inviteCode)
+  if (!view) notFound()
+  const { circle } = view
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -40,7 +39,9 @@ export default async function JoinPage({ params }: PageProps<"/[lang]/circles/[i
             <JoinCircleForm
               locale={locale}
               circle={circle}
+              invite={inviteCode}
               t={t.join}
+              tErr={t.circleErrors}
               tc={{
                 owes: t.circle.owes,
                 collateral: t.circle.collateral,

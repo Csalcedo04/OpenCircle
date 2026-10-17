@@ -1,33 +1,48 @@
 import "server-only"
 
-import { circles, members, reviews } from "@/lib/mock/data"
+import { fetchCircle, fetchCircles, fetchMember } from "@/lib/api/backend"
+import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
 import type { Circle, Member, Review } from "@/lib/domain/types"
 
 /**
- * Read API for pages. Backed by demo data today; swap these bodies for the
- * backend (Prisma / route handlers) without touching the UI.
+ * Read API for pages, backed by the OpenCircle API (signed-in requests). Pages get the
+ * UI's domain types; the API shapes are translated in lib/circles/from-api.
  */
 
-export async function listCircles(): Promise<Circle[]> {
-  return circles
+/** A circle with its members (from its seats) and the reviews left in it. */
+export interface CircleView {
+  circle: Circle
+  members: Member[]
+  reviews: Review[]
 }
 
-export async function getCircle(id: string): Promise<Circle | undefined> {
-  return circles.find((c) => c.id === id)
+/** A member with the reviews they received and the circles they're in. */
+export interface MemberView {
+  member: Member
+  reviews: Review[]
+  circles: CircleView[]
 }
 
-export async function listMembers(): Promise<Member[]> {
-  return members
+export async function getCircleView(id: string, invite?: string): Promise<CircleView | undefined> {
+  const dto = await fetchCircle(id, invite)
+  if (!dto) return undefined
+  return { circle: toCircle(dto), members: membersOf(dto), reviews: dto.reviews.map(toReview) }
 }
 
-export async function getMember(id: string): Promise<Member | undefined> {
-  return members.find((m) => m.id === id)
+/** Every listed circle with its details (the list page shows trust and the current round). */
+export async function listCircleViews(): Promise<CircleView[]> {
+  return detailed((await fetchCircles()).map((c) => c.id))
 }
 
-export async function listReviews(): Promise<Review[]> {
-  return reviews
+export async function getMemberView(id: string): Promise<MemberView | undefined> {
+  const dto = await fetchMember(id)
+  if (!dto) return undefined
+  return { member: toMember(dto), reviews: dto.reviews.map(toReview), circles: await detailed(dto.circles.map((c) => c.id)) }
 }
 
-export async function circlesForMember(id: string): Promise<Circle[]> {
-  return circles.filter((c) => c.seats.some((s) => s.memberId === id))
+// The list endpoints return summaries; pages need seats and rounds too. Fine at demo scale
+// (the API lists at most 100 circles); a circles-with-details endpoint would replace this.
+async function detailed(ids: readonly string[]): Promise<CircleView[]> {
+  const views = await Promise.all(ids.map((id) => getCircleView(id)))
+  return views.filter((v) => v !== undefined)
 }

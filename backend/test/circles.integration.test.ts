@@ -416,6 +416,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(profile.displayName, "[test-circles] R.");
       assert.deepEqual(profile.payments, { onTime: 0, late: 1, missed: 0 });
       assert.equal(profile.circlesCompleted, 1);
+      assert.deepEqual(profile.ratings, { count: 1, tenths: 40 });
       assert.ok(profile.memberSince && Date.parse(profile.memberSince) <= Date.now());
       assert.deepEqual(
         profile.reviews.map((r) => ({ author: r.authorName, circle: r.circleName, rating: r.rating, comment: r.comment })),
@@ -436,6 +437,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(res.status, 200);
       const profile = res.body as MemberDto;
       assert.deepEqual(profile.payments, { onTime: 0, late: 0, missed: 0 });
+      assert.deepEqual(profile.ratings, { count: 0, tenths: 0 });
       assert.equal(profile.circlesCompleted, 0);
       assert.equal(profile.memberSince, null);
       assert.deepEqual(profile.reviews, []);

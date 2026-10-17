@@ -5,7 +5,7 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Avatar, PEOPLE } from "@/components/landing/shared"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { listCircles, listMembers, listReviews } from "@/lib/data"
+import { listCircleViews } from "@/lib/data"
 import { amount, formatAmount } from "@/lib/domain/money"
 import { currentRound, potFor } from "@/lib/domain/rounds"
 import { trustFor } from "@/lib/domain/trust"
@@ -18,8 +18,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function CirclesPage() {
   const { locale, t } = await getDictionary()
-  const [circles, members, reviews] = await Promise.all([listCircles(), listMembers(), listReviews()])
-  const byId = new Map(members.map((m) => [m.id, m]))
+  const views = await listCircleViews()
+  const circles = views.map((v) => v.circle)
+  const membersByCircle = new Map(views.map((v) => [v.circle.id, v.members]))
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -61,8 +62,8 @@ export default async function CirclesPage() {
         <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
           {circles.map((circle) => {
             const round = currentRound(circle)
-            const seatMembers = circle.seats.map((s) => byId.get(s.memberId)).filter((m) => m !== undefined)
-            const scores = seatMembers.map((m) => trustFor(m, reviews).score)
+            const seatMembers = membersByCircle.get(circle.id) ?? []
+            const scores = seatMembers.map((m) => trustFor(m).score)
             const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
             const open = circle.size - circle.seats.length
             const pot = potFor(circle)

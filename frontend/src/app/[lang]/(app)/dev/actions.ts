@@ -86,7 +86,7 @@ export async function joinCircleAction(
   const payoutRound = Number(text(formData.get("payoutRound")))
   if (!Number.isInteger(payoutRound) || payoutRound < 1) return { error: "invalid" }
   try {
-    await joinCircle(circleId, payoutRound, invite)
+    await joinCircle(circleId, { payoutRound }, invite)
   } catch (err) {
     return failed("Circle join", err)
   }

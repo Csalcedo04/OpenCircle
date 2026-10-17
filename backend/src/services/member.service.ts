@@ -15,8 +15,16 @@ export interface PaymentRecord {
   missed: number;
 }
 
+/** Ratings received from other members, across all circles. */
+export interface RatingSummary {
+  count: number;
+  /** Average rating ×10 as an integer (46 = 4.6 stars); 0 when there are none. */
+  tenths: number;
+}
+
 export interface MemberRecord {
   payments: PaymentRecord;
+  ratings: RatingSummary;
   circlesCompleted: number;
   /** When they first joined a circle; null if they never have. */
   memberSince: string | null;
@@ -44,9 +52,14 @@ export interface MemberDto extends MemberRecord {
   circles: CircleSummaryDto[];
 }
 
-const emptyRecord = (): MemberRecord => ({ payments: { onTime: 0, late: 0, missed: 0 }, circlesCompleted: 0, memberSince: null });
+export const emptyRecord = (): MemberRecord => ({
+  payments: { onTime: 0, late: 0, missed: 0 },
+  ratings: { count: 0, tenths: 0 },
+  circlesCompleted: 0,
+  memberSince: null,
+});
 
-/** Payment record, circles completed and member-since for many users in three queries. */
+/** Payment record, ratings, circles completed and member-since for many users in four queries. */
 export async function memberRecords(db: Db, userIds: readonly string[]): Promise<Map<string, MemberRecord>> {
   const records = new Map(userIds.map((id) => [id, emptyRecord()]));
   if (userIds.length === 0) return records;
@@ -76,9 +89,23 @@ export async function memberRecords(db: Db, userIds: readonly string[]): Promise
     .where(inArray(circleMembers.userId, ids))
     .groupBy(circleMembers.userId);
 
+  const ratings = await db
+    .select({
+      userId: reviews.subjectId,
+      count: sql<number>`count(*)::int`,
+      tenths: sql<number>`round(avg(${reviews.rating}) * 10)::int`,
+    })
+    .from(reviews)
+    .where(inArray(reviews.subjectId, ids))
+    .groupBy(reviews.subjectId);
+
   for (const p of payments) {
     const r = records.get(p.userId);
     if (r) r.payments = { onTime: p.onTime, late: p.late, missed: p.missed };
+  }
+  for (const r of ratings) {
+    const rec = records.get(r.userId);
+    if (rec) rec.ratings = { count: r.count, tenths: r.tenths };
   }
   for (const m of memberships) {
     const r = records.get(m.userId);
