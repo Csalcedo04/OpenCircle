@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState, useState } from "react"
-import { CheckCircle2, Coins, LoaderCircle, Sparkles, Users, Zap } from "lucide-react"
+import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Sparkles, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,13 @@ const chip = (active: boolean) =>
   cn(
     "flex h-10 min-w-12 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition-all active:scale-95",
     active ? "border-brand-violet bg-brand-violet text-brand-white shadow-2xs" : "border-brand-line bg-brand-canvas text-brand-navy hover:border-brand-navy/30",
+  )
+
+/** Larger option cards (cadence, visibility): a title with a short caption. */
+const card = (active: boolean) =>
+  cn(
+    "flex flex-col items-start gap-1 rounded-2xl border p-3.5 text-left transition-all active:scale-95",
+    active ? "border-brand-violet bg-brand-violet/5 ring-1 ring-brand-violet" : "border-brand-line bg-brand-canvas hover:border-brand-navy/30",
   )
 
 export function CreateCircleForm({ locale, t, tErr }: Props) {
@@ -119,10 +126,11 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.cadence}</legend>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-3">
               {CADENCES.map((c) => (
-                <button type="button" key={c} aria-pressed={cadence === c} onClick={() => setCadence(c)} className={chip(cadence === c)}>
-                  {c === "WEEKLY" ? t.weekly : t.monthly}
+                <button type="button" key={c} aria-pressed={cadence === c} onClick={() => setCadence(c)} className={card(cadence === c)}>
+                  <span className="text-sm font-semibold text-brand-navy">{c === "WEEKLY" ? t.weekly : t.monthly}</span>
+                  <span className="text-xs text-brand-slate">{c === "WEEKLY" ? t.cadenceWeekly : t.cadenceMonthly}</span>
                 </button>
               ))}
             </div>
@@ -131,12 +139,18 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.visibility}</legend>
-            <div className="flex flex-wrap gap-2">
-              {CIRCLE_VISIBILITIES.map((v) => (
-                <button type="button" key={v} aria-pressed={visibility === v} onClick={() => setVisibility(v)} className={chip(visibility === v)}>
-                  {v === "PRIVATE" ? t.visibilityPrivate : t.visibilityPublic}
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-3">
+              {CIRCLE_VISIBILITIES.map((v) => {
+                const Icon = v === "PRIVATE" ? Lock : Globe
+                return (
+                  <button type="button" key={v} aria-pressed={visibility === v} onClick={() => setVisibility(v)} className={card(visibility === v)}>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                      <Icon className={cn("size-4 shrink-0", v === "PRIVATE" ? "text-brand-violet" : "text-brand-slate")} aria-hidden="true" />
+                      {v === "PRIVATE" ? t.visibilityPrivate : t.visibilityPublic}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
             <p className="mt-1.5 text-sm text-muted-foreground">{visibility === "PRIVATE" ? t.visibilityPrivateHelp : t.visibilityPublicHelp}</p>
           </fieldset>

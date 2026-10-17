@@ -4,7 +4,9 @@ import { z } from "zod"
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 import { createClient } from "@/lib/supabase/server"
 import type { CircleVisibility } from "@/lib/flows/circle-invite"
-import { apiCircleSchema, testClockSchema, type ApiCircle, type TestClock } from "@/lib/api/test-clocks"
+import { apiCircleSchema, testClockSchema, type ApiCircle, type NewCircle, type TestClock } from "@/lib/api/test-clocks"
+
+export type { ApiCircle, NewCircle, TestClock }
 
 /**
  * Server-only client for the Express API. Forwards the signed-in user's
@@ -65,17 +67,23 @@ export interface NewProfile {
 /** Identity fields (document, email) are fixed once the profile exists. */
 export type ProfilePatch = Partial<Pick<NewProfile, "fullName" | "phone" | "dob" | "nationality">>
 
-export async function backendFetch<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+export interface BackendFetchOptions extends RequestInit {
+  /** `optional`: send the token when signed in, but don't fail when signed out. */
+  auth?: "required" | "optional"
+}
+
+export async function backendFetch<T>(path: string, schema: z.ZodType<T>, options: BackendFetchOptions = {}): Promise<T> {
+  const { auth = "required", ...init } = options
   const supabase = await createClient()
   // getSession() reads the cookie without re-verifying it; that's fine here
   // because the API verifies the token itself before trusting it.
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  if (!session) throw new BackendError(401, "UNAUTHORIZED", "Not signed in")
+  if (auth === "required" && !session) throw new BackendError(401, "UNAUTHORIZED", "Not signed in")
 
   const headers = new Headers(init.headers)
-  headers.set("authorization", `Bearer ${session.access_token}`)
+  if (session) headers.set("authorization", `Bearer ${session.access_token}`)
   if (init.body !== undefined) headers.set("content-type", "application/json")
 
   const base = backendUrl.safeParse(process.env.BACKEND_API_URL)
@@ -307,9 +315,9 @@ export interface NewCircleRequest extends SeatRequest {
   size: number
   cadence: Cadence
   /** Private (invite link only) unless set to PUBLIC; the API defaults to PRIVATE. */
-  visibility?: CircleVisibility
+  visibility?: CircleVisibility | undefined
   /** Dev only (TEST_CLOCKS_ENABLED): run the circle on this test clock. */
-  testClockId?: string
+  testClockId?: string | undefined
 }
 
 export function createCircle(input: NewCircleRequest): Promise<CircleDto> {
@@ -321,4 +329,29 @@ export function joinCircle(id: string, seat: SeatRequest, invite?: string): Prom
     method: "POST",
     body: JSON.stringify(invite ? { ...seat, invite } : seat),
   })
+}
+
+// ── The signed-in user's savings and circles ───────────────────────────────
+
+const savingsSchema = z.object({
+  walletAddress: z.string(),
+  balance: amountSchema,
+  ics: z.number().nullable(),
+})
+
+export type Savings = z.infer<typeof savingsSchema>
+
+/** Wallet balance and Interledger credit score, or null without a profile yet. */
+export async function getMySavings(): Promise<Savings | null> {
+  try {
+    return await backendFetch("/users/me/savings", savingsSchema)
+  } catch (err) {
+    if (err instanceof BackendError && err.code === "PROFILE_NOT_FOUND") return null
+    throw err
+  }
+}
+
+/** Circles the caller has a seat in, private ones included. */
+export function getMyCircles(): Promise<CircleSummaryDto[]> {
+  return backendFetch("/users/me/circles", z.array(circleSummarySchema))
 }
