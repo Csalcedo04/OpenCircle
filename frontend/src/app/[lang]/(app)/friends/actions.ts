@@ -69,5 +69,7 @@ export async function removeFriendAction(locale: string, userId: string): Promis
     return { error: failed("Friend removal failed", err), done: false }
   }
   revalidatePath(`/${locale}/friends`)
+  // Their profile swaps "remove" back to "add friend".
+  revalidatePath(`/${locale}/members/${encodeURIComponent(userId)}`)
   return { error: null, done: true }
 }

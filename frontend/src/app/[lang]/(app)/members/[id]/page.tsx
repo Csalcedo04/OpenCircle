@@ -3,12 +3,14 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft, CheckCircle2, Shield, Wallet } from "lucide-react"
 import { AddFriendButton } from "@/components/add-friend-button"
+import { RemoveFriendButton } from "@/components/remove-friend-button"
 import { RoundStatusBadge } from "@/components/round-status"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { Stars, TrustDial, formatTenths } from "@/components/trust"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { isBackendUnavailable } from "@/lib/api/backend"
+import { getFriends } from "@/lib/api/friends"
 import { getMemberView } from "@/lib/data"
 import { createClient } from "@/lib/supabase/server"
 import { currentRound } from "@/lib/domain/rounds"
@@ -23,9 +25,14 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/members/[i
 export default async function MemberPage({ params }: PageProps<"/[lang]/members/[id]">) {
   const { id } = await params
   const { locale, t } = await getDictionary()
-  let view, claims
+  let view, claims, friends
   try {
-    ;[view, { data: claims }] = await Promise.all([getMemberView(id), (await createClient()).auth.getClaims()])
+    ;[view, { data: claims }, friends] = await Promise.all([
+      getMemberView(id),
+      (await createClient()).auth.getClaims(),
+      // Only decides add vs remove: if the friends list can't load, keep offering "add friend".
+      getFriends().catch(() => []),
+    ])
   } catch (err) {
     if (isBackendUnavailable(err)) {
       return (
@@ -39,6 +46,7 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
   if (!view) notFound()
   const { member, reviews: received } = view
   const isMe = claims?.claims.sub === member.id
+  const isFriend = friends.some((f) => f.userId === member.id)
   const circles = view.circles.map((v) => v.circle)
   const trust = trustFor(member)
   const stats = [
@@ -82,7 +90,11 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
             </div>
             {!isMe && (
               <div className="mt-4">
-                <AddFriendButton locale={locale} userId={member.id} t={t.friends} />
+                {isFriend ? (
+                  <RemoveFriendButton locale={locale} userId={member.id} t={t.friends} />
+                ) : (
+                  <AddFriendButton locale={locale} userId={member.id} t={t.friends} />
+                )}
               </div>
             )}
           </div>
