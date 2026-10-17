@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { E2E_PREFIX, seatMember, seedCircle, seedProfile, signIn, type TestUser } from "./helpers/users"
+import { seatMember, seedCircle, seedCollectingRound, seedProfile, setContributionStatus, signIn, type TestUser } from "./helpers/users"
 
 // Public circles without an invite link take applications; the circle's members decide.
 
@@ -80,15 +80,31 @@ test.describe("circle governance", () => {
 
     const { data: application } = await db().from("circle_applications").select("status").eq("circle_id", circle.id).single()
     expect(application).toEqual({ status: "ACCEPTED" })
-    expect(circle.inviteCode).toBeTruthy()
   })
 
-  test("a member sees a reminder only for their own unpaid contribution", async ({ page, user }) => {
+  test("a member is reminded of their own unpaid contribution, not of other members' or of a payment in flight", async ({ page, user, newUser, browser }) => {
     await approved(user, page)
-    const circle = await seedCircle(user, { size: 3 })
+    const other = await newUser()
+    await seedProfile(other, { wallet: true, kyc: "Approved" })
+    const circle = await seedCircle(user, { size: 2 })
+    await seatMember(circle.id, other, 2)
+    // Round 1 collecting, due in two days: both members owe their contribution.
+    const contributions = await seedCollectingRound(circle.id, new Date(Date.now() + 2 * 86_400_000))
+
     await page.goto(`/es/circles/${circle.id}`)
-    // OPEN circle: no round being collected, no reminder.
+    await expect(page.getByRole("status").filter({ hasText: "Tu aporte de" })).toBeVisible()
+
+    // The owner's payment is on its way: no reminder for them, even though the other member still owes.
+    await setContributionStatus(contributions.get(user.id) ?? "", "PROCESSING")
+    await page.reload()
     await expect(page.getByText(/Tu aporte de/)).toHaveCount(0)
-    expect(E2E_PREFIX).toBeTruthy()
+
+    // The other member still sees theirs.
+    const context = await browser.newContext({ locale: "es-CO" })
+    const otherPage = await context.newPage()
+    await signIn(otherPage, other, { lands: "circles" })
+    await otherPage.goto(`/es/circles/${circle.id}`)
+    await expect(otherPage.getByRole("status").filter({ hasText: "Tu aporte de" })).toBeVisible()
+    await context.close()
   })
 })

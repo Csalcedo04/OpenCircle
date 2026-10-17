@@ -23,7 +23,8 @@ export type RoundState =
 /** A future round has not opened yet; it has no state in the engine. */
 export type RoundStatus = RoundState | "UPCOMING"
 
-export type ContributionStatus = "VERIFIED" | "PENDING" | "MISSING" | "REFUNDED"
+/** PENDING: not requested yet. PROCESSING: payment sent, waiting for the wallet's confirmation. */
+export type ContributionStatus = "VERIFIED" | "PENDING" | "PROCESSING" | "MISSING" | "REFUNDED"
 
 export type CircleStatus = "OPEN" | "ACTIVE" | "COMPLETED"
 

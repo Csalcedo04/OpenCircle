@@ -86,7 +86,7 @@ const es: Dictionary = {
     applicationStatus: { PENDING: "En revisión", ACCEPTED: "Aceptada", REJECTED: "Rechazada", WITHDRAWN: "Retirada" },
     reminders: {
       dueSoon: "Tu aporte de {amount} vence el {date}.",
-      dueToday: "Tu aporte de {amount} vence hoy.",
+      dueToday: "Tu aporte de {amount} vence en menos de 24 horas.",
       late: "Tu aporte de {amount} está vencido. Págalo ahora para cuidar tu puntaje de cumplimiento.",
     },
     seat: "Ronda {round}",
@@ -131,7 +131,7 @@ const es: Dictionary = {
       REFUNDED: "Los pagos se devolvieron a los miembros.",
       UPCOMING: "Esta ronda aún no abre.",
     },
-    contribution: { VERIFIED: "Verificado", PENDING: "Esperando", MISSING: "Falta", REFUNDED: "Devuelto" },
+    contribution: { VERIFIED: "Verificado", PENDING: "Esperando", PROCESSING: "Enviado, confirmando", MISSING: "Falta", REFUNDED: "Devuelto" },
     refundNote: "Si al cierre falta un pago, se devuelve cada pago que llegó.",
   },
   member: {
@@ -212,6 +212,8 @@ const es: Dictionary = {
     full: "Este círculo está lleno.",
     applyTitle: "Postularme a {circle}",
     applyLead: "Este círculo público recibe miembros por solicitud. Elige cómo aprobaría los pagos tu billetera; los miembros del círculo deciden.",
+    notAdmitted: "Este enlace de invitación no es para ti o ya venció. Pídele uno nuevo a quien creó el círculo.",
+    alreadyMember: "Ya tienes un cupo en este círculo.",
     applying: "Enviando solicitud…",
     applySubmit: "Enviar solicitud",
   },
