@@ -1,6 +1,15 @@
 import "server-only"
 
-import { fetchCircle, fetchCircles, fetchMember, getMyCircles } from "@/lib/api/backend"
+import {
+  BackendError,
+  fetchCircle,
+  fetchCircleApplications,
+  fetchCircles,
+  fetchMember,
+  getMyCircles,
+  isFeatureUnavailable,
+  type ApplicationDto,
+} from "@/lib/api/backend"
 import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
 import type { Circle, Member, Review } from "@/lib/domain/types"
 import type { CircleVisibility } from "@/lib/flows/circle-invite"
@@ -15,8 +24,11 @@ export interface CircleView {
   circle: Circle
   members: Member[]
   reviews: Review[]
-  /** Who can find and join it; `inviteUrl` is set only when the viewer created the circle. */
-  access: { visibility: CircleVisibility; inviteUrl: string | null }
+  /**
+   * Who can find and join it, and what the viewer may do: `canInvite` for the creator and
+   * approvers (who also get `inviteUrl`), `isCreator` for who may change the visibility.
+   */
+  access: { visibility: CircleVisibility; inviteUrl: string | null; canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean }
 }
 
 /** A member with the reviews they received and the circles they're in. */
@@ -33,7 +45,22 @@ export async function getCircleView(id: string, invite?: string): Promise<Circle
     circle: toCircle(dto),
     members: membersOf(dto),
     reviews: dto.reviews.map(toReview),
-    access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl },
+    access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl, ...dto.access },
+  }
+}
+
+/** The circle's applications, or null when the circle doesn't exist or the viewer isn't a member. */
+export async function getCircleApplications(id: string): Promise<ApplicationDto[] | null> {
+  try {
+    return await fetchCircleApplications(id)
+  } catch (err) {
+    if (
+      (err instanceof BackendError && (err.code === "CIRCLE_NOT_FOUND" || err.status === 403 || err.status === 404)) ||
+      isFeatureUnavailable(err)
+    ) {
+      return null
+    }
+    throw err
   }
 }
 
@@ -44,7 +71,12 @@ export async function listCircleViews(): Promise<CircleView[]> {
 
 /** The circles the signed-in user has a seat in, private ones included. */
 export async function listMyCircleViews(): Promise<CircleView[]> {
-  return detailed((await getMyCircles()).map((c) => c.id))
+  try {
+    return await detailed((await getMyCircles()).map((c) => c.id))
+  } catch (err) {
+    if (isFeatureUnavailable(err)) return []
+    throw err
+  }
 }
 
 export async function getMemberView(id: string): Promise<MemberView | undefined> {
@@ -56,6 +88,13 @@ export async function getMemberView(id: string): Promise<MemberView | undefined>
 // The list endpoints return summaries; pages need seats and rounds too. Fine at demo scale
 // (the API lists at most 100 circles); a circles-with-details endpoint would replace this.
 async function detailed(ids: readonly string[]): Promise<CircleView[]> {
-  const views = await Promise.all(ids.map((id) => getCircleView(id)))
-  return views.filter((v) => v !== undefined)
+  const views = await Promise.all(
+    ids.map((id) =>
+      getCircleView(id).catch((err: unknown) => {
+        if (err instanceof BackendError && (err.status === 403 || err.status === 404)) return undefined
+        throw err
+      }),
+    ),
+  )
+  return views.filter((v): v is CircleView => v !== undefined)
 }

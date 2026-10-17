@@ -7,6 +7,7 @@ import { KycGate } from "@/components/kyc-gate"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { getCircleView } from "@/lib/data"
+import { withInvite } from "@/lib/return-path"
 import { JoinCircleForm } from "./join-circle-form"
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/circles/[id]/join">): Promise<Metadata> {
@@ -23,7 +24,9 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
   const { locale, t } = await getDictionary()
   const view = await getCircleView(id, inviteCode)
   if (!view) notFound()
-  const { circle } = view
+  const { circle, access } = view
+  // A public circle without an invite link takes applications; a link, or a private circle, seats directly.
+  const mode = access.visibility === "PUBLIC" && !inviteCode && !access.isMember ? "apply" : "join"
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -31,14 +34,15 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
         <ArrowLeft className="size-4" aria-hidden="true" />
         {circle.name}
       </Link>
-      <h1 className="mt-4 font-heading text-4xl font-semibold tracking-tight">{fill(t.join.title, { circle: circle.name })}</h1>
-      <p className="mt-2 max-w-2xl text-muted-foreground">{t.join.lead}</p>
+      <h1 className="mt-4 font-heading text-4xl font-semibold tracking-tight">{fill(mode === "apply" ? t.join.applyTitle : t.join.title, { circle: circle.name })}</h1>
+      <p className="mt-2 max-w-2xl text-muted-foreground">{mode === "apply" ? t.join.applyLead : t.join.lead}</p>
       <div className="mt-10">
         <Suspense fallback={<p className="text-muted-foreground">{t.common.loading}</p>}>
-          <KycGate locale={locale} t={t.kyc} tc={t.common} returnPath={`/${locale}/circles/${circle.id}/join`}>
+          <KycGate locale={locale} t={t.kyc} tc={t.common} returnPath={withInvite(`/${locale}/circles/${circle.id}/join`, inviteCode)}>
             <JoinCircleForm
               locale={locale}
               circle={circle}
+              mode={mode}
               invite={inviteCode}
               t={t.join}
               tErr={t.circleErrors}

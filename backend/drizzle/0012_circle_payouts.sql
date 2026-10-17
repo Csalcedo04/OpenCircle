@@ -1,4 +1,6 @@
-CREATE TABLE "payouts" (
+-- Idempotent, like 0008 and 0011: safe to re-run on the shared database, where it was first applied
+-- (as 0009, then 0011) before the team's 0011. Payout modes, goals and payouts.
+CREATE TABLE IF NOT EXISTS "payouts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"circle_id" uuid NOT NULL,
 	"round_id" uuid,
@@ -32,13 +34,19 @@ CREATE TABLE "payouts" (
 --> statement-breakpoint
 ALTER TABLE "payouts" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "rounds" ALTER COLUMN "beneficiary_member_id" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "circles" ADD COLUMN "payout_mode" text DEFAULT 'PER_ROUND' NOT NULL;--> statement-breakpoint
-ALTER TABLE "circles" ADD COLUMN "goal_value" bigint;--> statement-breakpoint
+ALTER TABLE "circles" ADD COLUMN IF NOT EXISTS "payout_mode" text DEFAULT 'PER_ROUND' NOT NULL;--> statement-breakpoint
+ALTER TABLE "circles" ADD COLUMN IF NOT EXISTS "goal_value" bigint;--> statement-breakpoint
+ALTER TABLE "payouts" DROP CONSTRAINT IF EXISTS "payouts_circle_id_circles_id_fk";--> statement-breakpoint
 ALTER TABLE "payouts" ADD CONSTRAINT "payouts_circle_id_circles_id_fk" FOREIGN KEY ("circle_id") REFERENCES "public"."circles"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payouts" DROP CONSTRAINT IF EXISTS "payouts_round_id_rounds_id_fk";--> statement-breakpoint
 ALTER TABLE "payouts" ADD CONSTRAINT "payouts_round_id_rounds_id_fk" FOREIGN KEY ("round_id") REFERENCES "public"."rounds"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "payouts" DROP CONSTRAINT IF EXISTS "payouts_member_id_circle_members_id_fk";--> statement-breakpoint
 ALTER TABLE "payouts" ADD CONSTRAINT "payouts_member_id_circle_members_id_fk" FOREIGN KEY ("member_id") REFERENCES "public"."circle_members"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "payouts_circle_id_idx" ON "payouts" USING btree ("circle_id");--> statement-breakpoint
-CREATE INDEX "payouts_member_id_idx" ON "payouts" USING btree ("member_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "payouts_circle_id_idx" ON "payouts" USING btree ("circle_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "payouts_member_id_idx" ON "payouts" USING btree ("member_id");--> statement-breakpoint
+ALTER TABLE "circles" DROP CONSTRAINT IF EXISTS "circles_payout_mode";--> statement-breakpoint
 ALTER TABLE "circles" ADD CONSTRAINT "circles_payout_mode" CHECK ("circles"."payout_mode" in ('PER_ROUND', 'END'));--> statement-breakpoint
+ALTER TABLE "circles" DROP CONSTRAINT IF EXISTS "circles_goal_only_end";--> statement-breakpoint
 ALTER TABLE "circles" ADD CONSTRAINT "circles_goal_only_end" CHECK (("circles"."payout_mode" = 'END') = ("circles"."goal_value" is not null));--> statement-breakpoint
+ALTER TABLE "circles" DROP CONSTRAINT IF EXISTS "circles_goal_divisible";--> statement-breakpoint
 ALTER TABLE "circles" ADD CONSTRAINT "circles_goal_divisible" CHECK ("circles"."goal_value" is null or ("circles"."goal_value" > 0 and "circles"."goal_value" % ("circles"."contribution_value" * "circles"."size") = 0));

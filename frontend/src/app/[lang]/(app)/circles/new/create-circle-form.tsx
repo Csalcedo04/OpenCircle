@@ -191,7 +191,7 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
             </p>
           )}
 
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-start">
             <Link
               href={`/${locale}/circles`}
               aria-disabled={pending}

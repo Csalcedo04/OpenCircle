@@ -58,11 +58,13 @@ export type Round = {
 
 export type Seat = {
   memberId: string
+  seatId?: string | undefined
   displayName?: string | undefined
   payoutRound: number
   /** Collateral held in the pool, minor units of the circle's asset. */
   collateralValue: string
   grant: GrantMode | null
+  isApprover?: boolean | undefined
 }
 
 export type Circle = {
@@ -85,6 +87,8 @@ export type Circle = {
   visibility?: "PRIVATE" | "PUBLIC" | undefined
   cadence?: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | undefined
   payoutOrder?: "BEST_SCORE_FIRST" | "BEST_SCORE_LAST" | undefined
+  /** Who decides applications: the creator and delegates, or a majority of members. */
+  approvalMode?: "DELEGATES" | "MAJORITY" | undefined
 }
 
 export type Review = {

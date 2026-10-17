@@ -1,5 +1,4 @@
-import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
 import {
@@ -11,6 +10,7 @@ import {
   PAYOUT_STATUSES,
   ROUND_STATES,
   auditEvents,
+  circleInvites,
   circleMembers,
   circles,
   contributions,
@@ -24,11 +24,12 @@ import {
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { circleGoal, planGoal, roundsTotal, type CircleTerms, type PayoutMode } from "./circles/circle-plan";
+import { lockCircle, membership, requireManager } from "./circles/circle-access";
+import { addressedTo, consumeInvite, insertStandingCode, inviteUrl as inviteUrlOf, matchedInvite, standingCodeOf } from "./circles/invite-access";
 import { expectedPayouts, payoutPerMember } from "./circles/payout-plan";
 import { payoutSequence, type PayoutOrder } from "./circles/payout-order";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
-import { sameSecret } from "./secret-compare";
 import { emptyRecord, findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
 
 export { displayName };
@@ -46,11 +47,7 @@ type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
 const DEFAULT_FEE_BPS = 200;
 const DEFAULT_GRANT_WEIGHT_BPS = 5_000;
 
-// 32 random bytes: unguessable, and short enough for a link.
-const newInviteCode = () => randomBytes(32).toString("base64url");
-
-
-/** Who is asking: a signed-in user, the invite code from a link, or neither. */
+/** Who is asking: a signed-in user, the invite token from a link, or neither. */
 export interface CircleViewer {
   userId?: string | undefined;
   invite?: string | undefined;
@@ -182,8 +179,13 @@ export interface CircleDto extends CircleSummaryDto {
   startedAt: string | null;
   // Dev only (TEST_CLOCKS_ENABLED): the test clock this circle runs on.
   testClockId: string | null;
-  // The shareable invite link; only the creator gets it.
+  /** The standing invite link (no expiry, no use limit); for the creator and approvers only. */
   inviteUrl: string | null;
+  /**
+   * What the viewer may do here: invite people (creator or approver), change visibility (creator),
+   * see and decide applications (members; who decides depends on the approval mode).
+   */
+  access: { canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean };
   // The round being collected or paid out; null before the circle starts or once it is over.
   currentRound: number | null;
   seats: SeatDto[];
@@ -256,12 +258,7 @@ export interface CircleServiceDeps {
 
 export function createCircleService({ db, resolvePoolWallet, testClocksEnabled = false, onStarted, frontendUrl }: CircleServiceDeps) {
   const notFound = () => new AppError(404, "CIRCLE_NOT_FOUND", "Circle not found");
-  // Spanish is the default locale; the frontend redirects to the visitor's language.
-  const inviteUrl = (id: string, code: string) => {
-    const url = new URL(`/es/circles/${id}`, frontendUrl);
-    url.searchParams.set("invite", code);
-    return url.toString();
-  };
+  const inviteUrl = (id: string, token: string) => inviteUrlOf(frontendUrl, id, token);
 
   // SQL form of canSee without an invite: public, or the viewer has a seat.
   const visibleTo = (viewerId: string) =>
@@ -285,9 +282,17 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     return seat !== undefined;
   }
 
-  // Public, or a member, or holding the current invite code. Anyone else can't tell it exists.
-  async function canSee(circle: { id: string; visibility: CircleVisibility; inviteCode: string }, viewer: CircleViewer): Promise<boolean> {
-    return circle.visibility === "PUBLIC" || sameSecret(viewer.invite, circle.inviteCode) || (await isMember(circle.id, viewer.userId));
+  // Who is joining, for direct invites addressed by user id or by email.
+  async function identity(tx: Tx, userId: string): Promise<{ id: string; email: string }> {
+    const [user] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, userId));
+    if (!user) throw new AppError(404, "PROFILE_NOT_FOUND", "Profile not found");
+    return user;
+  }
+
+  // Public, or a member, or holding a usable invite. Anyone else can't tell it exists.
+  async function canSee(circle: { id: string; visibility: CircleVisibility }, viewer: CircleViewer): Promise<boolean> {
+    if (circle.visibility === "PUBLIC" || (await isMember(circle.id, viewer.userId))) return true;
+    return (await matchedInvite(db, circle.id, viewer.invite, new Date())) !== null;
   }
   const summaryColumns = {
     id: circles.id,
@@ -347,7 +352,6 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         startedAt: circles.startedAt,
         testClockId: circles.testClockId,
         createdBy: circles.createdBy,
-        inviteCode: circles.inviteCode,
         poolWalletAddress: wallets.addressUrl,
       })
       .from(circles)
@@ -389,13 +393,20 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       .from(payouts)
       .where(eq(payouts.circleId, id));
 
-    const [records, circleReviews] = await Promise.all([
+    const [records, circleReviews, viewerSeat] = await Promise.all([
       memberRecords(
         db,
         seats.map((s) => s.userId),
       ),
       findReviews(db, eq(reviews.circleId, id)),
+      viewer.userId === undefined ? null : membership(db, id, viewer.userId),
     ]);
+    const isCreator = viewer.userId === circle.createdBy;
+    const isMember = viewerSeat !== null;
+    const canInvite = isCreator || (viewerSeat?.isApprover ?? false);
+    // DELEGATES: the creator and the delegated approvers decide; MAJORITY: every member votes.
+    const canVote = circle.approvalMode === "MAJORITY" ? isMember : canInvite;
+    const standingCode = canInvite ? await standingCodeOf(db, id, new Date()) : null;
 
     const { assetCode, assetScale } = circle;
     const payoutOf = seatPayouts(circle, seats, roundRows, contributionRows, payoutRows);
@@ -413,7 +424,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
-      inviteUrl: viewer.userId === circle.createdBy ? inviteUrl(circle.id, circle.inviteCode) : null,
+      inviteUrl: standingCode === null ? null : inviteUrl(circle.id, standingCode),
+      access: { canInvite, isCreator, isMember, canVote },
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
@@ -629,6 +641,16 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       return rows.map(toSummary);
     },
 
+    /** Summaries of the given circles, in no particular order; unknown ids are left out. */
+    async summariesOf(circleIds: readonly string[]): Promise<CircleSummaryDto[]> {
+      if (circleIds.length === 0) return [];
+      const rows = await db
+        .select(summaryColumns)
+        .from(circles)
+        .where(inArray(circles.id, [...new Set(circleIds)]));
+      return rows.map(toSummary);
+    },
+
     /** Of `circleIds`, those `viewerId` may see (public, or they are a member). */
     async visibleIds(viewerId: string, circleIds: readonly string[]): Promise<Set<string>> {
       if (circleIds.length === 0) return new Set();
@@ -681,7 +703,6 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
             createdBy: userId,
             testClockId: input.testClockId ?? null,
             visibility: input.visibility ?? "PRIVATE",
-            inviteCode: newInviteCode(),
             approvalMode: input.approvalMode ?? "DELEGATES",
             payoutOrder: input.payoutOrder ?? "BEST_SCORE_FIRST",
           })
@@ -696,6 +717,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           grantMode: input.grantMode,
           isApprover: true,
         });
+        await insertStandingCode(tx, circle.id, userId);
         return circle.id;
       });
       return get(id, { userId });
@@ -704,16 +726,21 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     /** Takes a free seat; filling the last one starts the circle. */
     async join(userId: string, circleId: string, input: SeatInput, invite?: string): Promise<CircleDto> {
       const started = await db.transaction(async (tx) => {
-        // Lock the circle so concurrent joins count seats one at a time.
-        const [circle] = await tx.select().from(circles).where(eq(circles.id, circleId)).for("update");
-        // A non-member can only join a private circle through its current invite link.
-        if (!circle || !(await canSee(circle, { userId, invite }))) throw notFound();
-        // Public circles are semi-public: without the creator's invite link, applicants are
-        // accepted by the creator and their delegates (POST /circles/:id/applications).
-        if (circle.visibility === "PUBLIC" && !sameSecret(invite, circle.inviteCode)) {
+        // Lock the circle so concurrent joins count seats (and invite uses) one at a time.
+        const circle = await lockCircle(tx, circleId);
+        // A code admits anyone; a direct invite only the person it was sent to.
+        const matched = await matchedInvite(tx, circle.id, invite, new Date());
+        const admitted = matched !== null && addressedTo(matched, await identity(tx, userId));
+        // A non-member can only join a private circle through a usable invite.
+        if (!admitted && !(await canSee(circle, { userId }))) throw notFound();
+        // Public circles are semi-public: without an invite, applicants are accepted by the
+        // creator and their delegates (POST /circles/:id/applications).
+        if (circle.visibility === "PUBLIC" && !admitted) {
           throw new AppError(403, "APPLICATION_REQUIRED", "Apply to join this circle; its approvers decide");
         }
-        return takeSeat(tx, circle, userId, input);
+        const started = await takeSeat(tx, circle, userId, input);
+        if (admitted) await consumeInvite(tx, matched, circle, userId);
+        return started;
       });
       if (started) await afterStarted(circleId);
       return get(circleId, { userId });
@@ -729,10 +756,29 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       return get(circleId, { userId });
     },
 
-    /** New invite code; links with the old one stop working. Creator only, while OPEN. */
+    /**
+     * A new standing invite link; the old one stops working (limited codes and direct invites
+     * stay). Creator or approver, while the circle is OPEN.
+     */
     async rotateInviteCode(userId: string, circleId: string): Promise<CircleDto> {
-      await openCircleOf(userId, circleId);
-      await db.update(circles).set({ inviteCode: newInviteCode() }).where(eq(circles.id, circleId));
+      await db.transaction(async (tx) => {
+        const circle = await lockCircle(tx, circleId);
+        await requireManager(tx, circle, userId);
+        if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+        await tx
+          .update(circleInvites)
+          .set({ status: "REVOKED" })
+          .where(
+            and(
+              eq(circleInvites.circleId, circleId),
+              eq(circleInvites.kind, "CODE"),
+              eq(circleInvites.status, "ACTIVE"),
+              isNull(circleInvites.expiresAt),
+              isNull(circleInvites.maxUses),
+            ),
+          );
+        await insertStandingCode(tx, circleId, userId);
+      });
       return get(circleId, { userId });
     },
   };

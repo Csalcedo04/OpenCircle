@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Suspense } from "react"
 import {
   ArrowLeft,
   Calendar,
@@ -17,15 +18,21 @@ import {
   Wallet,
 } from "lucide-react"
 import { CircleRing } from "@/components/circle-ring"
+import { MemberAvatar } from "@/components/member-avatar"
 import { RoundStatusBadge } from "@/components/round-status"
-import { Avatar, PEOPLE } from "@/components/landing/shared"
 import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ShareInviteDialog } from "./share-invite-dialog"
+import { ApplicationsSection } from "@/components/applications-section"
+import { CircleInvitesPanel } from "@/components/invites/circle-invites-panel"
+import { RoundReminderBanner } from "@/components/round-reminder-banner"
+import { ServiceUnavailable } from "@/components/service-unavailable"
+import { ShareDialog } from "@/components/share-dialog"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { InviteLink } from "@/components/invite-link"
-import { getCircleView } from "@/lib/data"
+import { isBackendUnavailable } from "@/lib/api/backend"
+import { getCircleApplications, getCircleView } from "@/lib/data"
+import { roundReminderStatus } from "@/lib/domain/reminders"
+import { createClient } from "@/lib/supabase/server"
 import { localizedInviteUrl } from "@/lib/flows/circle-invite"
 import { siteUrl } from "@/lib/site"
 import { amount, formatAmount, percent } from "@/lib/domain/money"
@@ -46,7 +53,7 @@ import { cn } from "@/lib/utils"
 import { firstName, formatBps, formatDate, ringSeats } from "@/lib/view"
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/circles/[id]">): Promise<Metadata> {
-  const view = await getCircleView((await params).id)
+  const view = await getCircleView((await params).id).catch(() => undefined)
   return { title: view?.circle.name ?? "OpenCircle" }
 }
 
@@ -63,12 +70,29 @@ const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
 export default async function CirclePage({ params, searchParams }: PageProps<"/[lang]/circles/[id]">) {
   const { id } = await params
   // A private circle's link carries its invite code; keep it for the join page too.
-  const inviteParam = (await searchParams).invite
+  const { invite: inviteParam, applied } = await searchParams
   const invite = typeof inviteParam === "string" ? inviteParam : undefined
   const { locale, t } = await getDictionary()
-  const view = await getCircleView(id, invite)
+  let view
+  try {
+    view = await getCircleView(id, invite)
+  } catch (err) {
+    if (isBackendUnavailable(err)) {
+      return (
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+          <ServiceUnavailable t={t.common} retryHref={`/${locale}/circles/${id}`} />
+        </div>
+      )
+    }
+    throw err
+  }
   if (!view) notFound()
   const { circle, members, reviews: circleReviews, access } = view
+  // Members see the applicants and are reminded about their own contribution.
+  const [applications, claims] = access.isMember
+    ? await Promise.all([getCircleApplications(id), (await createClient()).auth.getClaims()])
+    : [null, null]
+  const viewerId = claims?.data?.claims.sub
 
   const byId = new Map(members.map((m) => [m.id, m]))
   const nameOf = (memberId: string) => byId.get(memberId)?.name ?? memberId
@@ -77,12 +101,17 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const pot = potFor(circle)
   const balance = poolBalance(circle)
   const seats = [...circle.seats].sort((a, b) => a.payoutRound - b.payoutRound)
-  const beneficiarySeat = round ? seatFor(circle, round.beneficiaryId) : undefined
+  const beneficiarySeat = round && round.beneficiaryId ? seatFor(circle, round.beneficiaryId) : undefined
   const coverage = beneficiarySeat ? evaluateCoverage(circle, beneficiarySeat) : undefined
-  const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
+  const beneficiaryName = round && round.beneficiaryId ? firstName(nameOf(round.beneficiaryId)) : "—"
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
-  // The creator shares the invite link (it carries the code); a public circle is shared by its page.
+  const ownContribution = round && viewerId ? round.contributions.find((c) => c.memberId === viewerId) : undefined
+  const reminder = round ? roundReminderStatus(round, ownContribution) : null
+  const pendingApplications = applications?.filter((a) => a.status === "PENDING").length ?? 0
+  // Without an invite link, a public circle takes applications instead of direct joins.
+  const seatCta = access.isMember ? null : access.visibility === "PUBLIC" && !invite ? t.circle.applyCta : t.circle.joinCta
+  // Managers share the standing invite link (it carries the code); a public circle is shared by its page.
   const shareUrl = access.inviteUrl
     ? localizedInviteUrl(access.inviteUrl, locale)
     : access.visibility === "PUBLIC"
@@ -100,109 +129,139 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
         <span>{t.circles.title}</span>
       </Link>
 
-      {/* Hero Header Bento Card */}
-      <header className="mt-4 rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
+      {/* Hero Header Bento Card with Orbital Constellation SVG */}
+      <header className="relative isolate mt-4 overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 shadow-[0_24px_48px_-28px_color-mix(in_srgb,var(--color-brand-navy)_22%,transparent)] sm:p-8">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 overflow-hidden opacity-45 select-none"
+        >
+          <svg viewBox="0 0 1200 360" fill="none" className="h-full w-full">
+            <circle cx="1040" cy="120" r="190" stroke="var(--color-brand-line)" strokeWidth="1.5" strokeDasharray="5 7" />
+            <circle cx="1040" cy="120" r="295" stroke="color-mix(in srgb, var(--color-brand-violet) 25%, transparent)" strokeWidth="1" />
+            <path d="M 520 310 Q 820 40 1180 200" stroke="color-mix(in srgb, var(--color-brand-mint) 65%, transparent)" strokeWidth="2" strokeDasharray="4 6" />
+          </svg>
+        </div>
+
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               {circle.city && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
-                  <MapPin className="size-3 text-brand-slate" aria-hidden="true" />
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-xs font-semibold text-brand-navy">
+                  <MapPin className="size-3 text-brand-violet-ink" aria-hidden="true" />
                   <span>{circle.city}</span>
                 </span>
               )}
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
-                <Calendar className="size-3 text-brand-slate" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-xs font-semibold text-brand-navy">
+                <Calendar className="size-3 text-brand-navy/70" aria-hidden="true" />
                 <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
-                <Users className="size-3 text-brand-slate" aria-hidden="true" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-xs font-semibold text-brand-navy">
+                <Users className="size-3 text-brand-navy/70" aria-hidden="true" />
                 <span>{fill(t.circles.members, { count: circle.size })}</span>
               </span>
               {access.visibility === "PRIVATE" ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-violet/20 bg-brand-violet/10 px-3 py-1 text-xs font-semibold text-brand-violet">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-violet/20 bg-brand-violet/10 px-3 py-1 text-xs font-semibold text-brand-violet-ink">
                   <Lock className="size-3" aria-hidden="true" />
                   <span>{t.circles.inviteBadge}</span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-mint/40 bg-brand-mint/20 px-3 py-1 text-xs font-semibold text-brand-navy">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mint px-3 py-1 text-xs font-semibold text-brand-navy">
                   <span>{t.circles.publicBadge}</span>
                 </span>
               )}
             </div>
 
-            <h1 className="mt-4 text-3xl font-bold tracking-tight text-brand-navy sm:text-4xl">
+            <h1 className="mt-4 text-3xl font-semibold tracking-[-0.03em] text-brand-navy sm:text-5xl">
               {circle.name}
             </h1>
 
-            <div className="mt-3 flex items-center gap-2 text-xs text-brand-slate">
-              <Wallet className="size-3.5 shrink-0 text-brand-violet" />
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-brand-slate">
+              <Wallet className="size-3.5 shrink-0 text-brand-violet-ink" />
               <span className="font-medium text-brand-navy">{t.circle.poolWallet}:</span>
-              <code className="rounded-md bg-brand-canvas px-2 py-0.5 font-mono text-[11px] text-brand-navy break-all border border-brand-line/60">
+              <code className="rounded-full bg-brand-mist px-3 py-1 font-mono text-[11px] font-medium text-brand-navy break-all">
                 {circle.poolWalletAddress}
               </code>
             </div>
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-3">
-            {shareUrl && <ShareInviteDialog url={shareUrl} circleName={circle.name} t={t.circle} locale={locale} />}
+            {shareUrl && <ShareDialog url={shareUrl} circleName={circle.name} t={t.share} />}
             {circle.status === "OPEN" ? (
-              <Link
-                href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
-              >
-                {t.circle.joinCta}
-              </Link>
+              seatCta && (
+                <Link
+                  href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
+                >
+                  {seatCta}
+                </Link>
+              )
             ) : (
               round && <RoundStatusBadge status={round.status} label={t.circle.states[round.status]} className="text-sm px-3.5 py-1.5" />
             )}
           </div>
         </div>
 
-        {/* 3 Metric Pills */}
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-brand-line/70 bg-brand-canvas p-4">
-            <p className="text-xs font-medium text-brand-slate flex items-center gap-1">
-              <Coins className="size-3 text-brand-violet" />
-              <span>{t.circle.potLabel}</span>
-            </p>
-            <p className="mt-1 text-2xl font-bold tracking-tight text-brand-navy tabular-nums">
-              {money(pot)}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-brand-line/70 bg-brand-canvas p-4">
-            <p className="text-xs font-medium text-brand-slate flex items-center gap-1">
-              <Users className="size-3 text-brand-navy" />
+        {/* 3 Metric Cards: Mist wells + Deep Navy Pot Authority Card */}
+        <div className="mt-8 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+          <div className="rounded-2xl bg-brand-mist p-4 sm:p-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-brand-navy/70">
+              <Users className="size-3.5 text-brand-navy" />
               <span>{t.circles.perRound}</span>
             </p>
-            <p className="mt-1 text-2xl font-bold tracking-tight text-brand-navy tabular-nums">
+            <p className="mt-1.5 text-2xl font-semibold tracking-[-0.02em] text-brand-navy tabular-nums">
               {formatAmount(circle.contribution, locale)}
             </p>
           </div>
 
-          <div className="rounded-2xl border border-brand-line/70 bg-brand-canvas p-4">
-            <p className="text-xs font-medium text-brand-slate flex items-center gap-1">
-              <ShieldCheck className="size-3 text-brand-violet-ink" />
+          <div className="rounded-2xl bg-brand-mist p-4 sm:p-5">
+            <p className="flex items-center gap-1.5 text-xs font-medium text-brand-navy/70">
+              <ShieldCheck className="size-3.5 text-brand-violet-ink" />
               <span>{t.circle.poolBalance}</span>
             </p>
-            <p className="mt-1 text-2xl font-bold tracking-tight text-brand-navy tabular-nums">
+            <p className="mt-1.5 text-2xl font-semibold tracking-[-0.02em] text-brand-navy tabular-nums">
               {money(balance.total)}
+            </p>
+          </div>
+
+          <div className="relative isolate overflow-hidden rounded-2xl bg-brand-navy p-4 text-brand-white sm:p-5">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-12 -right-12 -z-10 size-36 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_45%,transparent),transparent)]"
+            />
+            <p className="flex items-center gap-1.5 text-xs font-medium text-brand-on-navy">
+              <Coins className="size-3.5 text-brand-mint" />
+              <span>{t.circle.potLabel}</span>
+            </p>
+            <p className="mt-1.5 text-2xl font-semibold tracking-[-0.02em] text-brand-mint tabular-nums">
+              {money(pot)}
             </p>
           </div>
         </div>
       </header>
 
-      {access.inviteUrl && (
+      {reminder && round && (
+        <RoundReminderBanner status={reminder} deadline={round.deadline} amount={formatAmount(circle.contribution, locale)} locale={locale} t={t.circle.reminders} />
+      )}
+
+      {applied === "1" && !access.isMember && (
+        <p role="status" className="oc-fade-in mt-6 rounded-2xl bg-brand-mint/40 p-4 text-sm font-medium text-brand-navy">
+          {t.circle.applicationSent}
+        </p>
+      )}
+
+      {access.canInvite && (
         <div className="mt-8">
-          <InviteLink
-            locale={locale}
-            circleId={circle.id}
-            inviteUrl={access.inviteUrl}
-            visibility={access.visibility}
-            open={circle.status === "OPEN"}
-            t={t.invite}
-          />
+          <Suspense fallback={<p className="text-sm text-brand-slate">{t.common.loading}</p>}>
+            <CircleInvitesPanel
+              locale={locale}
+              circleId={circle.id}
+              circleName={circle.name}
+              open={circle.status === "OPEN"}
+              isCreator={access.isCreator}
+              visibility={access.visibility}
+              t={t}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -241,7 +300,11 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
         <section className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12">
           {/* Left Column: Ring Dial & Pool Vault */}
           <div className="space-y-6 lg:col-span-5">
-            <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs text-center">
+            <div className="relative isolate overflow-hidden rounded-[32px] sm:rounded-[36px] border border-brand-line bg-brand-white p-6 text-center shadow-[0_18px_40px_-28px_color-mix(in_srgb,var(--color-brand-navy)_25%,transparent)]">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-6 -z-10 bg-[radial-gradient(55%_55%_at_50%_40%,color-mix(in_srgb,var(--color-brand-violet)_12%,transparent),transparent_70%),radial-gradient(45%_45%_at_30%_75%,color-mix(in_srgb,var(--color-brand-mint)_40%,transparent),transparent_70%)] blur-xl"
+              />
               <CircleRing
                 className="mx-auto max-w-md"
                 seats={ringSeats(circle, round, byId)}
@@ -267,12 +330,16 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             </div>
 
             {/* Pool Vault Card */}
-            <div className="rounded-[32px] border border-brand-navy bg-brand-navy p-6 text-brand-white shadow-2xs sm:p-7">
+            <div className="relative isolate overflow-hidden rounded-[32px] sm:rounded-[36px] border border-brand-navy bg-brand-navy p-6 text-brand-white shadow-2xs sm:p-7">
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute -top-16 -right-16 -z-10 size-48 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_40%,transparent),transparent)]"
+              />
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold uppercase tracking-wider text-brand-on-navy">{t.circle.poolBalance}</p>
                 <ShieldCheck className="size-4 text-brand-mint" />
               </div>
-              <p className="mt-2 text-3xl font-extrabold tracking-tight tabular-nums">{money(balance.total)}</p>
+              <p className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-brand-mint tabular-nums">{money(balance.total)}</p>
               <div className="mt-4 pt-4 border-t border-brand-white/10 text-xs text-brand-on-navy">
                 <p>{fill(t.circle.balanceParts, { round: money(balance.round), collateral: money(balance.collateral), fees: money(balance.fees) })}</p>
               </div>
@@ -282,16 +349,20 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
           {/* Right Column: Timeline, Contributions & Safe Round Engine */}
           <div className="space-y-6 lg:col-span-7">
             {/* Round Timeline Card */}
-            <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-7">
+            <div className="rounded-[32px] sm:rounded-[36px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-7">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-bold tracking-tight text-brand-navy">
                   {fill(t.circle.currentRound, { round: round.number })}
                 </h2>
                 <div className="text-xs text-brand-slate">
                   {t.circle.beneficiary}:{" "}
-                  <Link href={`/${locale}/members/${round.beneficiaryId}`} className="font-semibold text-brand-navy hover:underline">
-                    {nameOf(round.beneficiaryId)}
-                  </Link>
+                  {round.beneficiaryId ? (
+                    <Link href={`/${locale}/members/${round.beneficiaryId}`} className="font-semibold text-brand-navy hover:underline">
+                      {nameOf(round.beneficiaryId)}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-brand-navy">—</span>
+                  )}
                 </div>
               </div>
 
@@ -317,20 +388,20 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                     )
                   })}
                 </ol>
-                <p className="mt-4 rounded-xl bg-brand-canvas p-3 text-xs leading-relaxed text-brand-slate border border-brand-line/60">
+                <p className="mt-4 rounded-2xl bg-brand-mist p-3.5 text-xs leading-relaxed text-brand-navy">
                   {t.circle.stateHelp[round.status]}
                 </p>
               </div>
             </div>
 
             {/* Contributions Ledger Bento */}
-            <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-7">
+            <div className="rounded-[32px] sm:rounded-[36px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-7">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold tracking-tight text-brand-navy">{t.circle.contributionsTitle}</h2>
                   <p className="text-xs text-brand-slate">{fill(t.circle.collected, { verified: verifiedCount(round), size: circle.size })}</p>
                 </div>
-                <div className="inline-flex items-center gap-1 text-xs font-semibold text-brand-violet-ink">
+                <div className="inline-flex items-center gap-1 rounded-full bg-brand-mist px-3 py-1 text-xs font-semibold text-brand-violet-ink">
                   <CheckCircle2 className="size-3.5" />
                   <span>Interledger STREAM</span>
                 </div>
@@ -338,17 +409,16 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
 
               {/* Cards Grid for Participants */}
               <div className="mt-4 grid grid-cols-1 gap-2.5">
-                {round.contributions.map((c, idx) => {
+                {round.contributions.map((c) => {
                   const Icon = contributionIcon[c.status]
                   const personName = nameOf(c.memberId)
-                  const person = PEOPLE[idx % PEOPLE.length]
                   return (
                     <div
                       key={c.memberId}
                       className="flex items-center justify-between rounded-2xl border border-brand-line/80 bg-brand-canvas px-4 py-3 transition-colors hover:border-brand-navy/20"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <Avatar name={person?.name ?? personName} tone={person?.tone ?? "navy"} size="sm" />
+                        <MemberAvatar name={personName} id={c.memberId} size="sm" />
                         <Link href={`/${locale}/members/${c.memberId}`} className="truncate text-sm font-semibold text-brand-navy hover:underline">
                           {personName}
                         </Link>
@@ -431,10 +501,10 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                     </span>
                     <div>
                       <h3 className="text-base font-bold text-brand-navy">
-                        {locale === "es" ? "Comprobante de desembolso del pozo" : "Pot payout receipt"}
+                        {t.circle.receiptTitle}
                       </h3>
                       <p className="text-xs text-brand-slate">
-                        {locale === "es" ? "Liquidación verificable vía Open Payments / STREAM" : "Verifiable settlement via Open Payments / STREAM"}
+                        {t.circle.receiptSubtitle}
                       </p>
                     </div>
                   </div>
@@ -479,6 +549,12 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             <TabsTrigger value="reviews" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
               {t.circle.tabs.reviews} ({circleReviews.length})
             </TabsTrigger>
+            {applications !== null && (
+              <TabsTrigger value="applications" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
+                {t.circle.tabs.applications}
+                {pendingApplications > 0 && <span className="ml-1 rounded-full bg-brand-violet px-1.5 text-[10px] text-brand-white">{pendingApplications}</span>}
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -558,7 +634,47 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             )}
           </div>
         </TabsContent>
+
+        {applications !== null && (
+          <TabsContent value="applications" className="mt-6">
+            <ApplicationsSection
+              locale={locale}
+              circleId={circle.id}
+              applications={applications}
+              canVote={access.canVote}
+              approvalMode={circle.approvalMode ?? "DELEGATES"}
+              isCreator={access.isCreator}
+              creatorUserId={access.isCreator ? viewerId : undefined}
+              seats={circle.seats}
+              t={t.circle}
+              tErr={t.circleErrors}
+            />
+          </TabsContent>
+        )}
       </Tabs>
+
+      {/* Mobile Sticky Action Bar (positioned above the floating AppMobileDock and its elevated center button) */}
+      {circle.status === "OPEN" && seatCta && (
+        <div className="fixed inset-x-3 bottom-24 z-30 mx-auto max-w-md rounded-3xl border border-brand-line bg-brand-white/95 px-4 py-3 backdrop-blur-md shadow-[0_10px_28px_-8px_color-mix(in_srgb,var(--color-brand-navy)_25%,transparent)] md:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-brand-navy">{circle.name}</p>
+              <p className="text-xs font-medium text-brand-slate">
+                {t.circle.stickyContribution}:{" "}
+                <span className="font-mono font-bold text-brand-navy tabular-nums">
+                  {formatAmount(circle.contribution, locale)}
+                </span>
+              </p>
+            </div>
+            <Link
+              href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-brand-violet px-5 text-xs font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-transform active:scale-95"
+            >
+              {seatCta}
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

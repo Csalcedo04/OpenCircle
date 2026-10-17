@@ -18,6 +18,8 @@ const landing = {
     language: "Idioma",
     switchTo: "English",
     circleMobile: "Círculo",
+    howMobile: "Pasos",
+    safetyMobile: "Seguridad",
     quickNavAria: "Navegación móvil rápida",
     demoMobile: "Demo",
   },

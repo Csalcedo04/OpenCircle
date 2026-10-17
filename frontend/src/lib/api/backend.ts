@@ -24,6 +24,10 @@ export const BACKEND_UNAVAILABLE = "BACKEND_UNAVAILABLE"
 
 export const isBackendUnavailable = (err: unknown): boolean => err instanceof BackendError && err.code === BACKEND_UNAVAILABLE
 
+/** The API answered 404 NOT_FOUND ("Route not found"): this server deploy doesn't have the route yet. */
+export const isFeatureUnavailable = (err: unknown): boolean =>
+  err instanceof BackendError && err.status === 404 && err.code === "NOT_FOUND"
+
 const unavailable = (why: string) => new BackendError(503, BACKEND_UNAVAILABLE, why)
 
 export class BackendError extends Error {
@@ -214,21 +218,21 @@ const reviewSchema = z.object({
   createdAt: z.string(),
 })
 
-const circleSummarySchema = z.object({
+export const circleSummarySchema = z.object({
   id: z.uuid(),
   name: z.string(),
-  city: z.string().nullable(),
+  city: z.string().nullable().optional().transform((v) => v ?? null),
   status: circleStatusSchema,
   contribution: amountSchema,
   size: z.number().int(),
   seatsTaken: z.number().int(),
   cadence: cadenceSchema,
   /** Who receives the pot first, by reliability score; rounds are assigned when the circle fills. */
-  payoutOrder: payoutOrderSchema,
+  payoutOrder: payoutOrderSchema.nullable().optional().transform((v) => v ?? "BEST_SCORE_FIRST"),
   createdAt: z.string(),
 })
 
-const circleSchema = circleSummarySchema.extend({
+export const circleSchema = circleSummarySchema.extend({
   feeBps: z.number().int(),
   threshold: amountSchema,
   grantWeightBps: z.number().int(),
@@ -240,27 +244,61 @@ const circleSchema = circleSummarySchema.extend({
       memberId: z.uuid(),
       userId: z.uuid(),
       displayName: z.string(),
-      payoutRound: z.number().int(),
+      payoutRound: z.number().int().nullable(),
       collateral: amountSchema,
       grantMode: z.enum(["RECURRING", "PER_ROUND"]).nullable(),
       record: recordSchema,
+      /** Accepts applicants and invites people (the creator always does). */
+      isApprover: z.boolean().nullable().optional().transform((v) => v ?? false),
     }),
   ),
   rounds: z.array(
     z.object({
       number: z.number().int(),
       state: z.enum(["UPCOMING", "COLLECTING", "FUNDED", "RISK_CHECK", "BLOCKED", "PAYING_OUT", "PAID_OUT", "REFUNDED"]),
-      beneficiaryMemberId: z.uuid(),
-      startsAt: z.string(),
+      beneficiaryMemberId: z.uuid().nullable(),
+      startsAt: z.string().nullable().optional(),
       deadline: z.string(),
-      contributions: z.array(z.object({ memberId: z.uuid(), status: z.string() })),
+      contributions: z
+        .array(z.object({ memberId: z.uuid(), status: z.string() }))
+        .nullable()
+        .optional()
+        .transform((v) => v ?? []),
     }),
   ),
-  reviews: z.array(reviewSchema),
-  visibility: z.enum(["PRIVATE", "PUBLIC"]),
-  /** Only for the circle's creator; null otherwise. */
-  inviteUrl: z.string().nullable(),
+  reviews: z.array(reviewSchema).nullable().optional().transform((v) => v ?? []),
+  visibility: z.enum(["PRIVATE", "PUBLIC"]).nullable().optional().transform((v) => v ?? "PUBLIC"),
+  /** Who decides applications to a public circle: the creator and delegates, or a majority of members. */
+  approvalMode: z.enum(["DELEGATES", "MAJORITY"]).nullable().optional().transform((v) => v ?? "DELEGATES"),
+  /** The standing invite link; for the creator and approvers, null otherwise. */
+  inviteUrl: z.string().nullable().optional().transform((v) => v ?? null),
+  /** What the viewer may do here; `canVote` follows the approval mode. */
+  access: z
+    .object({
+      canInvite: z.boolean().nullable().optional().transform((v) => v ?? false),
+      isCreator: z.boolean().nullable().optional().transform((v) => v ?? false),
+      isMember: z.boolean().nullable().optional().transform((v) => v ?? false),
+      canVote: z.boolean().nullable().optional().transform((v) => v ?? false),
+    })
+    .nullable()
+    .optional()
+    .transform((v) => v ?? { canInvite: false, isCreator: false, isMember: false, canVote: false }),
 })
+
+// Applications to a public circle, decided by its approvers or a majority of members.
+const applicationSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(["PENDING", "ACCEPTED", "REJECTED", "WITHDRAWN"]),
+  /** Name, wallet and ICS only: what members need to decide. No user id. */
+  applicant: z.object({ fullName: z.string().nullable(), walletAddress: z.string(), ics: z.number().nullable() }),
+  votes: z.object({ accept: z.number().int(), reject: z.number().int() }),
+  createdAt: z.string(),
+  decidedAt: z.string().nullable(),
+})
+
+export type ApplicationDto = z.infer<typeof applicationSchema>
+export type ApplicationStatus = ApplicationDto["status"]
+export type VoteDecision = "ACCEPT" | "REJECT"
 
 const memberSchema = recordSchema.extend({
   id: z.uuid(),
@@ -331,10 +369,36 @@ export function createCircle(input: NewCircleRequest): Promise<CircleDto> {
   return backendFetch("/circles", circleSchema, { method: "POST", body: JSON.stringify(input) })
 }
 
+/** Asks for a seat in a PUBLIC circle; its approvers (or a majority) decide. */
+export function applyToCircle(id: string, seat: SeatRequest): Promise<ApplicationDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications`, applicationSchema, { method: "POST", body: JSON.stringify(seat) })
+}
+
+/** The circle's applications, oldest first. Members only (404 otherwise). */
+export function fetchCircleApplications(id: string): Promise<ApplicationDto[]> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications`, z.array(applicationSchema))
+}
+
+/** One member's decision; returns the application with its new counts and status. */
+export function voteOnApplication(id: string, applicationId: string, decision: VoteDecision): Promise<ApplicationDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications/${encodeURIComponent(applicationId)}/votes`, applicationSchema, {
+    method: "POST",
+    body: JSON.stringify({ decision }),
+  })
+}
+
 export function joinCircle(id: string, seat: SeatRequest, invite?: string): Promise<CircleDto> {
   return backendFetch(`/circles/${encodeURIComponent(id)}/join`, circleSchema, {
     method: "POST",
     body: JSON.stringify(invite ? { ...seat, invite } : seat),
+  })
+}
+
+/** Designates circle members as approvers. Creator only (403 otherwise). */
+export function setCircleApprovers(id: string, memberIds: readonly string[]): Promise<CircleDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/approvers`, circleSchema, {
+    method: "PUT",
+    body: JSON.stringify({ memberIds }),
   })
 }
 
@@ -390,18 +454,18 @@ const dashboardSchema = z.object({
       seatsTaken: z.number().int(),
       contribution: amountSchema,
       expectedPayout: amountSchema,
-      myPayoutRound: z.number().int(),
+      myPayoutRound: z.number().int().nullable().optional().transform((v) => v ?? 1),
       currentRound: z.number().int().nullable(),
       now: isoDate,
-      onTestClock: z.boolean(),
+      onTestClock: z.boolean().nullable().optional().transform((v) => v ?? false),
       rounds: z.array(
         z.object({
           number: z.number().int(),
           state: z.enum(["UPCOMING", "COLLECTING", "FUNDED", "RISK_CHECK", "BLOCKED", "PAYING_OUT", "PAID_OUT", "REFUNDED"]),
-          startsAt: isoDate,
+          startsAt: isoDate.nullable().optional().transform((v) => v ?? ""),
           deadline: isoDate,
-          mine: z.boolean(),
-          verified: z.number().int(),
+          mine: z.boolean().nullable().optional().transform((v) => v ?? false),
+          verified: z.number().int().nullable().optional().transform((v) => v ?? 0),
           myStatus: contributionStatusSchema.nullable(),
           myFailureCode: z.string().nullable(),
         }),

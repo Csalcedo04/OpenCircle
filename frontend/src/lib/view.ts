@@ -15,18 +15,20 @@ export function ringSeats(circle: Circle, round: Round | undefined, byId: Map<st
         initials: initials(name),
         label: name,
         state: status === "VERIFIED" ? "verified" : "pending",
-        beneficiary: round?.beneficiaryId === seat.memberId,
+        beneficiary: Boolean(round?.beneficiaryId && round.beneficiaryId === seat.memberId),
       }
     })
 }
 
 export function formatDate(iso: string, locale: Locale): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
   return new Intl.DateTimeFormat(locale === "es" ? "es-CO" : "en-US", {
     day: "numeric",
     month: "long",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(iso))
+  }).format(d)
 }
 
 export function formatBps(bps: number, locale: Locale): string {

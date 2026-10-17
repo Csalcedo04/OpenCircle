@@ -8,7 +8,6 @@ import {
   auditEvents,
   circleApplications,
   circleMembers,
-  circles,
   creditProfiles,
   users,
   wallets,
@@ -18,6 +17,7 @@ import type { CircleDto, CircleService, SeatInput } from "../circle.service";
 import { publicProfileColumns, toPublicProfile, type PublicProfileDto } from "../user.service";
 import type { Tx } from "../wallet.service";
 import type { ApplicationNotices } from "./application-notices";
+import { circleNotFound, lockCircle, membership, type CircleRow } from "./circle-access";
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type VoteDecision = (typeof VOTE_DECISIONS)[number];
@@ -32,11 +32,8 @@ export interface ApplicationDto {
   decidedAt: string | null;
 }
 
-const circleNotFound = () => new AppError(404, "CIRCLE_NOT_FOUND", "Circle not found");
 // Non-members can't tell an unknown application from one they may not see.
 const applicationNotFound = () => new AppError(404, "APPLICATION_NOT_FOUND", "Application not found");
-
-type CircleRow = typeof circles.$inferSelect;
 
 /** Pure: the decision a set of votes reaches under MAJORITY, or null while it is still open. */
 export function majorityOutcome(votes: { accept: number; reject: number }, members: number): VoteDecision | null {
@@ -92,20 +89,6 @@ export function createApplicationService({ db, circles: circleService, notices }
     const [application] = await find(and(eq(circleApplications.id, id)));
     if (!application) throw applicationNotFound();
     return application;
-  }
-
-  async function membership(executor: Db | Tx, circleId: string, userId: string) {
-    const [member] = await executor
-      .select({ id: circleMembers.id, isApprover: circleMembers.isApprover })
-      .from(circleMembers)
-      .where(and(eq(circleMembers.circleId, circleId), eq(circleMembers.userId, userId)));
-    return member ?? null;
-  }
-
-  async function lockCircle(tx: Tx, circleId: string): Promise<CircleRow> {
-    const [circle] = await tx.select().from(circles).where(eq(circles.id, circleId)).for("update");
-    if (!circle) throw circleNotFound();
-    return circle;
   }
 
   async function decide(tx: Tx, circle: CircleRow, applicationId: string, decision: VoteDecision, now: Date): Promise<void> {

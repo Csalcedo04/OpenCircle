@@ -49,11 +49,12 @@ test.describe("circles on real data", () => {
   })
 
   test("two members join through the invite link; the last seat starts the circle", async ({ page, user, newUser, browser }) => {
-    // The creator's circle is private by default: others join with its invite link.
+    // The creator's circle is private by default: others join with its standing invite code.
     await approved(user, page)
     const circle = await seedCircle(user, { size: 3 })
     await db().from("circles").update({ visibility: "PRIVATE" }).eq("id", circle.id)
     const invite = await inviteCodeOf(circle.id)
+    expect(invite).toBe(circle.inviteCode)
 
     for (const round of [2, 3]) {
       const member = await newUser()
@@ -72,6 +73,9 @@ test.describe("circles on real data", () => {
     expect(started?.started_at).not.toBeNull()
     const { data: rounds } = await db().from("rounds").select("number, state").eq("circle_id", circle.id).order("number")
     expect(rounds?.map((r) => r.state)).toEqual(["COLLECTING", "UPCOMING", "UPCOMING"])
+    // Both joins went through the same code.
+    const { data: code } = await db().from("circle_invites").select("uses").eq("token", invite).single()
+    expect(code).toEqual({ uses: 2 })
 
     // Without the invite, a private circle doesn't exist for outsiders.
     const outsider = await newUser()

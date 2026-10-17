@@ -286,8 +286,8 @@ export const circles = pgTable(
     visibility: text("visibility").$type<(typeof CIRCLE_VISIBILITIES)[number]>().notNull().default("PRIVATE"),
     // Seats are reordered by score when the circle fills; until then a seat's round is provisional.
     payoutOrder: text("payout_order").$type<(typeof PAYOUT_ORDERS)[number]>().notNull().default("BEST_SCORE_FIRST"),
-    // Secret for the invite link (32 random bytes, base64url). Rotating it revokes old links.
-    inviteCode: text("invite_code").notNull().unique(),
+    // Legacy: superseded by `circle_invites` (migration 0011). Never read or written anymore.
+    inviteCode: text("invite_code").unique(),
     // Number of seats; also of rounds when payout_mode is PER_ROUND.
     size: integer("size").notNull(),
     payoutMode: text("payout_mode").$type<(typeof PAYOUT_MODES)[number]>().notNull().default("PER_ROUND"),
@@ -424,6 +424,84 @@ export const applicationVotes = pgTable(
   (t) => [
     primaryKey({ name: "application_votes_pkey", columns: [t.applicationId, t.memberId] }),
     check("application_votes_decision", sql`${t.decision} in (${inList(VOTE_DECISIONS)})`),
+  ],
+).enableRLS();
+
+// ── Friends and circle invitations ───────────────────────────────────────────
+
+export const FRIENDSHIP_STATUSES = ["PENDING", "ACCEPTED"] as const;
+export const INVITE_KINDS = ["CODE", "DIRECT"] as const;
+// Stored states. Whether an ACTIVE invite is still usable (not expired, uses left) is derived on read.
+export const INVITE_STATUSES = ["ACTIVE", "ACCEPTED", "REVOKED"] as const;
+
+// One row per pair of users: the request (PENDING) becomes the friendship (ACCEPTED). Rejecting,
+// withdrawing or removing deletes the row, so there is no history. Goes with either user.
+export const friendships = pgTable(
+  "friendships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    requesterId: uuid("requester_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addresseeId: uuid("addressee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status").$type<(typeof FRIENDSHIP_STATUSES)[number]>().notNull().default("PENDING"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The pair is unordered: A→B and B→A are the same relationship.
+    uniqueIndex("friendships_pair_unique").on(sql`least(${t.requesterId}, ${t.addresseeId})`, sql`greatest(${t.requesterId}, ${t.addresseeId})`),
+    index("friendships_addressee_id_idx").on(t.addresseeId),
+    check("friendships_status", sql`${t.status} in (${inList(FRIENDSHIP_STATUSES)})`),
+    check("friendships_not_self", sql`${t.requesterId} <> ${t.addresseeId}`),
+    check("friendships_accepted_at", sql`(${t.status} = 'ACCEPTED') = (${t.acceptedAt} is not null)`),
+  ],
+).enableRLS();
+
+// A way into an OPEN circle, made by its creator or an approver. CODE: a shareable link, optionally
+// expiring or limited to `max_uses` joins. DIRECT: for one person (a user, or an email that may not
+// have an account yet), single use. `token` is the secret in the link: compared in constant time,
+// never looked up by equality. No cascade from the circle: a circle's history is never erased.
+export const circleInvites = pgTable(
+  "circle_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    circleId: uuid("circle_id")
+      .notNull()
+      .references(() => circles.id),
+    kind: text("kind").$type<(typeof INVITE_KINDS)[number]>().notNull(),
+    token: text("token").notNull().unique(),
+    status: text("status").$type<(typeof INVITE_STATUSES)[number]>().notNull().default("ACTIVE"),
+    // Inviters hold a seat, so they can't be deleted while the circle exists.
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    // DIRECT: the invitee, once known. Set at creation for an existing user, or when the email's owner joins.
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    // DIRECT by email: lowercase, as users.email. Shown only to the circle's approvers.
+    email: text("email"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    // CODE only; null is unlimited.
+    maxUses: integer("max_uses"),
+    uses: integer("uses").notNull().default(0),
+    // DIRECT: the seat the invite produced.
+    acceptedMemberId: uuid("accepted_member_id").references(() => circleMembers.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("circle_invites_circle_id_idx").on(t.circleId),
+    index("circle_invites_user_id_idx").on(t.userId),
+    index("circle_invites_email_idx").on(t.email).where(sql`${t.email} is not null`),
+    check("circle_invites_kind", sql`${t.kind} in (${inList(INVITE_KINDS)})`),
+    check("circle_invites_status", sql`${t.status} in (${inList(INVITE_STATUSES)})`),
+    check("circle_invites_direct_target", sql`(${t.kind} = 'DIRECT') = (${t.userId} is not null or ${t.email} is not null)`),
+    check("circle_invites_max_uses", sql`${t.maxUses} is null or (${t.kind} = 'CODE' and ${t.maxUses} >= 1)`),
+    check("circle_invites_uses_non_negative", sql`${t.uses} >= 0`),
+    check("circle_invites_accepted", sql`(${t.status} = 'ACCEPTED') = (${t.acceptedMemberId} is not null)`),
+    check("circle_invites_accepted_direct", sql`${t.acceptedMemberId} is null or ${t.kind} = 'DIRECT'`),
+    check("circle_invites_email_lower", sql`${t.email} is null or ${t.email} = lower(${t.email})`),
   ],
 ).enableRLS();
 

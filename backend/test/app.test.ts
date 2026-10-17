@@ -337,3 +337,60 @@ test("POST /api/circles/plan: signed in, validated, returns the service's plan a
     await planServer.close();
   }
 });
+
+test("invite and friend routes require a token → 401", async () => {
+  const circle = "11111111-1111-4111-8111-111111111111";
+  const id = "22222222-2222-4222-8222-222222222222";
+  for (const [method, path, body] of [
+    ["POST", `/api/circles/${circle}/invites`, { kind: "CODE" }],
+    ["GET", `/api/circles/${circle}/invites`, undefined],
+    ["DELETE", `/api/circles/${circle}/invites/${id}`, undefined],
+    ["GET", "/api/users/me/invitations", undefined],
+    ["GET", "/api/friends", undefined],
+    ["GET", "/api/friends/requests", undefined],
+    ["POST", "/api/friends/requests", { email: "ana@example.test" }],
+    ["POST", `/api/friends/requests/${id}/accept`, undefined],
+    ["DELETE", `/api/friends/requests/${id}`, undefined],
+    ["DELETE", `/api/friends/${id}`, undefined],
+  ] as const) {
+    const res = await server.request(path, { method, body });
+    assert.equal(res.status, 401, `${method} ${path}`);
+  }
+});
+
+test("invite and friend routes validate ids and bodies before reaching the service", async () => {
+  const token = await auth.token("77777777-7777-4777-8777-777777777777");
+  const circle = "11111111-1111-4111-8111-111111111111";
+  const id = "22222222-2222-4222-8222-222222222222";
+  const invites = `/api/circles/${circle}/invites`;
+  const twentyOne = Array.from({ length: 21 }, (_, i) => ({ email: `p${i}@example.test` }));
+  for (const [method, path, body, status, code] of [
+    ["POST", invites, {}, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "LINK" }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "CODE", maxUses: 0 }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "CODE", expiresInHours: 721 }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "CODE", targets: [{ email: "a@b.co" }] }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: [] }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: twentyOne }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: [{ email: "not-an-email" }] }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: [{ userId: "x" }] }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: [{ email: "a@b.co" }], expiresInDays: 0 }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: [{ email: "a@b.co" }], expiresInDays: 31 }, 400, "VALIDATION_ERROR"],
+    ["POST", invites, { kind: "DIRECT", targets: [{ email: "a@b.co" }], maxUses: 2 }, 400, "VALIDATION_ERROR"],
+    ["POST", `/api/circles/not-a-uuid/invites`, { kind: "CODE" }, 404, "CIRCLE_NOT_FOUND"],
+    ["GET", `${invites}?status=DONE`, undefined, 400, "VALIDATION_ERROR"],
+    ["DELETE", `${invites}/not-a-uuid`, undefined, 404, "INVITE_NOT_FOUND"],
+    ["DELETE", `/api/circles/not-a-uuid/invites/${id}`, undefined, 404, "CIRCLE_NOT_FOUND"],
+    ["POST", "/api/friends/requests", {}, 400, "VALIDATION_ERROR"],
+    ["POST", "/api/friends/requests", { email: "nope" }, 400, "VALIDATION_ERROR"],
+    ["POST", "/api/friends/requests", { userId: "x" }, 400, "VALIDATION_ERROR"],
+    ["POST", "/api/friends/requests", { email: "a@b.co", userId: id }, 400, "VALIDATION_ERROR"],
+    ["POST", "/api/friends/requests/not-a-uuid/accept", undefined, 404, "FRIEND_REQUEST_NOT_FOUND"],
+    ["DELETE", "/api/friends/requests/not-a-uuid", undefined, 404, "FRIEND_REQUEST_NOT_FOUND"],
+    ["DELETE", "/api/friends/not-a-uuid", undefined, 404, "FRIEND_NOT_FOUND"],
+  ] as const) {
+    const res = await server.request(path, { method, token, body });
+    assert.equal(res.status, status, `${method} ${path} ${JSON.stringify(body)}`);
+    assert.equal(errorCode(res.body), code);
+  }
+});
