@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { Suspense } from "react"
 import {
   ArrowLeft,
   Calendar,
@@ -21,10 +22,10 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Avatar, PEOPLE } from "@/components/landing/shared"
 import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ShareInviteDialog } from "./share-invite-dialog"
+import { CircleInvitesPanel } from "@/components/invites/circle-invites-panel"
+import { ShareDialog } from "@/components/share-dialog"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { InviteLink } from "@/components/invite-link"
 import { getCircleView } from "@/lib/data"
 import { localizedInviteUrl } from "@/lib/flows/circle-invite"
 import { siteUrl } from "@/lib/site"
@@ -82,7 +83,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
-  // The creator shares the invite link (it carries the code); a public circle is shared by its page.
+  // Managers share the standing invite link (it carries the code); a public circle is shared by its page.
   const shareUrl = access.inviteUrl
     ? localizedInviteUrl(access.inviteUrl, locale)
     : access.visibility === "PUBLIC"
@@ -145,7 +146,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-3">
-            {shareUrl && <ShareInviteDialog url={shareUrl} circleName={circle.name} t={t.circle} locale={locale} />}
+            {shareUrl && <ShareDialog url={shareUrl} circleName={circle.name} t={t.share} />}
             {circle.status === "OPEN" ? (
               <Link
                 href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
@@ -193,16 +194,19 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
         </div>
       </header>
 
-      {access.inviteUrl && (
+      {access.canInvite && (
         <div className="mt-8">
-          <InviteLink
-            locale={locale}
-            circleId={circle.id}
-            inviteUrl={access.inviteUrl}
-            visibility={access.visibility}
-            open={circle.status === "OPEN"}
-            t={t.invite}
-          />
+          <Suspense fallback={<p className="text-sm text-brand-slate">{t.common.loading}</p>}>
+            <CircleInvitesPanel
+              locale={locale}
+              circleId={circle.id}
+              circleName={circle.name}
+              open={circle.status === "OPEN"}
+              isCreator={access.isCreator}
+              visibility={access.visibility}
+              t={t}
+            />
+          </Suspense>
         </div>
       )}
 
