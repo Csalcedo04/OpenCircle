@@ -64,7 +64,7 @@ export interface NewProfile {
 /** Identity fields (document, email) are fixed once the profile exists. */
 export type ProfilePatch = Partial<Pick<NewProfile, "fullName" | "phone" | "dob" | "nationality">>
 
-async function backendFetch<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+export async function backendFetch<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
   const supabase = await createClient()
   // getSession() reads the cookie without re-verifying it; that's fine here
   // because the API verifies the token itself before trusting it.
