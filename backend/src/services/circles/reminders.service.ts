@@ -26,11 +26,23 @@ export function reminderKind(status: ContributionStatus, deadline: Date, penalty
   return t < penalty.getTime() ? "LATE" : null;
 }
 
-/** Reminds members who haven't paid: by email, and by WhatsApp when they have a phone. */
+/**
+ * Pure: whether a contribution gets the COLLECTING notice at `now`: its round is collecting
+ * (the caller only passes open rounds) and its deadline hasn't passed. Paid ones too, so every
+ * member hears that the round's money is being collected.
+ */
+export function collectingNotice(status: ContributionStatus, deadline: Date, now: Date): boolean {
+  return status !== "CANCELLED" && now.getTime() < deadline.getTime();
+}
+
+/**
+ * Tells members a round started collecting, and reminds who hasn't paid: by email, and by
+ * WhatsApp when they have a phone.
+ */
 export function createReminders({ db, sender }: { db: Db; sender: NotificationSender }) {
   return {
     /**
-     * At circle time `now`. Each reminder is sent once per channel; a failed send is retried
+     * At circle time `now`. Each notice is sent once per channel; a failed send is retried
      * on the next run (see deliverOnce).
      */
     async remindCircle(circleId: string, now: Date): Promise<number> {
@@ -62,11 +74,13 @@ export function createReminders({ db, sender }: { db: Db; sender: NotificationSe
         .where(and(eq(rounds.circleId, circleId), ne(rounds.state, "UPCOMING")));
 
       const due: Outgoing[] = rows.flatMap((r) => {
-        const kind = reminderKind(r.status, r.deadline, penaltyAt(r.deadline, deadlineOf.get(r.roundNumber + 1) ?? null), now);
-        if (!kind) return [];
+        const reminder = reminderKind(r.status, r.deadline, penaltyAt(r.deadline, deadlineOf.get(r.roundNumber + 1) ?? null), now);
+        const kinds: ReminderKind[] = [];
+        if (collectingNotice(r.status, r.deadline, now)) kinds.push("COLLECTING");
+        if (reminder) kinds.push(reminder);
         const targets: [NotificationChannel, string][] = [["EMAIL", r.email]];
         if (r.phone) targets.push(["WHATSAPP", r.phone]);
-        return targets.map(([channel, to]) => ({
+        return kinds.flatMap((kind) => targets.map(([channel, to]) => ({
           key: `notification.sent:${kind}:${r.id}:${channel}`,
           walletId: r.poolWalletId,
           notification: {
@@ -78,7 +92,7 @@ export function createReminders({ db, sender }: { db: Db; sender: NotificationSe
             amount: { value: r.value.toString(), assetCode: r.assetCode, assetScale: r.assetScale },
             contributionId: r.id,
           },
-        }));
+        })));
       });
       return deliverOnce(db, sender, due);
     },

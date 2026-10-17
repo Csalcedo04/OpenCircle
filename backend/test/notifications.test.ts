@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { Db } from "../src/db/client";
 import { envSchema } from "../src/config/env-schema";
-import { createCircleTick } from "../src/services/circles/circle-cycle";
+import { createCircleTick, startTickTimer } from "../src/services/circles/circle-cycle";
 import { renderEmail } from "../src/services/notifications/email-templates";
 import { createResendSender } from "../src/services/notifications/resend-sender";
 import { createChannelSender, createLogSender, type Notification } from "../src/services/notifications/sender";
@@ -60,6 +61,22 @@ describe("renderEmail", () => {
     assert.match(subject, /Natillera/);
     assert.match(text, /20\.000,50 COP/);
     assert.match(text, /2026-10-10/);
+  });
+
+  test("COLLECTING tells the member the round's money is being collected, with the amount and pay date", () => {
+    const { subject, text } = renderEmail({
+      channel: "EMAIL",
+      to: "ana@example.test",
+      kind: "COLLECTING",
+      circleName: "Natillera",
+      deadline: new Date("2026-10-24T00:00:00Z"),
+      amount: { value: "2000000", assetCode: "COP", assetScale: 2 },
+      contributionId: "k-1",
+    });
+    assert.match(subject, /Comenzó el cobro en Natillera/);
+    assert.match(subject, /Collection started in Natillera/);
+    assert.match(text, /20\.000,00 COP/);
+    assert.match(text, /2026-10-24/);
   });
 });
 
@@ -165,5 +182,65 @@ describe("createCircleTick", () => {
     const tick = createCircleTick({ db: noCircles, cycle, notices: [{ retryRecent: async (s) => (since.push(s), 0) }], now: () => now });
     await tick.run();
     assert.deepEqual(since, [new Date("2026-10-10T00:00:00Z")]);
+  });
+
+  // runCircle's query finds the circle only when it is ACTIVE and on real time.
+  const oneCircle = (rows: { id: string }[]) =>
+    ({ select: () => ({ from: () => ({ where: () => ({ limit: async () => rows }) }) }) }) as unknown as Db;
+
+  test("runCircle advances a found circle at the tick's now", async () => {
+    const now = new Date("2026-10-17T00:00:00Z");
+    const advanced: [string, Date][] = [];
+    const tick = createCircleTick({
+      db: oneCircle([{ id: "c1" }]),
+      cycle: { advanceCircle: async (id, t) => void advanced.push([id, t]) },
+      notices: [],
+      now: () => now,
+    });
+    await tick.runCircle("c1");
+    assert.deepEqual(advanced, [["c1", now]]);
+  });
+
+  test("runCircle leaves a circle that isn't active on real time alone", async () => {
+    let advanced = 0;
+    const tick = createCircleTick({ db: oneCircle([]), cycle: { advanceCircle: async () => void advanced++ }, notices: [] });
+    await tick.runCircle("c1");
+    assert.equal(advanced, 0);
+  });
+});
+
+describe("startTickTimer", () => {
+  test("runs the tick every interval, never two at once, until stopped", async () => {
+    let runs = 0;
+    let release = () => {};
+    const tick = {
+      run: () =>
+        new Promise<{ circles: number; failed: number; noticesResent: number }>((resolve) => {
+          runs++;
+          release = () => resolve({ circles: 0, failed: 0, noticesResent: 0 });
+        }),
+    };
+    const stop = startTickTimer(tick, 5);
+    try {
+      await sleep(30);
+      assert.equal(runs, 1, "a run still going is not overlapped");
+      release();
+      await sleep(30);
+      assert.ok(runs >= 2, "the next interval runs again once it finished");
+    } finally {
+      stop();
+      release();
+    }
+    const stoppedAt = runs;
+    await sleep(30);
+    assert.equal(runs, stoppedAt, "stopped");
+  });
+
+  test("a failing run doesn't stop the timer", async () => {
+    let runs = 0;
+    const stop = startTickTimer({ run: async () => (runs++, Promise.reject(new Error("db down"))) }, 5);
+    await sleep(40);
+    stop();
+    assert.ok(runs >= 2);
   });
 });

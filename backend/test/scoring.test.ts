@@ -3,7 +3,7 @@ import { describe, test } from "node:test";
 import { envSchema } from "../src/config/env-schema";
 import { decidersOf } from "../src/services/circles/application-notices";
 import { createCircleCycle } from "../src/services/circles/circle-cycle";
-import { reminderKind } from "../src/services/circles/reminders.service";
+import { collectingNotice, reminderKind } from "../src/services/circles/reminders.service";
 import { defaultable, outcomeChange, penaltyAt, scoreAction, type PaymentOutcome, type ScoredContribution } from "../src/services/circles/scoring.service";
 import { clampScore, fractionFromScore, roundScoreChange, scoreFromFraction } from "../src/services/credit/credit-score";
 import { createLogSender } from "../src/services/notifications/sender";
@@ -149,6 +149,20 @@ describe("reminderKind", () => {
   test("paid or cancelled contributions need no reminder", () => {
     assert.equal(reminderKind("COMPLETED", deadline, penalty, at(deadline, -1)), null);
     assert.equal(reminderKind("CANCELLED", deadline, penalty, at(deadline, 1)), null);
+  });
+});
+
+describe("collectingNotice", () => {
+  test("every member of an open round hears it until the deadline, paid or not", () => {
+    assert.equal(collectingNotice("PENDING", deadline, at(deadline, -7)), true);
+    assert.equal(collectingNotice("PROCESSING", deadline, at(deadline, -0.1)), true);
+    assert.equal(collectingNotice("COMPLETED", deadline, at(deadline, -7)), true);
+    assert.equal(collectingNotice("FAILED", deadline, at(deadline, -7)), true);
+  });
+
+  test("not once the deadline passed, nor for cancelled contributions", () => {
+    assert.equal(collectingNotice("PENDING", deadline, deadline), false);
+    assert.equal(collectingNotice("CANCELLED", deadline, at(deadline, -7)), false);
   });
 });
 

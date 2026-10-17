@@ -3,8 +3,9 @@ import type { AmountDto } from "../wallet.service";
 export const NOTIFICATION_CHANNELS = ["EMAIL", "SMS", "WHATSAPP"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
-// DUE_SOON: the pay date is close. DUE_TODAY: it is the pay date. LATE: the pay date passed unpaid.
-export const REMINDER_KINDS = ["DUE_SOON", "DUE_TODAY", "LATE"] as const;
+// COLLECTING: the round's collection started. DUE_SOON: the pay date is close. DUE_TODAY: it is
+// the pay date. LATE: the pay date passed unpaid.
+export const REMINDER_KINDS = ["COLLECTING", "DUE_SOON", "DUE_TODAY", "LATE"] as const;
 export type ReminderKind = (typeof REMINDER_KINDS)[number];
 
 interface Delivery {
@@ -14,7 +15,7 @@ interface Delivery {
   circleName: string;
 }
 
-/** A member hasn't paid a contribution yet. */
+/** A member's contribution is being collected, or hasn't been paid yet. */
 export interface PaymentReminder extends Delivery {
   kind: ReminderKind;
   deadline: Date;
