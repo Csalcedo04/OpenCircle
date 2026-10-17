@@ -15,7 +15,17 @@ function isExposedClientError(err: unknown): err is { status: number; message: s
   return expose === true && typeof status === "number" && status >= 400 && status < 500;
 }
 
+function errorCode(err: unknown): string {
+  if (isExposedClientError(err)) return "INVALID_REQUEST_BODY";
+  if (err instanceof AppError) return err.code;
+  if (err instanceof ZodError) return "VALIDATION_ERROR";
+  if (err instanceof OpenPaymentsClientError) return "OPEN_PAYMENTS_ERROR";
+  return "INTERNAL_ERROR";
+}
+
 export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, _next) => {
+  // Picked up by the request log.
+  res.locals.errorCode = errorCode(err);
   if (isExposedClientError(err)) {
     res.status(err.status).json({ error: { code: "INVALID_REQUEST_BODY", message: err.message } });
     return;

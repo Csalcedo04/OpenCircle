@@ -95,7 +95,7 @@ async function main(): Promise<void> {
         frontendUrl: env.FRONTEND_URL,
       }),
     },
-    { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET, cronSecret: env.CRON_SECRET },
+    { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET, cronSecret: env.CRON_SECRET, logRequests: true },
   );
 
   app.listen(env.PORT, () => {

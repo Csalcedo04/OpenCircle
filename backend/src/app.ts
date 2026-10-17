@@ -1,5 +1,6 @@
 import express, { type Express } from "express";
 import { errorHandler, notFound } from "./middleware/error-handler";
+import { requestLog } from "./middleware/request-log";
 import { apiRoutes, type Services } from "./routes";
 import { internalRoutes } from "./routes/internal";
 import { webhookRoutes } from "./routes/webhooks";
@@ -8,11 +9,14 @@ export interface AppOptions {
   diditWebhookSecret: string | undefined;
   // Shared secret of the scheduler calling /api/internal; without it those jobs answer 503.
   cronSecret?: string | undefined;
+  // One log line per request (off in tests).
+  logRequests?: boolean;
 }
 
 export function createApp(services: Services, options: AppOptions): Express {
   const app = express();
   app.disable("x-powered-by");
+  if (options.logRequests) app.use(requestLog);
   // Before express.json(): webhook signatures need the raw body.
   app.use("/api/webhooks", webhookRoutes(services.kyc, options.diditWebhookSecret));
   app.use("/api/internal", internalRoutes(services.circleTick, options.cronSecret));

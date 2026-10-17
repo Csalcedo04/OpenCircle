@@ -118,7 +118,10 @@ export function createKycService({ db, didit, frontendUrl }: { db: Db; didit: Di
     /** Applies a verified webhook; unknown sessions are ignored so Didit doesn't retry them. */
     async handleWebhook({ sessionId, status, vendorData }: { sessionId: string; status: KycStatus; vendorData: string | null }) {
       const [row] = await db.select().from(kycVerifications).where(eq(kycVerifications.sessionId, sessionId)).limit(1);
-      if (!row || row.userId !== vendorData) return "ignored" as const;
+      if (!row || row.userId !== vendorData) {
+        console.log(JSON.stringify({ at: new Date().toISOString(), webhook: "didit", step: "not-applied", sessionId, reason: row ? "VENDOR_DATA_MISMATCH" : "UNKNOWN_SESSION" }));
+        return "ignored" as const;
+      }
       await applyStatus(row, status);
       return "applied" as const;
     },

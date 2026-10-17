@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { describe, test } from "node:test";
-import { verifyDiditSignature } from "../src/services/didit/signature";
+import { diditSignatureFailure, verifyDiditSignature } from "../src/services/didit/signature";
 
 describe("Didit signature", () => {
   const secret = "s3cret";
@@ -21,5 +21,15 @@ describe("Didit signature", () => {
     assert.ok(!verifyDiditSignature({ rawBody, signature, timestamp: String(now - 301), secret, nowSeconds: now }));
     assert.ok(!verifyDiditSignature({ rawBody, signature, timestamp: undefined, secret, nowSeconds: now }));
     assert.ok(!verifyDiditSignature({ rawBody, signature: undefined, timestamp: ts, secret, nowSeconds: now }));
+  });
+
+  test("names why a signature fails", () => {
+    const args = { rawBody, signature, timestamp: String(now), secret, nowSeconds: now };
+    assert.equal(diditSignatureFailure(args), null);
+    assert.equal(diditSignatureFailure({ ...args, signature: undefined }), "MISSING_SIGNATURE");
+    assert.equal(diditSignatureFailure({ ...args, timestamp: undefined }), "MISSING_TIMESTAMP");
+    assert.equal(diditSignatureFailure({ ...args, timestamp: "soon" }), "INVALID_TIMESTAMP");
+    assert.equal(diditSignatureFailure({ ...args, timestamp: String(now - 301) }), "STALE_TIMESTAMP");
+    assert.equal(diditSignatureFailure({ ...args, secret: "other" }), "MISMATCH");
   });
 });
