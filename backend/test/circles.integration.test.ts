@@ -18,6 +18,7 @@ const databaseUrl = process.env.DATABASE_URL;
 const PREFIX = "[test-circles] ";
 const POOL_HOST = "circles.test";
 const POOL_URL = `https://${POOL_HOST}/pool-${randomUUID()}`;
+const FRONTEND_URL = "http://localhost:3001";
 
 let db: Db;
 let server: TestServer;
@@ -75,6 +76,8 @@ const validCircle = (overrides: Record<string, unknown> = {}) => ({
   size: 3,
   cadence: "WEEKLY",
   payoutRound: 1,
+  // These suites test circles that anyone can find; private circles have their own block below.
+  visibility: "PUBLIC",
   ...overrides,
 });
 
@@ -86,6 +89,9 @@ async function createCircle(token: string, overrides: Record<string, unknown> = 
 
 const join = (id: string, token: string, body: Record<string, unknown>) =>
   server.request(`/api/circles/${id}/join`, { method: "POST", token, body });
+
+// The `invite` query value of a circle's invite link.
+const inviteOf = (circle: CircleDto) => new URL(circle.inviteUrl ?? "http://x").searchParams.get("invite") ?? "";
 
 describe("display names", () => {
   test("public pages show first name and last initial", () => {
@@ -109,6 +115,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     const circleService = createCircleService({
       db,
       resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "COP", assetScale: 2 }),
+      frontendUrl: FRONTEND_URL,
     });
     server = await startServer(fakeServices({ circles: circleService, kyc }));
   });
@@ -352,6 +359,88 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(roundRows.length, 2);
       const [row] = await db.select().from(circles).where(and(eq(circles.id, circle.id), eq(circles.status, "ACTIVE")));
       assert.ok(row, "circle did not start");
+    });
+  });
+
+  describe("visibility", () => {
+    test("circles are private by default; only the creator gets the invite link", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { visibility: undefined });
+      assert.equal(circle.visibility, "PRIVATE");
+      const code = inviteOf(circle);
+      assert.ok(code.length >= 43, "invite code too short");
+      assert.ok(circle.inviteUrl?.startsWith(`${FRONTEND_URL}/es/circles/${circle.id}?invite=`));
+
+      const all = await server.request("/api/circles");
+      assert.ok(!(all.body as { id: string }[]).some((c) => c.id === circle.id), "private circle listed");
+    });
+
+    test("a stranger can't tell a private circle exists; the invite link and members can see it", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { visibility: "PRIVATE", size: 3 });
+      const stranger = await member();
+
+      for (const res of [
+        await server.request(`/api/circles/${circle.id}`),
+        await server.request(`/api/circles/${circle.id}`, { token: stranger.token }),
+        await server.request(`/api/circles/${circle.id}?invite=wrong`, { token: stranger.token }),
+        await join(circle.id, stranger.token, { payoutRound: 2 }),
+      ]) {
+        assert.equal(res.status, 404);
+        assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
+      }
+
+      const viaLink = await server.request(`/api/circles/${circle.id}?invite=${encodeURIComponent(inviteOf(circle))}`, { token: stranger.token });
+      assert.equal(viaLink.status, 200);
+      assert.equal((viaLink.body as CircleDto).inviteUrl, null, "invite link leaked to a non-creator");
+
+      const joined = await join(circle.id, stranger.token, { payoutRound: 2, invite: inviteOf(circle) });
+      assert.equal(joined.status, 200, joined.text);
+      // Now a member: no link needed, and it's in their own list.
+      assert.equal((await server.request(`/api/circles/${circle.id}`, { token: stranger.token })).status, 200);
+      const mine = await server.request("/api/users/me/circles", { token: stranger.token });
+      assert.ok((mine.body as { id: string }[]).some((c) => c.id === circle.id));
+    });
+
+    test("an invalid token is refused, not treated as anonymous", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      const res = await server.request(`/api/circles/${circle.id}`, { token: "not-a-jwt" });
+      assert.equal(res.status, 401);
+    });
+
+    test("the creator can make it public, and rotating the code kills old links", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { visibility: "PRIVATE", size: 4 });
+      const oldCode = inviteOf(circle);
+      const other = await member();
+
+      // Only the creator: everyone else gets 404.
+      const denied = await server.request(`/api/circles/${circle.id}/visibility`, { method: "PATCH", token: other.token, body: { visibility: "PUBLIC" } });
+      assert.equal(denied.status, 404);
+      assert.equal((await server.request(`/api/circles/${circle.id}/invite-code`, { method: "POST", token: other.token })).status, 404);
+
+      const rotated = await server.request(`/api/circles/${circle.id}/invite-code`, { method: "POST", token: owner.token });
+      assert.equal(rotated.status, 200, rotated.text);
+      assert.notEqual(inviteOf(rotated.body as CircleDto), oldCode);
+      assert.equal((await server.request(`/api/circles/${circle.id}?invite=${encodeURIComponent(oldCode)}`, { token: other.token })).status, 404);
+
+      const made = await server.request(`/api/circles/${circle.id}/visibility`, { method: "PATCH", token: owner.token, body: { visibility: "PUBLIC" } });
+      assert.equal(made.status, 200, made.text);
+      assert.equal((made.body as CircleDto).visibility, "PUBLIC");
+      const all = await server.request("/api/circles");
+      assert.ok((all.body as { id: string }[]).some((c) => c.id === circle.id));
+      assert.equal((await join(circle.id, other.token, { payoutRound: 2 })).status, 200);
+    });
+
+    test("visibility can't change once the circle has started", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 2, payoutRound: 1 });
+      const bob = await member();
+      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      const res = await server.request(`/api/circles/${circle.id}/visibility`, { method: "PATCH", token: owner.token, body: { visibility: "PRIVATE" } });
+      assert.equal(res.status, 409);
+      assert.equal(errorCode(res.body), "CIRCLE_NOT_OPEN");
     });
   });
 });

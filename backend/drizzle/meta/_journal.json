@@ -50,6 +50,13 @@
       "when": 1792189649753,
       "tag": "0006_circle_periods",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792201265074,
+      "tag": "0007_circle_visibility",
+      "breakpoints": true
     }
   ]
 }

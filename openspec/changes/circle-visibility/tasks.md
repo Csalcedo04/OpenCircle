@@ -2,7 +2,7 @@
 
 ## 1. Schema and migration
 
-- [ ] 1.1 Add `CIRCLE_VISIBILITIES`, `circles.visibility` (default PRIVATE) and a unique `circles.invite_code`. In the generated migration, backfill existing rows to PUBLIC with random invite codes. Verify: the migration file has no DROP, and `tsc` passes.
+- [x] 1.1 Add `CIRCLE_VISIBILITIES`, `circles.visibility` (default PRIVATE) and a unique `circles.invite_code`. In the generated migration, backfill existing rows to PUBLIC with random invite codes. Verify: the migration file has no DROP, and `tsc` passes.
 - [ ] 1.2 Check the shared DB's migration hashes, then apply (ask the user first). Verify: every existing circle has `visibility = 'PUBLIC'`.
 
 ## 2. Backend
