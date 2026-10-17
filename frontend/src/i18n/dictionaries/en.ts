@@ -85,7 +85,7 @@ const en = {
     applicationStatus: { PENDING: "Under review", ACCEPTED: "Accepted", REJECTED: "Rejected", WITHDRAWN: "Withdrawn" },
     reminders: {
       dueSoon: "Your contribution of {amount} is due {date}.",
-      dueToday: "Your contribution of {amount} is due today.",
+      dueToday: "Your contribution of {amount} is due within 24 hours.",
       late: "Your contribution of {amount} is overdue. Pay now to protect your reliability score.",
     },
     seat: "Round {round}",
@@ -130,7 +130,7 @@ const en = {
       REFUNDED: "Payments were returned to the members.",
       UPCOMING: "This round hasn’t opened.",
     },
-    contribution: { VERIFIED: "Verified", PENDING: "Waiting", MISSING: "Missing", REFUNDED: "Refunded" },
+    contribution: { VERIFIED: "Verified", PENDING: "Waiting", PROCESSING: "Sent, confirming", MISSING: "Missing", REFUNDED: "Refunded" },
     refundNote: "If a payment is still missing at the deadline, every payment that arrived is refunded.",
   },
   member: {
@@ -211,6 +211,8 @@ const en = {
     full: "This circle is full.",
     applyTitle: "Apply to {circle}",
     applyLead: "This public circle takes members by application. Choose how your wallet would approve payments; the circle’s members decide.",
+    notAdmitted: "This invite link isn’t for you, or it has expired. Ask the circle’s creator for a new one.",
+    alreadyMember: "You already have a seat in this circle.",
     applying: "Sending application…",
     applySubmit: "Send application",
   },

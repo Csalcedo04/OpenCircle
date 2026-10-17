@@ -15,8 +15,10 @@ export function contributionStatus(status: string): ContributionStatus {
       return "MISSING"
     case "CANCELLED":
       return "REFUNDED"
+    case "PROCESSING":
+      // Sent, not confirmed yet: no reminder for it, but not verified either.
+      return "PROCESSING"
     default:
-      // PENDING and PROCESSING: not confirmed yet.
       return "PENDING"
   }
 }

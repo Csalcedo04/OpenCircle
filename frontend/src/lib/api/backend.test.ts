@@ -145,7 +145,7 @@ describe("backend client", () => {
     expect(dto?.approvalMode).toBe("DELEGATES")
     expect(dto?.visibility).toBe("PUBLIC")
     expect(dto?.seats[0]?.isApprover).toBe(false)
-    expect(dto?.access).toEqual({ canInvite: false, isCreator: false, isMember: false, canVote: false })
+    expect(dto?.access).toEqual({ canInvite: false, isCreator: false, isMember: false, canVote: false, canJoin: false })
   })
 
   it("parses circles whose pre-generated rounds have beneficiaryMemberId: null", async () => {

@@ -20,7 +20,7 @@ import {
   wallets,
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
-import { lockCircle, membership, requireManager } from "./circles/circle-access";
+import { lockCircle, mayDecide, membership, requireManager } from "./circles/circle-access";
 import { addressedTo, consumeInvite, insertStandingCode, inviteUrl as inviteUrlOf, matchedInvite, standingCodeOf } from "./circles/invite-access";
 import { payoutSequence, type PayoutOrder } from "./circles/payout-order";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
@@ -120,9 +120,11 @@ export interface CircleDto extends CircleSummaryDto {
   inviteUrl: string | null;
   /**
    * What the viewer may do here: invite people (creator or approver), change visibility (creator),
-   * see and decide applications (members; who decides depends on the approval mode).
+   * see and decide applications (members; who decides depends on the approval mode), and take a
+   * seat right away (`canJoin`: an OPEN circle, a non-member, and a usable invite made for them).
+   * Without `canJoin`, a PUBLIC circle takes an application instead.
    */
-  access: { canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean };
+  access: { canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean; canJoin: boolean };
   // The round being collected or paid out; null before the circle starts or once it is over.
   currentRound: number | null;
   seats: SeatDto[];
@@ -189,6 +191,16 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
   async function canSee(circle: { id: string; visibility: CircleVisibility }, viewer: CircleViewer): Promise<boolean> {
     if (circle.visibility === "PUBLIC" || (await isMember(circle.id, viewer.userId))) return true;
     return (await matchedInvite(db, circle.id, viewer.invite, new Date())) !== null;
+  }
+
+  // Whether the viewer's invite (if any) would seat them: a code, or a direct invite made for them.
+  async function admittedBy(circleId: string, viewer: CircleViewer): Promise<boolean> {
+    const matched = await matchedInvite(db, circleId, viewer.invite, new Date());
+    if (matched === null) return false;
+    if (matched.kind === "CODE") return true;
+    if (viewer.userId === undefined) return false;
+    const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, viewer.userId)).limit(1);
+    return user !== undefined && addressedTo(matched, user);
   }
   const summaryColumns = {
     id: circles.id,
@@ -283,19 +295,20 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
               ),
             );
 
-    const [records, circleReviews, viewerSeat] = await Promise.all([
+    const [records, circleReviews, viewerSeat, admitted] = await Promise.all([
       memberRecords(
         db,
         seats.map((s) => s.userId),
       ),
       findReviews(db, eq(reviews.circleId, id)),
       viewer.userId === undefined ? null : membership(db, id, viewer.userId),
+      admittedBy(id, viewer),
     ]);
     const isCreator = viewer.userId === circle.createdBy;
     const isMember = viewerSeat !== null;
     const canInvite = isCreator || (viewerSeat?.isApprover ?? false);
-    // DELEGATES: the creator and the delegated approvers decide; MAJORITY: every member votes.
-    const canVote = circle.approvalMode === "MAJORITY" ? isMember : canInvite;
+    const canVote = mayDecide(circle, viewerSeat);
+    const canJoin = circle.status === "OPEN" && !isMember && admitted;
     const standingCode = canInvite ? await standingCodeOf(db, id, new Date()) : null;
 
     const { assetCode, assetScale } = circle;
@@ -309,7 +322,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
       inviteUrl: standingCode === null ? null : inviteUrl(circle.id, standingCode),
-      access: { canInvite, isCreator, isMember, canVote },
+      access: { canInvite, isCreator, isMember, canVote, canJoin },
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,

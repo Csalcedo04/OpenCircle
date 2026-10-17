@@ -102,7 +102,10 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
         </div>
       ) : (
         <div className="mt-6 grid grid-cols-1 gap-6 md:grid-cols-2">
-          {currentList.map(({ circle, members: seatMembers }) => {
+          {currentList.map(({ circle, members: seatMembers, access }) => {
+            // Members (the creator included) open their circle; others take or apply for a seat while it's OPEN.
+            const wantsSeat = circle.status === "OPEN" && !access.isMember
+            const seatLabel = access.visibility === "PUBLIC" ? t.circle.applyCta : t.circles.join
             const round = currentRound(circle)
             const scores = seatMembers.map((m) => trustFor(m).score)
             const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
@@ -254,15 +257,15 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
                   </div>
 
                   <Link
-                    href={`/${locale}/circles/${circle.id}${circle.status === "OPEN" ? "/join" : ""}`}
+                    href={`/${locale}/circles/${circle.id}${wantsSeat ? "/join" : ""}`}
                     className={cn(
                       "inline-flex h-10 items-center justify-center gap-1.5 rounded-full px-4.5 text-xs font-semibold outline-none transition-[transform,background-color] duration-150 active:scale-95",
-                      circle.status === "OPEN"
+                      wantsSeat
                         ? "bg-brand-violet text-brand-white shadow-[0_6px_18px_-8px_var(--color-brand-violet)] hover:bg-brand-violet-ink"
                         : "bg-brand-navy text-brand-white hover:bg-brand-navy/90",
                     )}
                   >
-                    <span>{circle.status === "OPEN" ? t.circles.join : t.circles.view}</span>
+                    <span>{wantsSeat ? seatLabel : t.circles.view}</span>
                     <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
                   </Link>
                 </div>
