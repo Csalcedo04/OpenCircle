@@ -17,6 +17,9 @@ const landing = {
     home: "Inicio de OpenCircle",
     language: "Idioma",
     switchTo: "English",
+    circleMobile: "Círculo",
+    quickNavAria: "Navegación móvil rápida",
+    demoMobile: "Demo",
   },
   hero: {
     eyebrow: "Ahorro y pagos sobre Open Payments",
@@ -44,6 +47,13 @@ const landing = {
       notifyPaid: "María autorizó y liquidó su aporte",
       notifyNext: "Próximo turno: Carlos",
       sample: "Demostración sobre testnet",
+      simAction: "Simular débito Juan",
+      simActive: "Negociando GNAP...",
+      simReset: "Reiniciar simulación",
+      simSuccessBadge: "5/5 Liquidado vía Rafiki",
+      justNow: "justo ahora",
+      hashVerified: "HMAC SHA-256 verificado",
+      notifySettled: "Ronda 2 completada · Payout emitido",
     },
   },
   trust: [
@@ -94,19 +104,19 @@ const landing = {
     lead: "El proceso paso a paso, desde que te unes hasta que recibes tu turno.",
     steps: [
       {
-        title: "1. Ingresa tu Wallet Address",
+        title: "Ingresa tu Wallet Address",
         body: "Escribe tu identificador ($billetera.dev/usuario). Funciona como un correo electrónico para dinero, sin compartir números de tarjeta ni cuentas privadas.",
       },
       {
-        title: "2. Acuerda la cuota y los turnos",
+        title: "Acuerda la cuota y los turnos",
         body: "El grupo fija el monto de cada aporte, la frecuencia de las rondas y el orden en que cada miembro recibe el pozo acumulado.",
       },
       {
-        title: "3. Autoriza tu cuota en tu billetera",
+        title: "Autoriza tu cuota en tu billetera",
         body: "Al llegar el ciclo de pago, tu billetera te muestra una solicitud GNAP con el monto pactado para que des el visto bueno.",
       },
       {
-        title: "4. El conector liquida en segundos",
+        title: "El conector liquida en segundos",
         body: "Cuando el sistema comprueba que todos aportaron, Rafiki transfiere el total directamente a la billetera de quien tiene el turno.",
       },
     ],
@@ -116,6 +126,10 @@ const landing = {
       invite: "Wallet de cobro ($circle)",
       copied: "Copiada",
       received: "Liquidado a tu billetera",
+      gnapConsent: "Consentimiento GNAP",
+      gnapReady: "5/5 listo",
+      debitAuthorized: "Débito autorizado",
+      verified: "100% verificado",
     },
   },
   calc: {
@@ -139,8 +153,11 @@ const landing = {
     breakdown: "Composición del pool por ciclo",
   },
   safety: {
+    eyebrow: "Auditoría & Criptografía",
     title: "Tus fondos nunca pasan por nuestras manos",
     lead: "El dinero viaja de billetera a billetera mediante estándares criptográficos, sin cuentas intermedias ni retenciones sorpresa.",
+    contractTitle: "Contrato de Seguridad Inmutable",
+    disclaimer: "Demostración técnica en testnet. OpenCircle utiliza estándares abiertos de Open Payments y liquidación simulada a través de Rafiki.",
     items: [
       {
         title: "Sin custodia intermedia",
@@ -159,11 +176,50 @@ const landing = {
         body: "Las firmas y credenciales de Open Payments corren en módulos aislados del backend; el navegador del usuario nunca toca claves privadas.",
       },
     ],
-    disclaimer: "Demostración técnica en testnet. OpenCircle utiliza estándares abiertos de Open Payments y liquidación simulada a través de Rafiki.",
+    specs: [
+      {
+        protocol: "Interledger STREAM",
+        detail: "Cero retención de saldos; transferencias punto a punto entre conectores.",
+      },
+      {
+        protocol: "HMAC SHA-256",
+        detail: "Firmas criptográficas en webhooks de Rafiki para marcar COMPLETED.",
+      },
+      {
+        protocol: "external_id UNIQUE",
+        detail: "Deduplicación en audit_events; previene dobles abonos y protege credit_profiles.",
+      },
+      {
+        protocol: "Módulos server-only",
+        detail: "Aislamiento estricto de claves de firma fuera del alcance del navegador.",
+      },
+    ],
   },
   useCases: {
+    eyebrow: "Arquitectura Multiactivo",
+    openProtocolBadge: "Protocolo Abierto Interledger (ILP)",
     title: "Para qué puedes usar OpenCircle",
     lead: "Casos prácticos de ahorro entre personas y cobros internacionales sin tarifas sorpresa.",
+    mockSavings: {
+      heading: "Rondas de liquidación rotativa",
+      frequencyLabel: "Frecuencia",
+      frequencyValue: "Quincenal",
+      custodyLabel: "Custodia",
+      custodyValue: "Descentralizada",
+      guaranteeLabel: "Garantía",
+      guaranteeValue: "GNAP Grant",
+    },
+    mockMerchant: {
+      checkoutNote: "Checkout sin intermediarios",
+      noFeeNote: "Cero comisiones %",
+    },
+    mockIlp: {
+      packetsLabel: "STREAM Paquetes atómicos",
+      settlementLabel: "Liquidación multilateral en Rafiki",
+      originLabel: "Origen",
+      originCurrency: "COP (Pesos)",
+      destinationLabel: "Destino",
+    },
     cards: [
       {
         tag: "Ahorro Comunitario",

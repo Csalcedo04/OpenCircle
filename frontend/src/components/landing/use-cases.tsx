@@ -12,12 +12,12 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
           <SectionHeading id="soluciones-title" title={t.title} lead={t.lead}>
             <p className="mt-4 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-brand-slate">
               <span className="size-2 rounded-full bg-brand-violet" aria-hidden="true" />
-              Arquitectura Multiactivo
+              {t.eyebrow}
             </p>
           </SectionHeading>
           <div className="hidden lg:flex items-center gap-2 rounded-full border border-brand-line bg-brand-white px-4 py-2 text-xs font-semibold text-brand-navy shadow-xs">
             <ShieldCheck className="size-4 text-brand-violet" />
-            Protocolo Abierto Interledger (ILP)
+            {t.openProtocolBadge}
           </div>
         </div>
 
@@ -47,21 +47,21 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
               {/* Technical proof preview */}
               <div className="mt-6 sm:mt-8 rounded-[24px] sm:rounded-[28px] border border-brand-line bg-brand-mist/50 p-4 sm:p-5">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs font-semibold">
-                  <span className="text-brand-navy">Rondas de liquidación rotativa</span>
+                  <span className="text-brand-navy">{t.mockSavings.heading}</span>
                   <span className="font-mono text-brand-violet-ink">{savings.metric}</span>
                 </div>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 text-center">
                   <div className="rounded-2xl bg-brand-white p-3 shadow-2xs">
-                    <p className="text-[10px] uppercase font-bold text-brand-slate">Frecuencia</p>
-                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">Quincenal</p>
+                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.frequencyLabel}</p>
+                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.frequencyValue}</p>
                   </div>
                   <div className="rounded-2xl bg-brand-white p-3 shadow-2xs">
-                    <p className="text-[10px] uppercase font-bold text-brand-slate">Custodia</p>
-                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">Descentralizada</p>
+                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.custodyLabel}</p>
+                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.custodyValue}</p>
                   </div>
                   <div className="rounded-2xl bg-brand-white p-3 shadow-2xs">
-                    <p className="text-[10px] uppercase font-bold text-brand-slate">Garantía</p>
-                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">GNAP Grant</p>
+                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.guaranteeLabel}</p>
+                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.guaranteeValue}</p>
                   </div>
                 </div>
               </div>
@@ -101,8 +101,8 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
                   $ilp.rafiki.money/creador-tienda
                 </p>
                 <div className="mt-3 flex items-center justify-between border-t border-brand-white/10 pt-2 text-[10px] sm:text-[11px] text-brand-on-navy">
-                  <span>Checkout sin intermediarios</span>
-                  <span className="text-brand-white font-semibold">Cero comisiones %</span>
+                  <span>{t.mockMerchant.checkoutNote}</span>
+                  <span className="text-brand-white font-semibold">{t.mockMerchant.noFeeNote}</span>
                 </div>
               </div>
             </article>
@@ -124,26 +124,26 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
                   <div className="pt-2 flex flex-col sm:flex-row gap-2 sm:gap-4">
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-navy">
                       <CheckCircle2 className="size-4 text-brand-violet shrink-0" />
-                      STREAM Paquetes atómicos
+                      {t.mockIlp.packetsLabel}
                     </span>
                     <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-navy">
                       <CheckCircle2 className="size-4 text-brand-violet shrink-0" />
-                      Liquidación multilateral en Rafiki
+                      {t.mockIlp.settlementLabel}
                     </span>
                   </div>
                 </div>
 
                 {/* Interactive Trace Visualization (Responsive mobile vertical, desktop horizontal) */}
                 <div className="lg:col-span-6 rounded-[24px] sm:rounded-[32px] border border-brand-line bg-brand-mist/60 p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs font-mono font-medium text-brand-slate">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs font-mono font-medium text-brand-navy/70">
                     <span>ILP PACKET ROUTING</span>
                     <span className="text-brand-violet-ink font-semibold">{ilp.metric}</span>
                   </div>
 
                   <div className="mt-4 sm:mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-center">
                     <div className="rounded-2xl border border-brand-line bg-brand-white p-3 text-center">
-                      <p className="text-[10px] uppercase font-bold text-brand-slate">Origen</p>
-                      <p className="mt-1 font-mono text-xs sm:text-sm font-bold text-brand-navy">COP (Pesos)</p>
+                      <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockIlp.originLabel}</p>
+                      <p className="mt-1 font-mono text-xs sm:text-sm font-bold text-brand-navy">{t.mockIlp.originCurrency}</p>
                       <p className="text-[10px] sm:text-[11px] text-brand-slate font-mono mt-0.5 break-all">$ilp.co/juan</p>
                     </div>
 
@@ -153,13 +153,13 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
                         <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-2 rounded-full bg-brand-navy" />
                       </div>
                       <div className="sm:hidden flex items-center justify-center my-1 text-brand-violet">
-                        <ArrowDown className="size-4 animate-bounce" />
+                        <ArrowDown className="size-4 animate-bounce motion-reduce:animate-none" />
                       </div>
                       <span className="text-[10px] font-mono text-brand-slate">~180ms</span>
                     </div>
 
                     <div className="rounded-2xl border border-brand-line bg-brand-white p-3 text-center">
-                      <p className="text-[10px] uppercase font-bold text-brand-slate">Destino</p>
+                      <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockIlp.destinationLabel}</p>
                       <p className="mt-1 font-mono text-xs sm:text-sm font-bold text-brand-navy">USD / EUR</p>
                       <p className="text-[10px] sm:text-[11px] text-brand-slate font-mono mt-0.5 break-all">$rafiki.money/maria</p>
                     </div>
@@ -168,12 +168,6 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
               </div>
             </article>
           )}
-        </div>
-        {/* Mobile App Carousel Indicator */}
-        <div className="mt-2 flex justify-center gap-1.5 md:hidden" aria-hidden="true">
-          <span className="size-1.5 rounded-full bg-brand-navy" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
         </div>
       </div>
     </section>

@@ -19,6 +19,9 @@ const landing: LandingDictionary = {
     home: "OpenCircle home",
     language: "Language",
     switchTo: "Español",
+    circleMobile: "Circle",
+    quickNavAria: "Quick mobile navigation",
+    demoMobile: "Demo",
   },
   hero: {
     eyebrow: "Savings and payments on Open Payments",
@@ -46,6 +49,13 @@ const landing: LandingDictionary = {
       notifyPaid: "María authorized and settled payment",
       notifyNext: "Next turn: Carlos",
       sample: "Testnet demonstration",
+      simAction: "Simulate Juan’s debit",
+      simActive: "Negotiating GNAP...",
+      simReset: "Reset simulation",
+      simSuccessBadge: "5/5 Settled via Rafiki",
+      justNow: "just now",
+      hashVerified: "HMAC SHA-256 verified",
+      notifySettled: "Round 2 completed · Payout emitted",
     },
   },
   trust: [
@@ -96,19 +106,19 @@ const landing: LandingDictionary = {
     lead: "Step by step, from joining a circle to receiving your payout.",
     steps: [
       {
-        title: "1. Enter your Wallet Address",
+        title: "Enter your Wallet Address",
         body: "Provide your handle ($wallet.dev/user). It works like an email address for money, without sharing card numbers or private accounts.",
       },
       {
-        title: "2. Agree on contribution and turns",
+        title: "Agree on contribution and turns",
         body: "The group sets the contribution amount, the round schedule, and the order in which each member takes the pot.",
       },
       {
-        title: "3. Authorize the debit in your wallet",
+        title: "Authorize the debit in your wallet",
         body: "When the round opens, your wallet displays a GNAP consent request with the exact amount so you can confirm.",
       },
       {
-        title: "4. The connector settles in seconds",
+        title: "The connector settles in seconds",
         body: "Once all contributions arrive, Rafiki transfers the full pot directly to the recipient's wallet.",
       },
     ],
@@ -118,6 +128,10 @@ const landing: LandingDictionary = {
       invite: "Payment wallet ($circle)",
       copied: "Copied",
       received: "Settled to your wallet",
+      gnapConsent: "GNAP Consent",
+      gnapReady: "5/5 ready",
+      debitAuthorized: "Debit authorized",
+      verified: "100% verified",
     },
   },
   calc: {
@@ -141,8 +155,11 @@ const landing: LandingDictionary = {
     breakdown: "Round pot breakdown",
   },
   safety: {
+    eyebrow: "Audit & Cryptography",
     title: "Your funds never pass through our hands",
     lead: "Money travels from wallet to wallet over cryptographic standards, with no pooled accounts or hidden holds.",
+    contractTitle: "Immutable Security Contract",
+    disclaimer: "Technical demonstration on testnet. OpenCircle operates with Open Payments standards and simulated Rafiki settlement.",
     items: [
       {
         title: "No intermediate custody",
@@ -161,11 +178,50 @@ const landing: LandingDictionary = {
         body: "Open Payments signing keys and SDK clients run in isolated backend modules; the browser never touches private keys.",
       },
     ],
-    disclaimer: "Technical demonstration on testnet. OpenCircle operates with Open Payments standards and simulated Rafiki settlement.",
+    specs: [
+      {
+        protocol: "Interledger STREAM",
+        detail: "Zero balance retention; peer-to-peer transfers between connectors.",
+      },
+      {
+        protocol: "HMAC SHA-256",
+        detail: "Cryptographic signatures on Rafiki webhooks to transition COMPLETED.",
+      },
+      {
+        protocol: "external_id UNIQUE",
+        detail: "Deduplication in audit_events; prevents duplicate debits and protects credit profiles.",
+      },
+      {
+        protocol: "server-only modules",
+        detail: "Strict key isolation kept outside of client browser reach.",
+      },
+    ],
   },
   useCases: {
+    eyebrow: "Multi-Asset Architecture",
+    openProtocolBadge: "Interledger Open Protocol (ILP)",
     title: "What you can use OpenCircle for",
     lead: "Practical ways to save with people you trust or accept global payouts without hidden deductions.",
+    mockSavings: {
+      heading: "Rotational settlement rounds",
+      frequencyLabel: "Frequency",
+      frequencyValue: "Bi-weekly",
+      custodyLabel: "Custody",
+      custodyValue: "Decentralized",
+      guaranteeLabel: "Guarantee",
+      guaranteeValue: "GNAP Grant",
+    },
+    mockMerchant: {
+      checkoutNote: "Direct checkout without middleman",
+      noFeeNote: "Zero % commissions",
+    },
+    mockIlp: {
+      packetsLabel: "Atomic STREAM packets",
+      settlementLabel: "Multilateral Rafiki settlement",
+      originLabel: "Origin",
+      originCurrency: "COP (Pesos)",
+      destinationLabel: "Destination",
+    },
     cards: [
       {
         tag: "Community Savings",
