@@ -229,6 +229,13 @@ export const CONTRIBUTION_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAI
 export const APPROVAL_MODES = ["DELEGATES", "MAJORITY"] as const;
 export const APPLICATION_STATUSES = ["PENDING", "ACCEPTED", "REJECTED", "WITHDRAWN"] as const;
 export const VOTE_DECISIONS = ["ACCEPT", "REJECT"] as const;
+// PER_ROUND: classic rotation, each round's pot goes to that round's beneficiary.
+// END: the pot is held until the last round (the goal); then each member gets what they paid in.
+export const PAYOUT_MODES = ["PER_ROUND", "END"] as const;
+// ROUND: a round's pot to its beneficiary. FINAL: an END circle's member gets their contributions.
+// COMPENSATION: a defaulter's netted debt, to the beneficiary who received less because of it.
+export const PAYOUT_KINDS = ["ROUND", "FINAL", "COMPENSATION"] as const;
+export const PAYOUT_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED"] as const;
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(", "));
 
@@ -281,8 +288,11 @@ export const circles = pgTable(
     payoutOrder: text("payout_order").$type<(typeof PAYOUT_ORDERS)[number]>().notNull().default("BEST_SCORE_FIRST"),
     // Legacy: superseded by `circle_invites` (migration 0011). Never read or written anymore.
     inviteCode: text("invite_code").unique(),
-    // Number of seats, and so of rounds.
+    // Number of seats; also of rounds when payout_mode is PER_ROUND.
     size: integer("size").notNull(),
+    payoutMode: text("payout_mode").$type<(typeof PAYOUT_MODES)[number]>().notNull().default("PER_ROUND"),
+    // END circles only: what the pot collects in total. Rounds = goal / (contribution × size).
+    goalValue: bigint("goal_value", { mode: "bigint" }),
     // The pot. For now every circle uses OpenCircle's own wallet; pots are told apart in the DB.
     poolWalletId: uuid("pool_wallet_id")
       .notNull()
@@ -318,6 +328,13 @@ export const circles = pgTable(
     check("circles_visibility", sql`${t.visibility} in (${inList(CIRCLE_VISIBILITIES)})`),
     check("circles_payout_order", sql`${t.payoutOrder} in (${inList(PAYOUT_ORDERS)})`),
     check("circles_approval_mode", sql`${t.approvalMode} in (${inList(APPROVAL_MODES)})`),
+    check("circles_payout_mode", sql`${t.payoutMode} in (${inList(PAYOUT_MODES)})`),
+    check("circles_goal_only_end", sql`(${t.payoutMode} = 'END') = (${t.goalValue} is not null)`),
+    // The goal splits into a whole number of rounds of contributions.
+    check(
+      "circles_goal_divisible",
+      sql`${t.goalValue} is null or (${t.goalValue} > 0 and ${t.goalValue} % (${t.contributionValue} * ${t.size}) = 0)`,
+    ),
     index("circles_test_clock_id_idx").on(t.testClockId),
   ],
 ).enableRLS();
@@ -335,6 +352,7 @@ export const circleMembers = pgTable(
       .references(() => users.id),
     // 1-based; at most the circle's size (checked by the service, the DB can't see circles.size here).
     // Provisional (join order) while the circle is OPEN; set from the payout order when it starts.
+    // In END circles nobody is paid per round: it is only the seat's order.
     payoutRound: integer("payout_round").notNull(),
     // Held in the pot as coverage for debt after the member's own payout.
     collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
@@ -496,10 +514,9 @@ export const rounds = pgTable(
       .notNull()
       .references(() => circles.id),
     number: integer("number").notNull(),
-    // Must be a seat of the same circle (checked by the service).
-    beneficiaryMemberId: uuid("beneficiary_member_id")
-      .notNull()
-      .references(() => circleMembers.id),
+    // Must be a seat of the same circle (checked by the service). Null in END circles: nobody
+    // receives a round's pot, it is held until the end.
+    beneficiaryMemberId: uuid("beneficiary_member_id").references(() => circleMembers.id),
     state: text("state").$type<(typeof ROUND_STATES)[number]>().notNull().default("UPCOMING"),
     // The period runs from `startsAt` to `deadline`.
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
@@ -514,7 +531,7 @@ export const rounds = pgTable(
   },
   (t) => [
     unique("rounds_circle_number_unique").on(t.circleId, t.number),
-    // Each member receives the pot exactly once per circle.
+    // Each member receives the pot exactly once per circle (NULLs, END rounds, don't collide).
     unique("rounds_circle_beneficiary_unique").on(t.circleId, t.beneficiaryMemberId),
     check("rounds_number_positive", sql`${t.number} >= 1`),
     check("rounds_state", sql`${t.state} in (${inList(ROUND_STATES)})`),
@@ -562,6 +579,62 @@ export const contributions = pgTable(
     check("contributions_asset_scale_range", sql`${t.assetScale} between 0 and 255`),
     check("contributions_status", sql`${t.status} in (${inList(CONTRIBUTION_STATUSES)})`),
     check("contributions_completed_at", sql`(${t.status} = 'COMPLETED') = (${t.completedAt} is not null)`),
+  ],
+).enableRLS();
+
+// Money from the pot to a member. Paid with a fixed-debit quote from the pool wallet: `value` is
+// exactly what leaves the pot (circle asset); the receive amount is what the quote says the
+// member's wallet gets in its own asset, and the proof of payment is that wallet receiving it.
+export const payouts = pgTable(
+  "payouts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    circleId: uuid("circle_id")
+      .notNull()
+      .references(() => circles.id),
+    // The round paid out (ROUND) or the round that was short (COMPENSATION); null for FINAL.
+    roundId: uuid("round_id").references(() => rounds.id),
+    // Who receives it; a seat of the same circle (checked by the service).
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => circleMembers.id),
+    kind: text("kind").$type<(typeof PAYOUT_KINDS)[number]>().notNull(),
+    value: bigint("value", { mode: "bigint" }).notNull(),
+    assetCode: text("asset_code").notNull(),
+    assetScale: integer("asset_scale").notNull(),
+    // Set from the quote, all three together.
+    receiveValue: bigint("receive_value", { mode: "bigint" }),
+    receiveAssetCode: text("receive_asset_code"),
+    receiveAssetScale: integer("receive_asset_scale"),
+    status: text("status").$type<(typeof PAYOUT_STATUSES)[number]>().notNull().default("PENDING"),
+    // Sent with every Open Payments call for this payout, so a retry never pays twice.
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    // Open Payments resources, saved as soon as each exists so a retry resumes instead of paying twice.
+    incomingPaymentUrl: text("incoming_payment_url"),
+    quoteUrl: text("quote_url"),
+    outgoingPaymentUrl: text("outgoing_payment_url"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    failureCode: text("failure_code"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("payouts_circle_id_idx").on(t.circleId),
+    index("payouts_member_id_idx").on(t.memberId),
+    check("payouts_kind", sql`${t.kind} in (${inList(PAYOUT_KINDS)})`),
+    check("payouts_round_only_final_null", sql`(${t.kind} = 'FINAL') = (${t.roundId} is null)`),
+    check("payouts_value_positive", sql`${t.value} > 0`),
+    check("payouts_asset_scale_range", sql`${t.assetScale} between 0 and 255`),
+    check(
+      "payouts_receive_amount",
+      sql`(${t.receiveValue} is null) = (${t.receiveAssetCode} is null) and (${t.receiveValue} is null) = (${t.receiveAssetScale} is null)`,
+    ),
+    check("payouts_status", sql`${t.status} in (${inList(PAYOUT_STATUSES)})`),
+    check("payouts_completed_at", sql`(${t.status} = 'COMPLETED') = (${t.completedAt} is not null)`),
   ],
 ).enableRLS();
 

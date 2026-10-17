@@ -308,6 +308,36 @@ test("GET /api/circles/:id is optional-auth: anonymous, signed in, or 401 for a 
   }
 });
 
+test("POST /api/circles/plan: signed in, validated, returns the service's plan and passes it the parsed terms", async () => {
+  const seen: unknown[] = [];
+  const money = (value: string) => ({ value, assetCode: "COP", assetScale: 2 });
+  const plan = { payoutMode: "END" as const, contribution: money("2000000"), goal: money("50000000"), roundsTotal: 5, feeBps: 200, payoutPerMember: money("9800000") };
+  const circles: Services["circles"] = {
+    ...fakeServices().circles,
+    plan: async (input) => (seen.push(input), plan),
+  };
+  const planServer = await startServer(fakeServices({ circles }));
+  try {
+    const body = { payoutMode: "END", goalValue: "50000000", roundsTotal: 5, size: 5 };
+    assert.equal((await planServer.request("/api/circles/plan", { method: "POST", body })).status, 401);
+
+    const token = await auth.token("11111111-1111-4111-8111-111111111111");
+    const ok = await planServer.request("/api/circles/plan", { method: "POST", token, body });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.body, plan);
+    assert.deepEqual(seen, [{ size: 5, payoutMode: "END", goalValue: 50_000_000n, roundsTotal: 5 }]);
+
+    for (const bad of [{ ...body, roundsTotal: undefined }, { ...body, name: "x" }, { contributionValue: "1.5", size: 5 }]) {
+      const res = await planServer.request("/api/circles/plan", { method: "POST", token, body: bad });
+      assert.equal(res.status, 400, JSON.stringify(bad));
+      assert.equal(errorCode(res.body), "VALIDATION_ERROR");
+    }
+    assert.equal(seen.length, 1);
+  } finally {
+    await planServer.close();
+  }
+});
+
 test("invite and friend routes require a token → 401", async () => {
   const circle = "11111111-1111-4111-8111-111111111111";
   const id = "22222222-2222-4222-8222-222222222222";

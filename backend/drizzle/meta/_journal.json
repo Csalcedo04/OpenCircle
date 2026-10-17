@@ -85,6 +85,13 @@
       "when": 1792217903609,
       "tag": "0011_friends_and_circle_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792243232965,
+      "tag": "0012_circle_payouts",
+      "breakpoints": true
     }
   ]
 }

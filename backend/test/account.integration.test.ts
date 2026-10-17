@@ -4,7 +4,7 @@ import { after, before, describe, test } from "node:test";
 import { inArray, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
 import { auditEvents, circleMembers, circles, contributions, rounds, users, walletGrants, wallets } from "../src/db/schema";
-import { createAccountService, expectedPayoutValue } from "../src/services/account.service";
+import { createAccountService } from "../src/services/account.service";
 
 // Runs against DATABASE_URL like the other integration suites. Rows use the "[account] " name prefix
 // and wallets under https://account.test/, and are deleted before and after the run.
@@ -183,8 +183,4 @@ describe("account dashboard against Supabase", { skip: databaseUrl ? false : "DA
   });
 });
 
-test("expected payout is the pot less the fee, rounded down", () => {
-  assert.equal(expectedPayoutValue(5000n, 5, 200), 24_500n);
-  assert.equal(expectedPayoutValue(333n, 3, 150), 985n);
-  assert.equal(expectedPayoutValue(100n, 2, 0), 200n);
-});
+

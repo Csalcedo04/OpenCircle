@@ -15,6 +15,7 @@ import {
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import type { CircleStatus } from "./circle.service";
+import { payoutPerMember } from "./circles/payout-plan";
 import type { Cadence } from "./circles/period-schedule";
 import { icsFromStored } from "./credit/credit-score";
 import { emptyRecord, memberRecords, type MemberRecord } from "./member.service";
@@ -59,7 +60,8 @@ export interface DashboardCircleDto {
   size: number;
   seatsTaken: number;
   contribution: AmountDto;
-  /** Pot minus OpenCircle's fee. Expected, never guaranteed: release follows the round engine. */
+  /** What a member receives if everyone pays, less OpenCircle's fee (PER_ROUND: the pot; END: what
+   * they put in). Expected, never guaranteed: release follows the round engine. */
   expectedPayout: AmountDto;
   /** Provisional (join order) while the circle is OPEN. */
   myPayoutRound: number;
@@ -111,12 +113,6 @@ const amount = (value: bigint, assetCode: string, assetScale: number): AmountDto
   assetScale,
 });
 
-/** Pot (contribution × size) less the fee in basis points, rounded down like the frontend calculator. */
-export function expectedPayoutValue(contribution: bigint, size: number, feeBps: number): bigint {
-  const pot = contribution * BigInt(size);
-  return pot - (pot * BigInt(feeBps)) / 10_000n;
-}
-
 /** Read model for the account page. Reads only: it never changes a payment or round. */
 export function createAccountService({ db, now = () => new Date() }: { db: Db; now?: () => Date }) {
   async function wallet(userId: string): Promise<{ wallet: DashboardWalletDto | null; ics: number | null }> {
@@ -163,6 +159,8 @@ export function createAccountService({ db, now = () => new Date() }: { db: Db; n
         assetCode: circles.assetCode,
         assetScale: circles.assetScale,
         feeBps: circles.feeBps,
+        payoutMode: circles.payoutMode,
+        goalValue: circles.goalValue,
         frozenTime: testClocks.frozenTime,
         memberId: circleMembers.id,
         payoutRound: circleMembers.payoutRound,
@@ -222,7 +220,7 @@ export function createAccountService({ db, now = () => new Date() }: { db: Db; n
         size: c.size,
         seatsTaken: c.seatsTaken,
         contribution: amount(c.contributionValue, c.assetCode, c.assetScale),
-        expectedPayout: amount(expectedPayoutValue(c.contributionValue, c.size, c.feeBps), c.assetCode, c.assetScale),
+        expectedPayout: amount(payoutPerMember(c), c.assetCode, c.assetScale),
         myPayoutRound: c.payoutRound,
         currentRound: circleRounds.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
         now: (c.frozenTime ?? now()).toISOString(),

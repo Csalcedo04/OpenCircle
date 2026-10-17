@@ -234,7 +234,7 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
 
     const period3 = view.circles[0]?.currentPeriod;
     assert.equal(period3?.number, 3);
-    assert.equal(period3?.beneficiary.displayName, displayName(`${PREFIX}Carol Díaz`));
+    assert.equal(period3?.beneficiary?.displayName, displayName(`${PREFIX}Carol Díaz`));
     assert.ok(period3?.contributions.every((c) => c.status === "COMPLETED"));
 
     // Completed contributions carry circle time, and the pool's audit log has the money in.
