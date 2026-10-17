@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest"
 import { circleErrorKey, parseCreateForm, parseJoinForm, type CreateFields } from "./circles"
 
-const valid: CreateFields = { name: "Natillera Laureles", city: "Medellín", amount: "20.000", size: "5", cadence: "WEEKLY", payoutRound: "2" }
+const valid: CreateFields = { name: "Natillera Laureles", city: "Medellín", amount: "20.000", size: "5", cadence: "WEEKLY", payoutRound: "2", visibility: "PRIVATE" }
 
 describe("parseCreateForm", () => {
   it("turns whole pesos into minor units and builds the API request", () => {
     expect(parseCreateForm(valid)).toEqual({
       ok: true,
-      request: { name: "Natillera Laureles", city: "Medellín", contributionValue: "2000000", size: 5, cadence: "WEEKLY", payoutRound: 2 },
+      request: { name: "Natillera Laureles", city: "Medellín", contributionValue: "2000000", size: 5, cadence: "WEEKLY", payoutRound: 2, visibility: "PRIVATE" },
     })
   })
 
+  it("sends the visibility, falling back to private for anything unexpected", () => {
+    expect(parseCreateForm({ ...valid, visibility: "PUBLIC" })).toMatchObject({ ok: true, request: { visibility: "PUBLIC" } })
+    expect(parseCreateForm({ ...valid, visibility: "EVERYONE" })).toMatchObject({ ok: true, request: { visibility: "PRIVATE" } })
+  })
+
   it("flags each invalid field", () => {
-    const r = parseCreateForm({ name: "ab", city: "", amount: "500", size: "13", cadence: "DAILY", payoutRound: "0" })
+    const r = parseCreateForm({ name: "ab", city: "", amount: "500", size: "13", cadence: "DAILY", payoutRound: "0", visibility: "PRIVATE" })
     expect(r).toEqual({ ok: false, errors: { name: "name", city: "city", cadence: "cadence", amount: "amount", size: "size", seat: "seat" } })
   })
 

@@ -3,6 +3,7 @@ import "server-only"
 import { fetchCircle, fetchCircles, fetchMember } from "@/lib/api/backend"
 import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
 import type { Circle, Member, Review } from "@/lib/domain/types"
+import type { CircleVisibility } from "@/lib/flows/circle-invite"
 
 /**
  * Read API for pages, backed by the OpenCircle API (signed-in requests). Pages get the
@@ -14,6 +15,8 @@ export interface CircleView {
   circle: Circle
   members: Member[]
   reviews: Review[]
+  /** Who can find and join it; `inviteUrl` is set only when the viewer created the circle. */
+  access: { visibility: CircleVisibility; inviteUrl: string | null }
 }
 
 /** A member with the reviews they received and the circles they're in. */
@@ -26,7 +29,12 @@ export interface MemberView {
 export async function getCircleView(id: string, invite?: string): Promise<CircleView | undefined> {
   const dto = await fetchCircle(id, invite)
   if (!dto) return undefined
-  return { circle: toCircle(dto), members: membersOf(dto), reviews: dto.reviews.map(toReview) }
+  return {
+    circle: toCircle(dto),
+    members: membersOf(dto),
+    reviews: dto.reviews.map(toReview),
+    access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl },
+  }
 }
 
 /** Every listed circle with its details (the list page shows trust and the current round). */

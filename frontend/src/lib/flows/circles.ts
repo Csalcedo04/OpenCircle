@@ -1,6 +1,7 @@
 import { z } from "zod"
 import type { Cadence, NewCircleRequest, SeatRequest } from "@/lib/api/backend"
 import { parseWholeUnits } from "@/lib/domain/money"
+import { CIRCLE_VISIBILITIES } from "@/lib/flows/circle-invite"
 
 // Create / join form logic, shared by the server actions. Pure, so it's unit-tested.
 
@@ -42,12 +43,15 @@ export interface CreateFields {
   size: string
   cadence: string
   payoutRound: string
+  visibility: string
 }
 
 const createSchema = z.object({
   name: z.string().trim().min(3, "name").max(60, "name"),
   city: z.string().trim().min(2, "city").max(80, "city"),
   cadence: z.enum(CADENCES, "cadence"),
+  // Anything unexpected falls back to private, the safe default.
+  visibility: z.enum(CIRCLE_VISIBILITIES).catch("PRIVATE"),
 })
 
 export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircleRequest } | { ok: false; errors: FieldErrors } {
@@ -72,6 +76,7 @@ export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircle
       size,
       cadence: base.data.cadence,
       payoutRound,
+      visibility: base.data.visibility,
     },
   }
 }
