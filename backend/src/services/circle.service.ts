@@ -18,7 +18,7 @@ import {
 import { AppError } from "../errors/app-error";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
-import { findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
+import { emptyRecord, findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
 
 export { displayName };
 import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
@@ -223,7 +223,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         memberId: s.memberId,
         userId: s.userId,
         displayName: displayName(s.fullName),
-        record: records.get(s.userId) ?? { payments: { onTime: 0, late: 0, missed: 0 }, circlesCompleted: 0, memberSince: null },
+        record: records.get(s.userId) ?? emptyRecord(),
         payoutRound: s.payoutRound,
         collateral: amount(s.collateralValue, assetCode, assetScale),
         grantMode: s.grantMode ?? null,
