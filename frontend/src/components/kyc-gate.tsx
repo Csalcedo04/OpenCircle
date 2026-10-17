@@ -2,12 +2,13 @@ import type { ReactNode } from "react"
 import Link from "next/link"
 import { Clock, ShieldCheck } from "lucide-react"
 import { KycStartForm } from "@/components/kyc-start-form"
+import { KycStatusRefresher } from "@/components/kyc-status-refresher"
 import { buttonVariants } from "@/components/ui/button"
 import type { Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getMyKyc, getMyProfile, isBackendUnavailable } from "@/lib/api/backend"
-import { kycGateState } from "@/lib/flows/kyc-gate"
+import { isKycPending, kycGateState } from "@/lib/flows/kyc-gate"
 import { createClient } from "@/lib/supabase/server"
 
 type Props = {
@@ -72,6 +73,7 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
 
   const state = kycGateState(kyc)
   if (state === "open") return <>{children}</>
+  const refresher = isKycPending(kyc) ? <KycStatusRefresher /> : null
 
   if (state === "in-review") {
     return (
@@ -79,6 +81,19 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
         <p className="mt-3 text-muted-foreground" role="status">
           {t.pending}
         </p>
+        {refresher}
+      </Panel>
+    )
+  }
+
+  if (state === "checking") {
+    return (
+      <Panel icon={<Clock className="size-5 shrink-0 text-brand-violet-ink" aria-hidden="true" />} title={t.title}>
+        <p className="mt-3 text-muted-foreground" role="status">
+          {t.checking}
+        </p>
+        <KycStartForm locale={locale} returnPath={returnPath} t={{ ...t, start: t.resume }} />
+        {refresher}
       </Panel>
     )
   }
@@ -87,6 +102,7 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
     <Panel icon={icon} title={t.title}>
       <p className="mt-3 text-muted-foreground">{state === "declined" ? t.declined : t.lead}</p>
       <KycStartForm locale={locale} returnPath={returnPath} t={t} />
+      {refresher}
     </Panel>
   )
 }

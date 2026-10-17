@@ -53,7 +53,7 @@ export interface SeedOptions {
   /** Link a test wallet, as completed wallet consent would. */
   wallet?: boolean
   /** Didit status of the user's latest KYC session. */
-  kyc?: "Approved" | "In Review" | "Declined" | "Not Started"
+  kyc?: "Approved" | "In Progress" | "In Review" | "Declined" | "Not Started"
 }
 
 /** Creates the profile (and optionally wallet and KYC state) directly, skipping the UI. */

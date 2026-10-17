@@ -225,6 +225,8 @@ const en = {
     lead: "To create or join a circle, we need to confirm you are who you say you are. It takes about two minutes with your ID document and a selfie, handled by our verification partner Didit.",
     start: "Verify my identity",
     starting: "Opening verification…",
+    checking: "We’re checking your verification. This page updates on its own as soon as there’s a result. If you didn’t finish, you can pick up where you left off.",
+    resume: "Continue verification",
     pending: "Your verification is being reviewed. We’ll let you in as soon as it’s approved.",
     declined: "We couldn’t verify your identity. You can try again with a clear photo of your document.",
     needsOnboarding: "Finish setting up your account first.",
