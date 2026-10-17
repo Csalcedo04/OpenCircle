@@ -194,17 +194,18 @@ describe("decidersOf", () => {
 });
 
 describe("createCircleCycle", () => {
-  test("runs the period engine, then scoring, then reminders, at the same time", async () => {
+  test("runs the period engine, then payouts, then scoring, then reminders, at the same time", async () => {
     const calls: string[] = [];
     const now = new Date("2026-04-01T00:00:00Z");
     const cycle = createCircleCycle({
       engine: { advanceCircle: async (id, t) => void calls.push(`engine ${id} ${t.toISOString()}`) },
+      payouts: { payCircle: async (id, t) => void calls.push(`payout ${id} ${t.toISOString()}`) },
       scoring: { scoreCircle: async (id, t) => (calls.push(`score ${id} ${t.toISOString()}`), 0) },
       reminders: { remindCircle: async (id, t) => (calls.push(`remind ${id} ${t.toISOString()}`), 0) },
     });
     await cycle.advanceCircle("c1", now);
     const iso = now.toISOString();
-    assert.deepEqual(calls, [`engine c1 ${iso}`, `score c1 ${iso}`, `remind c1 ${iso}`]);
+    assert.deepEqual(calls, [`engine c1 ${iso}`, `payout c1 ${iso}`, `score c1 ${iso}`, `remind c1 ${iso}`]);
   });
 });
 

@@ -2,6 +2,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { circles } from "../../db/schema";
 import type { ApplicationNotices } from "./application-notices";
+import type { PayoutService } from "./payout.service";
 import type { PeriodEngine } from "./period-engine";
 import type { RemindersService } from "./reminders.service";
 import type { ScoringService } from "./scoring.service";
@@ -10,17 +11,19 @@ export type CircleCycle = Pick<PeriodEngine, "advanceCircle">;
 
 /**
  * One step of a circle at circle time `now`: the period engine collects and closes periods,
- * then payment outcomes move members' scores, then unpaid members are reminded. A drop-in
- * for the engine, so test clocks run the whole cycle too.
+ * closed pots are paid out to members, payment outcomes move members' scores, then unpaid
+ * members are reminded. A drop-in for the engine, so test clocks run the whole cycle too.
  */
 export function createCircleCycle(deps: {
   engine: CircleCycle;
+  payouts: Pick<PayoutService, "payCircle">;
   scoring: Pick<ScoringService, "scoreCircle">;
   reminders: Pick<RemindersService, "remindCircle">;
 }): CircleCycle {
   return {
     async advanceCircle(circleId, now) {
       await deps.engine.advanceCircle(circleId, now);
+      await deps.payouts.payCircle(circleId, now);
       await deps.scoring.scoreCircle(circleId, now);
       await deps.reminders.remindCircle(circleId, now);
     },

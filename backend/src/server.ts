@@ -10,12 +10,14 @@ import { createScoring } from "./services/circles/scoring.service";
 import { createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
+import { createPayouts } from "./services/circles/payout.service";
+import { createPoolAccess } from "./services/circles/pool-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./services/open-payments/client";
-import { createContributionPayments } from "./services/open-payments/payments";
+import { createContributionPayments, createPayoutPayments } from "./services/open-payments/payments";
 import { createTokenCipher } from "./services/open-payments/token-cipher";
 import { createWalletAddressService } from "./services/open-payments/wallet-address.service";
 import { createTestClockService } from "./services/test-clock.service";
@@ -39,14 +41,22 @@ async function main(): Promise<void> {
 
   // Contributions: the pool (OpenCircle's wallet) charges each member through their standing grant.
   const payments = createContributionPayments({ client: openPaymentsAuth, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS });
-  const engine = createPeriodEngine({ db, payments, memberAccess: createMemberAccess({ db, cipher, payments }) });
+  const memberAccess = createMemberAccess({ db, cipher, payments });
+  const engine = createPeriodEngine({ db, payments, memberAccess });
+  // Payouts: the pool pays members through its owner's wallet grant (see pool-access).
+  const payouts = createPayouts({
+    db,
+    payments: createPayoutPayments({ client: openPaymentsAuth }),
+    pool: createPoolAccess({ db, memberAccess, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS }),
+  });
   // Real providers (email, WhatsApp) come later; until then notifications are only logged.
   const sender = createLogSender();
   const notices = createApplicationNotices({ db, sender });
-  // Periods, then scores (ICS), then payment reminders. The scheduler runs it for real-time
-  // circles (POST /api/internal/circles/tick); test clocks run it for theirs.
+  // Periods, then payouts, then scores (ICS), then payment reminders. The scheduler runs it for
+  // real-time circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
     engine,
+    payouts,
     scoring: createScoring({ db }),
     reminders: createReminders({ db, sender }),
   });
