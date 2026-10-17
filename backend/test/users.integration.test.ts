@@ -123,6 +123,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       kyc: createKycService({ db, didit: unusedDidit, frontendUrl: "http://localhost:3001" }),
       circles: fakeServices().circles,
       applications: fakeServices().applications,
+      invites: fakeServices().invites,
       members: fakeServices().members,
       testClocks: null,
       circleTick: fakeServices().circleTick,

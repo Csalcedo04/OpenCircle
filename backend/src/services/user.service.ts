@@ -2,7 +2,8 @@ import { and, eq, exists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
-import { circleApplications, circleMembers, creditProfiles, documentType, users, wallets } from "../db/schema";
+import { circleApplications, circleInvites, circleMembers, creditProfiles, documentType, users, wallets } from "../db/schema";
+import type { Tx } from "./wallet.service";
 import { AppError } from "../errors/app-error";
 import { icsFromStored } from "./credit/credit-score";
 
@@ -63,7 +64,7 @@ export const toPublicProfile = (row: { fullName: string | null; walletAddress: s
  * SQL condition on `users`: the row is the viewer, shares a circle with the viewer, or has a
  * pending application to a circle the viewer belongs to. Who may see another user's profile.
  */
-export function profileVisibleTo(db: Db, viewerId: string) {
+export function profileVisibleTo(db: Db | Tx, viewerId: string) {
   const viewer = alias(circleMembers, "viewer");
   const peer = alias(circleMembers, "peer");
   const sharesCircle = db
@@ -76,7 +77,27 @@ export function profileVisibleTo(db: Db, viewerId: string) {
     .from(viewer)
     .innerJoin(circleApplications, eq(circleApplications.circleId, viewer.circleId))
     .where(and(eq(viewer.userId, viewerId), eq(circleApplications.userId, users.id), eq(circleApplications.status, "PENDING")));
-  return or(eq(users.id, viewerId), exists(sharesCircle), exists(appliedToViewersCircle));
+  // Someone with a seat in the circle invited this user; or this user invited the viewer.
+  const invitedToViewersCircle = db
+    .select({ one: sql`1` })
+    .from(viewer)
+    .innerJoin(circleInvites, eq(circleInvites.circleId, viewer.circleId))
+    .where(and(eq(viewer.userId, viewerId), eq(circleInvites.userId, users.id), eq(circleInvites.status, "ACTIVE")));
+  const invitedViewer = db
+    .select({ one: sql`1` })
+    .from(circleInvites)
+    .where(and(eq(circleInvites.userId, viewerId), eq(circleInvites.createdBy, users.id), eq(circleInvites.status, "ACTIVE")));
+  return or(eq(users.id, viewerId), exists(sharesCircle), exists(appliedToViewersCircle), exists(invitedToViewersCircle), exists(invitedViewer));
+}
+
+/** The id of the account with this email (stored lowercase), or null. */
+export async function findUserIdByEmail(db: Db | Tx, email: string): Promise<string | null> {
+  const [user] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, email.toLowerCase()))
+    .limit(1);
+  return user?.id ?? null;
 }
 
 const profileNotFound = () => new AppError(404, "PROFILE_NOT_FOUND", "User profile not found");

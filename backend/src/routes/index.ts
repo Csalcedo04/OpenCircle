@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { WalletAddressService } from "../services/open-payments/wallet-address.service";
 import type { CircleTickService } from "../services/circles/circle-cycle";
+import type { InviteService } from "../services/circles/invite.service";
 import type { MemberService } from "../services/member.service";
 import type { TestClockService } from "../services/test-clock.service";
 import { circleRoutes, type CircleRouteServices } from "./circles";
@@ -11,6 +12,8 @@ import { userRoutes, type UserRouteServices } from "./users";
 import { walletAddressRoutes } from "./wallet-addresses";
 
 export interface Services extends UserRouteServices, CircleRouteServices {
+  // Both route files take a slice of it; the app gets the whole service.
+  invites: InviteService;
   walletAddresses: WalletAddressService;
   members: MemberService;
   /** Null unless TEST_CLOCKS_ENABLED: the routes are then not mounted at all. */

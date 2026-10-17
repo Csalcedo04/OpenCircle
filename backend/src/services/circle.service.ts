@@ -488,6 +488,16 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       return rows.map(toSummary);
     },
 
+    /** Summaries of the given circles, in no particular order; unknown ids are left out. */
+    async summariesOf(circleIds: readonly string[]): Promise<CircleSummaryDto[]> {
+      if (circleIds.length === 0) return [];
+      const rows = await db
+        .select(summaryColumns)
+        .from(circles)
+        .where(inArray(circles.id, [...new Set(circleIds)]));
+      return rows.map(toSummary);
+    },
+
     /** Of `circleIds`, those `viewerId` may see (public, or they are a member). */
     async visibleIds(viewerId: string, circleIds: readonly string[]): Promise<Set<string>> {
       if (circleIds.length === 0) return new Set();

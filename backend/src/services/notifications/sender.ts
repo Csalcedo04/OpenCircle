@@ -39,7 +39,17 @@ export interface ApplicationAccepted extends Delivery {
   acceptedByName: string;
 }
 
-export type Notification = PaymentReminder | ApplicationReceived | ApplicationAccepted;
+/** Someone was invited to a circle; sent to the invitee. The link carries the invite's secret. */
+export interface CircleInvite extends Delivery {
+  kind: "CIRCLE_INVITE";
+  circleId: string;
+  inviteId: string;
+  inviterName: string;
+  inviteUrl: string;
+  expiresAt: Date | null;
+}
+
+export type Notification = PaymentReminder | ApplicationReceived | ApplicationAccepted | CircleInvite;
 export type NotificationKind = Notification["kind"];
 
 /** Delivers one notification; throws when it could not, so the caller retries later. */
@@ -51,7 +61,8 @@ export interface NotificationSender {
 export function createLogSender(log: (message: string, data: Record<string, string>) => void = console.info): NotificationSender {
   return {
     async send(n) {
-      const subject = "contributionId" in n ? { contributionId: n.contributionId } : { applicationId: n.applicationId };
+      const subject =
+        "contributionId" in n ? { contributionId: n.contributionId } : "inviteId" in n ? { inviteId: n.inviteId } : { applicationId: n.applicationId };
       log("Notification", { kind: n.kind, channel: n.channel, ...subject });
     },
   };

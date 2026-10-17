@@ -4,6 +4,8 @@ import { createDb } from "./db/client";
 import { createCircleService } from "./services/circle.service";
 import { createApplicationNotices } from "./services/circles/application-notices";
 import { createApplicationService } from "./services/circles/application.service";
+import { createInviteNotices } from "./services/circles/invite-notices";
+import { createInviteService } from "./services/circles/invite.service";
 import { createCircleCycle, createCircleTick } from "./services/circles/circle-cycle";
 import { createReminders } from "./services/circles/reminders.service";
 import { createScoring } from "./services/circles/scoring.service";
@@ -42,6 +44,7 @@ async function main(): Promise<void> {
   // Real providers (email, WhatsApp) come later; until then notifications are only logged.
   const sender = createLogSender();
   const notices = createApplicationNotices({ db, sender });
+  const inviteNotices = createInviteNotices({ db, sender, frontendUrl: env.FRONTEND_URL });
   // Periods, then scores (ICS), then payment reminders. The scheduler runs it for real-time
   // circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
@@ -73,6 +76,7 @@ async function main(): Promise<void> {
       }),
       circles,
       applications: createApplicationService({ db, circles, notices }),
+      invites: createInviteService({ db, circles, notices: inviteNotices, frontendUrl: env.FRONTEND_URL }),
       members: createMemberService({ db, circles }),
       testClocks,
       circleTick: createCircleTick({ db, cycle, notices }),
