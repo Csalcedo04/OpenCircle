@@ -2,7 +2,7 @@ import { and, eq, exists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
-import { circleApplications, circleInvites, circleMembers, creditProfiles, documentType, friendships, users, wallets } from "../db/schema";
+import { auditEvents, circleApplications, circleInvites, circleMembers, creditProfiles, documentType, friendships, users, wallets } from "../db/schema";
 import type { Tx } from "./wallet.service";
 import { AppError } from "../errors/app-error";
 import { icsFromStored } from "./credit/credit-score";
@@ -176,6 +176,28 @@ export function createUserService(db: Db) {
     return toPublicProfile(row);
   }
 
+  /**
+   * Hands a profile whose Supabase Auth user no longer exists to the new Auth user `id` with
+   * the same email, once that user has confirmed it. Wallet, circles, KYC and grants follow the
+   * id (FKs are ON UPDATE CASCADE). A profile whose Auth user still exists is never taken.
+   */
+  async function claimOrphanedProfile(id: string, email: string): Promise<boolean> {
+    const claimed = await db
+      .update(users)
+      .set({ id })
+      .where(
+        and(
+          eq(users.email, email.toLowerCase()),
+          sql`not exists (select 1 from auth.users a where a.id = ${users.id})`,
+          sql`exists (select 1 from auth.users a where a.id = ${id} and a.email_confirmed_at is not null)`,
+        ),
+      )
+      .returning({ wallet: users.opWallet });
+    const [profile] = claimed;
+    if (profile?.wallet) await db.insert(auditEvents).values({ walletId: profile.wallet, eventType: "user.relinked" });
+    return profile !== undefined;
+  }
+
   return {
     getProfile,
     getPublicProfile,
@@ -184,7 +206,11 @@ export function createUserService(db: Db) {
       try {
         await db.insert(users).values({ id, ...input });
       } catch (err) {
-        const conflict = conflictByConstraint[uniqueViolation(err) ?? ""];
+        const constraint = uniqueViolation(err) ?? "";
+        // Signing up again after the Auth user was deleted: take back the old profile.
+        const reclaimable = constraint === "users_email_unique" || constraint === "users_document_unique";
+        if (reclaimable && (await claimOrphanedProfile(id, input.email))) return getProfile(id);
+        const conflict = conflictByConstraint[constraint];
         if (conflict) throw conflict();
         throw err;
       }
