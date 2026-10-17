@@ -17,7 +17,7 @@ export function FormField({ id, label, help, error, children }: Props) {
       </label>
       {children}
       {error ? (
-        <p id={`${id}-error`} className="text-sm font-medium text-brand-violet-ink">
+        <p id={`${id}-error`} className="oc-fade-in text-sm font-medium text-brand-violet-ink">
           {error}
         </p>
       ) : help ? (

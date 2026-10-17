@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState } from "react"
-import { Wallet } from "lucide-react"
+import { LoaderCircle, Wallet } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,7 +51,7 @@ export function WalletForm({ locale, t, initialError }: Props) {
         </div>
       </FormField>
       <Button type="submit" disabled={pending} className="h-11 w-full px-5 text-base sm:w-auto">
-        <Wallet aria-hidden="true" />
+        {pending ? <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" /> : <Wallet aria-hidden="true" />}
         {pending ? t.connecting : t.connect}
       </Button>
     </form>
