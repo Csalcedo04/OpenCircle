@@ -9,6 +9,7 @@ import {
   circleMembers,
   circles,
   contributions,
+  reviews,
   rounds,
   testClocks,
   users,
@@ -16,6 +17,10 @@ import {
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
+import { displayName } from "./display-name";
+import { findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
+
+export { displayName };
 import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
 
 export type CircleStatus = (typeof CIRCLE_STATUSES)[number];
@@ -56,8 +61,12 @@ export interface CircleSummaryDto {
 
 export interface SeatDto {
   memberId: string;
-  // Public pages show "Ana G.", never the full legal name.
+  /** The member's user id, for their profile (GET /api/members/:id). Pages are signed-in only. */
+  userId: string;
+  // "Ana G.", never the full legal name.
   displayName: string;
+  /** Payment record across all their circles, for trust. */
+  record: MemberRecord;
   payoutRound: number;
   collateral: AmountDto;
   grantMode: GrantMode | null;
@@ -84,18 +93,12 @@ export interface CircleDto extends CircleSummaryDto {
   currentRound: number | null;
   seats: SeatDto[];
   rounds: RoundDto[];
+  /** Reviews members left each other in this circle, newest first. */
+  reviews: ReviewDto[];
 }
 
 const ACTIVE_ROUND_STATES: readonly RoundState[] = ["COLLECTING", "FUNDED", "RISK_CHECK", "BLOCKED", "PAYING_OUT"];
 
-/** "Ana María Gómez" → "Ana G." */
-export function displayName(fullName: string | null): string {
-  const parts = (fullName ?? "").trim().split(/\s+/).filter(Boolean);
-  const first = parts[0];
-  if (!first) return "—";
-  const last = parts.length > 1 ? parts[parts.length - 1] : undefined;
-  return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
-}
 
 const amount = (value: bigint, assetCode: string, assetScale: number): AmountDto => ({
   value: value.toString(),
@@ -173,6 +176,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     const seats = await db
       .select({
         memberId: circleMembers.id,
+        userId: circleMembers.userId,
         fullName: users.fullName,
         payoutRound: circleMembers.payoutRound,
         collateralValue: circleMembers.collateralValue,
@@ -197,6 +201,14 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
               ),
             );
 
+    const [records, circleReviews] = await Promise.all([
+      memberRecords(
+        db,
+        seats.map((s) => s.userId),
+      ),
+      findReviews(db, eq(reviews.circleId, id)),
+    ]);
+
     const { assetCode, assetScale } = circle;
     return {
       ...toSummary(circle),
@@ -209,7 +221,9 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
+        userId: s.userId,
         displayName: displayName(s.fullName),
+        record: records.get(s.userId) ?? { payments: { onTime: 0, late: 0, missed: 0 }, circlesCompleted: 0, memberSince: null },
         payoutRound: s.payoutRound,
         collateral: amount(s.collateralValue, assetCode, assetScale),
         grantMode: s.grantMode ?? null,
@@ -224,6 +238,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           .filter((c) => c.roundId === r.id)
           .map((c) => ({ memberId: c.memberId, status: c.status })),
       })),
+      reviews: circleReviews,
     };
   }
 
