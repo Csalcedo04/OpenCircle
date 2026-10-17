@@ -37,12 +37,7 @@ async function deleteTestData(): Promise<void> {
   if (walletIds.length > 0) {
     await db.delete(auditEvents).where(inArray(auditEvents.walletId, walletIds));
   }
-  // Consent and KYC rows reference users without cascade.
-  if (createdUserIds.length > 0) {
-    await db.delete(walletGrants).where(inArray(walletGrants.userId, createdUserIds));
-    await db.delete(consentChallenges).where(inArray(consentChallenges.userId, createdUserIds));
-    await db.delete(kycVerifications).where(inArray(kycVerifications.userId, createdUserIds));
-  }
+  // Consent, grant and KYC rows go with their user (ON DELETE CASCADE).
   const userFilters = [like(users.fullName, `${TEST_NAME_PREFIX}%`)];
   if (createdUserIds.length > 0) userFilters.push(inArray(users.id, createdUserIds));
   if (walletIds.length > 0) userFilters.push(inArray(users.opWallet, walletIds));
@@ -416,6 +411,42 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       await rejectsWith(link(bob.id, url), "WALLET_IN_USE");
       const [user] = await db.select().from(users).where(eq(users.id, bob.id));
       assert.equal(user?.opWallet, null);
+    });
+  });
+
+  describe("deleting a user", () => {
+    test("cascades to consent, grants and KYC; the wallet and its audit history stay", async () => {
+      const { id } = await userWithProfile();
+      const { wallet } = await link(id, testWalletUrl());
+      const expiresAt = new Date(Date.now() + 600_000);
+      await db.insert(consentChallenges).values({
+        userId: id,
+        state: randomUUID(),
+        walletAddressUrl: wallet.addressUrl,
+        grantEndpoint: `https://${TEST_WALLET_HOST}/auth`,
+        clientNonce: "client-nonce",
+        finishNonce: "finish-nonce",
+        continueUri: `https://${TEST_WALLET_HOST}/continue`,
+        continueTokenCiphertext: "ciphertext",
+        expiresAt,
+      });
+      await db.insert(walletGrants).values({
+        userId: id,
+        walletId: wallet.id,
+        accessTokenCiphertext: "ciphertext",
+        manageUri: `https://${TEST_WALLET_HOST}/token`,
+        continueUri: `https://${TEST_WALLET_HOST}/continue`,
+      });
+      await db.insert(kycVerifications).values({ userId: id, sessionId: randomUUID(), status: "Approved" });
+
+      await db.delete(users).where(eq(users.id, id));
+
+      assert.equal((await db.select().from(users).where(eq(users.id, id))).length, 0);
+      assert.equal((await db.select().from(consentChallenges).where(eq(consentChallenges.userId, id))).length, 0);
+      assert.equal((await db.select().from(walletGrants).where(eq(walletGrants.userId, id))).length, 0);
+      assert.equal((await db.select().from(kycVerifications).where(eq(kycVerifications.userId, id))).length, 0);
+      assert.equal((await db.select().from(wallets).where(eq(wallets.id, wallet.id))).length, 1);
+      assert.equal(await auditCount(wallet.id), 1);
     });
   });
 

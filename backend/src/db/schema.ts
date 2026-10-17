@@ -38,7 +38,10 @@ export const wallets = pgTable(
 // cc: cédula de ciudadanía, ti: tarjeta de identidad, ce: cédula de extranjería, pp: pasaporte.
 export const documentType = pgEnum("document_type", ["cc", "ti", "ce", "pp"]);
 
-// `id` is the Supabase Auth user id (auth.users.id), so it has no default.
+// `id` is the Supabase Auth user id (auth.users.id), so it has no default. Deleting the Auth
+// user deletes this row (trigger on auth.users, migration 0008), and deleting this row cascades
+// to the user's consent, grants, KYC, applications and reviews. It never cascades into circles:
+// deleting a user who created a circle or holds a seat fails. The wallet and its audit history stay.
 export const users = pgTable(
   "users",
   {
@@ -123,7 +126,7 @@ export const consentChallenges = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     state: text("state").notNull().unique(),
     walletAddressUrl: text("wallet_address_url").notNull(),
     grantEndpoint: text("grant_endpoint").notNull(),
@@ -149,7 +152,7 @@ export const walletGrants = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     walletId: uuid("wallet_id")
       .notNull()
       .references(() => wallets.id),
@@ -182,7 +185,7 @@ export const kycVerifications = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     sessionId: uuid("session_id").notNull().unique(),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -195,9 +198,10 @@ export const kycVerifications = pgTable(
 ).enableRLS();
 
 // ── Savings circles (natilleras) ─────────────────────────────────────────────
-// Pool model: every member pays the contribution into the circle's pot each round,
-// and one member (the round's beneficiary) receives the pot. Amounts are integers in
-// the minor unit of the circle's asset. No cascades: a circle's history is never erased.
+// Pool model: every member pays the contribution into one common pot each round until it
+// reaches the goal (goal = contribution × size × rounds). Amounts are integers in the minor
+// unit of the circle's asset. No cascades from circles or seats: a circle's history is never
+// erased. Only a user's own applications and reviews go with the user.
 
 export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
@@ -231,6 +235,8 @@ export const circles = pgTable(
     status: text("status").$type<(typeof CIRCLE_STATUSES)[number]>().notNull().default("OPEN"),
     // What each member pays per round.
     contributionValue: bigint("contribution_value", { mode: "bigint" }).notNull(),
+    // What the pot must reach. The number of rounds is goal ÷ (contribution × size).
+    goalValue: bigint("goal_value", { mode: "bigint" }).notNull(),
     assetCode: text("asset_code").notNull(),
     assetScale: integer("asset_scale").notNull(),
     // OpenCircle's fee on each pot, in basis points.
@@ -240,7 +246,7 @@ export const circles = pgTable(
     // Weight of an active recurring grant as coverage of a member's debt, in basis points.
     grantWeightBps: integer("grant_weight_bps").notNull().default(5000),
     roundLengthDays: integer("round_length_days").notNull(),
-    // Number of seats, and so of rounds.
+    // Number of seats.
     size: integer("size").notNull(),
     // The pot. For now every circle uses OpenCircle's own wallet; pots are told apart in the DB.
     poolWalletId: uuid("pool_wallet_id")
@@ -272,6 +278,11 @@ export const circles = pgTable(
     check("circles_round_length_range", sql`${t.roundLengthDays} between 1 and 365`),
     check("circles_size_range", sql`${t.size} between 2 and 50`),
     check("circles_approval_mode", sql`${t.approvalMode} in (${inList(APPROVAL_MODES)})`),
+    // A whole number of rounds, at least one.
+    check(
+      "circles_goal_whole_rounds",
+      sql`${t.goalValue} > 0 and ${t.goalValue} % (${t.contributionValue} * ${t.size}) = 0`,
+    ),
   ],
 ).enableRLS();
 
@@ -316,7 +327,7 @@ export const circleApplications = pgTable(
       .references(() => circles.id),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     // Seat preferences, copied to circle_members on acceptance. Null payout round: next free one.
     payoutRound: integer("payout_round"),
     collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
@@ -348,7 +359,7 @@ export const applicationVotes = pgTable(
   {
     applicationId: uuid("application_id")
       .notNull()
-      .references(() => circleApplications.id),
+      .references(() => circleApplications.id, { onDelete: "cascade" }),
     memberId: uuid("member_id")
       .notNull()
       .references(() => circleMembers.id),
@@ -370,10 +381,8 @@ export const rounds = pgTable(
       .notNull()
       .references(() => circles.id),
     number: integer("number").notNull(),
-    // Must be a seat of the same circle (checked by the service).
-    beneficiaryMemberId: uuid("beneficiary_member_id")
-      .notNull()
-      .references(() => circleMembers.id),
+    // Legacy per-round payout; null in the pool model, where the pot pays out at the goal.
+    beneficiaryMemberId: uuid("beneficiary_member_id").references(() => circleMembers.id),
     state: text("state").$type<(typeof ROUND_STATES)[number]>().notNull().default("UPCOMING"),
     deadline: timestamp("deadline", { withTimezone: true }).notNull(),
     openedAt: timestamp("opened_at", { withTimezone: true }),
@@ -436,10 +445,10 @@ export const reviews = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     authorId: uuid("author_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     subjectId: uuid("subject_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     circleId: uuid("circle_id")
       .notNull()
       .references(() => circles.id),

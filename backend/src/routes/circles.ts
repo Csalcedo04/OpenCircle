@@ -6,6 +6,7 @@ import { requireKyc } from "../middleware/require-kyc";
 import { authUserId, requireUser } from "../middleware/require-user";
 import type { CircleService } from "../services/circle.service";
 import type { ApplicationService } from "../services/circles/application.service";
+import { MAX_ROUNDS } from "../services/circles/circle-plan";
 import type { KycService } from "../services/kyc.service";
 
 // Money in the asset's minor unit as an integer string: never a float. 18 digits stays within bigint.
@@ -15,23 +16,33 @@ const minorUnits = (min: "zero" | "positive") =>
     .regex(min === "zero" ? /^(0|[1-9]\d{0,17})$/ : /^[1-9]\d{0,17}$/, "Must be an integer amount in minor units")
     .transform((v) => BigInt(v));
 
+// payoutRound is the member's position in the circle (join order).
 const seatFields = {
   payoutRound: z.int().min(1),
   collateralValue: minorUnits("zero").default(0n),
   grantMode: z.enum(GRANT_MODES).nullable().default(null),
 };
 
+const createCircleFields = {
+  name: z.string().trim().min(1).max(80),
+  city: z.string().trim().min(1).max(80),
+  // What the common pot must reach, in the pot asset's minor unit.
+  goalValue: minorUnits("positive"),
+  size: z.int().min(2).max(50),
+  // Monthly by default.
+  roundLengthDays: z.int().min(1).max(365).default(30),
+  approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
+  ...seatFields,
+  payoutRound: seatFields.payoutRound.default(1),
+};
+
 // Strict objects: unknown keys (status, feeBps, poolWallet...) are rejected, never silently stored.
+// Exactly one of roundsTotal (contribution = goal ÷ (size × rounds)) or contributionValue (rounds derived).
 export const createCircleSchema = z
-  .strictObject({
-    name: z.string().trim().min(1).max(80),
-    city: z.string().trim().min(1).max(80),
-    contributionValue: minorUnits("positive"),
-    size: z.int().min(2).max(50),
-    roundLengthDays: z.int().min(1).max(365),
-    approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
-    ...seatFields,
-  })
+  .union([
+    z.strictObject({ ...createCircleFields, roundsTotal: z.int().min(1).max(MAX_ROUNDS) }),
+    z.strictObject({ ...createCircleFields, contributionValue: minorUnits("positive") }),
+  ])
   .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" });
 
 // Seat preferences; without a payout round the applicant gets the next free one when accepted.

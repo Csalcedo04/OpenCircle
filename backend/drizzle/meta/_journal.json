@@ -50,6 +50,20 @@
       "when": 1792186889343,
       "tag": "0006_circle_applications",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792188272668,
+      "tag": "0007_circle_goal",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792189153328,
+      "tag": "0008_user_delete_cascade",
+      "breakpoints": true
     }
   ]
 }

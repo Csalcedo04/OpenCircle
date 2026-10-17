@@ -15,6 +15,8 @@ import {
   wallets,
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
+import { planCircle, roundsTotal } from "./circles/circle-plan";
+import { roundDeadline } from "./circles/schedule";
 import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
 
 export type CircleStatus = (typeof CIRCLE_STATUSES)[number];
@@ -25,7 +27,6 @@ type RoundState = (typeof ROUND_STATES)[number];
 // Defaults for new circles, matching the demo data. Placeholder policy until the team sets real values.
 const DEFAULT_FEE_BPS = 200;
 const DEFAULT_GRANT_WEIGHT_BPS = 5_000;
-const DAY_MS = 86_400_000;
 
 export interface SeatInput {
   payoutRound: number;
@@ -36,14 +37,15 @@ export interface SeatInput {
 // An applicant's seat preferences: with no payout round they get the next free one.
 export type SeatRequest = Omit<SeatInput, "payoutRound"> & { payoutRound: number | null };
 
-export interface CreateCircleInput extends SeatInput {
+// The creator gives the goal and either the number of rounds or the per-round contribution.
+export type CreateCircleInput = SeatInput & {
   name: string;
   city: string;
-  contributionValue: bigint;
+  goalValue: bigint;
   size: number;
   roundLengthDays: number;
   approvalMode: ApprovalMode;
-}
+} & ({ roundsTotal: number; contributionValue?: undefined } | { contributionValue: bigint; roundsTotal?: undefined });
 
 export interface CircleSummaryDto {
   id: string;
@@ -71,8 +73,11 @@ export interface SeatDto {
 export interface RoundDto {
   number: number;
   state: RoundState;
-  beneficiaryMemberId: string;
+  // Null in the pool model: the pot pays out once it reaches the goal.
+  beneficiaryMemberId: string | null;
   deadline: string;
+  // Sum of the round's completed contributions; the round is whole at contribution × size.
+  collected: AmountDto;
   contributions: { memberId: string; status: string }[];
 }
 
@@ -81,13 +86,28 @@ export interface CircleDto extends CircleSummaryDto {
   threshold: AmountDto;
   grantWeightBps: number;
   approvalMode: ApprovalMode;
+  goal: AmountDto;
+  roundsTotal: number;
+  // Every completed contribution so far, across rounds.
+  poolCollected: AmountDto;
   poolWalletAddress: string;
   startedAt: string | null;
   // The round being collected or paid out; null before the circle starts or once it is over.
   currentRound: number | null;
+  // Deadline of the round being collected: the next pay date. Null when none is collecting.
+  nextPayDate: string | null;
+  // Who already paid the round being collected, against what it needs.
+  currentCollection: { round: number; collected: AmountDto; expected: AmountDto; paidMemberIds: string[] } | null;
   seats: SeatDto[];
   rounds: RoundDto[];
 }
+
+/** Sum of the completed contributions among `rows`. */
+export const collectedValue = (rows: readonly { status: string; value: bigint }[]): bigint =>
+  rows.reduce((sum, c) => (c.status === "COMPLETED" ? sum + c.value : sum), 0n);
+
+/** What a round must collect: everyone pays the contribution. */
+export const expectedPerRound = (c: { contributionValue: bigint; size: number }): bigint => c.contributionValue * BigInt(c.size);
 
 const ACTIVE_ROUND_STATES: readonly RoundState[] = ["COLLECTING", "FUNDED", "RISK_CHECK", "BLOCKED", "PAYING_OUT"];
 
@@ -160,6 +180,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         thresholdValue: circles.thresholdValue,
         grantWeightBps: circles.grantWeightBps,
         approvalMode: circles.approvalMode,
+        goalValue: circles.goalValue,
         startedAt: circles.startedAt,
         poolWalletAddress: wallets.addressUrl,
       })
@@ -188,7 +209,12 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
       roundRows.length === 0
         ? []
         : await db
-            .select({ roundId: contributions.roundId, memberId: contributions.memberId, status: contributions.status })
+            .select({
+              roundId: contributions.roundId,
+              memberId: contributions.memberId,
+              status: contributions.status,
+              value: contributions.value,
+            })
             .from(contributions)
             .where(
               inArray(
@@ -198,15 +224,30 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
             );
 
     const { assetCode, assetScale } = circle;
+    const money = (value: bigint) => amount(value, assetCode, assetScale);
+    const collecting = roundRows.find((r) => r.state === "COLLECTING");
+    const collectingRows = collecting ? contributionRows.filter((c) => c.roundId === collecting.id) : [];
     return {
       ...toSummary(circle),
       feeBps: circle.feeBps,
-      threshold: amount(circle.thresholdValue, assetCode, assetScale),
+      threshold: money(circle.thresholdValue),
       grantWeightBps: circle.grantWeightBps,
       approvalMode: circle.approvalMode,
+      goal: money(circle.goalValue),
+      roundsTotal: roundsTotal(circle),
+      poolCollected: money(collectedValue(contributionRows)),
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
+      nextPayDate: collecting?.deadline.toISOString() ?? null,
+      currentCollection: collecting
+        ? {
+            round: collecting.number,
+            collected: money(collectedValue(collectingRows)),
+            expected: money(expectedPerRound(circle)),
+            paidMemberIds: collectingRows.filter((c) => c.status === "COMPLETED").map((c) => c.memberId),
+          }
+        : null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
         displayName: displayName(s.fullName),
@@ -220,6 +261,7 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
         state: r.state,
         beneficiaryMemberId: r.beneficiaryMemberId,
         deadline: r.deadline.toISOString(),
+        collected: money(collectedValue(contributionRows.filter((c) => c.roundId === r.id))),
         contributions: contributionRows
           .filter((c) => c.roundId === r.id)
           .map((c) => ({ memberId: c.memberId, status: c.status })),
@@ -266,6 +308,11 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
     /** Creates an OPEN circle with its creator in the payout round they chose; the creator approves applicants. */
     async create(userId: string, input: CreateCircleInput): Promise<CircleDto> {
       if (input.payoutRound > input.size) throw invalidPayoutRound();
+      const plan = planCircle(
+        input.roundsTotal !== undefined
+          ? { goal: input.goalValue, size: input.size, roundsTotal: input.roundsTotal }
+          : { goal: input.goalValue, size: input.size, contribution: input.contributionValue },
+      );
       const remote = await resolvePoolWallet();
       const id = await db.transaction(async (tx) => {
         const pool = await poolWalletId(tx, remote);
@@ -274,12 +321,13 @@ export function createCircleService({ db, resolvePoolWallet }: CircleServiceDeps
           .values({
             name: input.name,
             city: input.city,
-            contributionValue: input.contributionValue,
+            contributionValue: plan.contribution,
+            goalValue: input.goalValue,
             // The pot's asset: every contribution is in the currency the pot wallet holds.
             assetCode: pool.assetCode,
             assetScale: pool.assetScale,
             feeBps: DEFAULT_FEE_BPS,
-            thresholdValue: input.contributionValue,
+            thresholdValue: plan.contribution,
             grantWeightBps: DEFAULT_GRANT_WEIGHT_BPS,
             roundLengthDays: input.roundLengthDays,
             size: input.size,
@@ -361,44 +409,46 @@ export async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: 
   return true;
 }
 
-// The last seat is filled: schedule every round and open round 1. Same transaction as the seating.
-async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
-  const seats = await tx
-    .select({ id: circleMembers.id, payoutRound: circleMembers.payoutRound })
-    .from(circleMembers)
-    .where(eq(circleMembers.circleId, circle.id))
-    .orderBy(asc(circleMembers.payoutRound));
+/** Creates one pending contribution per member for an opened round. Safe to repeat. */
+export async function createRoundContributions(tx: Tx, circle: CircleRow, roundId: string): Promise<void> {
+  const seats = await tx.select({ id: circleMembers.id }).from(circleMembers).where(eq(circleMembers.circleId, circle.id));
+  await tx
+    .insert(contributions)
+    .values(
+      seats.map((seat) => ({
+        roundId,
+        memberId: seat.id,
+        value: circle.contributionValue,
+        assetCode: circle.assetCode,
+        assetScale: circle.assetScale,
+        // Deterministic: the same round and member always map to the same key.
+        idempotencyKey: `contribution:${roundId}:${seat.id}`,
+      })),
+    )
+    .onConflictDoNothing({ target: contributions.idempotencyKey });
+}
 
+// The last seat is filled: schedule every round to the goal and open round 1. Same transaction as the seating.
+async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
   await tx.update(circles).set({ status: "ACTIVE", startedAt: now }).where(eq(circles.id, circle.id));
 
   const created = await tx
     .insert(rounds)
     .values(
-      seats.map((seat) => ({
+      Array.from({ length: roundsTotal(circle) }, (_, i) => i + 1).map((n) => ({
         circleId: circle.id,
-        number: seat.payoutRound,
-        beneficiaryMemberId: seat.id,
-        state: seat.payoutRound === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
-        deadline: new Date(now.getTime() + seat.payoutRound * circle.roundLengthDays * DAY_MS),
-        openedAt: seat.payoutRound === 1 ? now : null,
+        number: n,
+        state: n === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
+        deadline: roundDeadline(now, circle.roundLengthDays, n),
+        openedAt: n === 1 ? now : null,
       })),
     )
     .returning({ id: rounds.id, number: rounds.number });
 
   const first = created.find((r) => r.number === 1);
   if (!first) throw new Error("Round 1 missing after scheduling");
-  // Everyone pays every round, the beneficiary included (pot = contribution × size).
-  await tx.insert(contributions).values(
-    seats.map((seat) => ({
-      roundId: first.id,
-      memberId: seat.id,
-      value: circle.contributionValue,
-      assetCode: circle.assetCode,
-      assetScale: circle.assetScale,
-      // Deterministic: the same round and member always map to the same key.
-      idempotencyKey: `contribution:${first.id}:${seat.id}`,
-    })),
-  );
+  // Everyone pays every round (pot = contribution × size per round).
+  await createRoundContributions(tx, circle, first.id);
   await tx
     .insert(auditEvents)
     .values({ walletId: circle.poolWalletId, eventType: "circle.started", externalId: `circle.started:${circle.id}` });
