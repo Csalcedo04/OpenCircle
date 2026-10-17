@@ -4,7 +4,7 @@ import { envSchema } from "../src/config/env-schema";
 import { decidersOf } from "../src/services/circles/application-notices";
 import { createCircleCycle } from "../src/services/circles/circle-cycle";
 import { reminderKind } from "../src/services/circles/reminders.service";
-import { outcomeChange, penaltyAt, scoreAction, type PaymentOutcome, type ScoredContribution } from "../src/services/circles/scoring.service";
+import { defaultable, outcomeChange, penaltyAt, scoreAction, type PaymentOutcome, type ScoredContribution } from "../src/services/circles/scoring.service";
 import { clampScore, fractionFromScore, roundScoreChange, scoreFromFraction } from "../src/services/credit/credit-score";
 import { createLogSender } from "../src/services/notifications/sender";
 import { sameSecret } from "../src/services/secret-compare";
@@ -59,7 +59,7 @@ describe("penaltyAt", () => {
 
 describe("scoreAction", () => {
   const penalty = at(deadline, 2);
-  const base: ScoredContribution = { status: "PENDING", completedAt: null, deadline, penaltyAt: penalty };
+  const base: ScoredContribution = { status: "PENDING", completedAt: null, deadline, penaltyAt: penalty, defaultable: false };
   const none = new Set<PaymentOutcome>();
 
   test("a payment completed by the deadline is on time; after it, late", () => {
@@ -96,6 +96,36 @@ describe("scoreAction", () => {
     assert.equal(scoreAction({ ...completed, completedAt: at(deadline, 3) }, new Set(["MISSED", "LATE"]), at(deadline, 9)), null);
     assert.equal(scoreAction(base, new Set(["MISSED"]), at(deadline, 9)), null);
     assert.equal(scoreAction({ ...base, status: "CANCELLED" }, none, at(deadline, 9)), null);
+  });
+});
+
+describe("DEFAULTED (missed after being paid)", () => {
+  const penalty = at(deadline, 2);
+  const base: ScoredContribution = { status: "PENDING", completedAt: null, deadline, penaltyAt: penalty, defaultable: true };
+
+  test("costs the miss plus 35 more: −50", () => {
+    assert.equal(outcomeChange("DEFAULTED"), -50);
+    assert.deepEqual(scoreAction(base, new Set(), penalty), { outcome: "DEFAULTED", change: -50 });
+    assert.equal(scoreAction(base, new Set(), at(deadline, 1)), null);
+  });
+
+  test("paid afterwards: re-scored as late, undoing the default (+46), once", () => {
+    const paid = { ...base, status: "COMPLETED" as const, completedAt: at(deadline, 9) };
+    assert.deepEqual(scoreAction(paid, new Set(["DEFAULTED"]), at(deadline, 9)), { outcome: "LATE", change: 46 });
+    assert.equal(scoreAction(paid, new Set(["DEFAULTED", "LATE"]), at(deadline, 9)), null);
+    // Already recorded as a plain miss (before the rule existed): never re-scored as defaulted.
+    assert.equal(scoreAction(base, new Set(["MISSED"]), at(deadline, 9)), null);
+  });
+
+  test("defaultable only after the member's own round, never in END circles", () => {
+    assert.equal(defaultable(3, 2), true);
+    assert.equal(defaultable(2, 2), false);
+    assert.equal(defaultable(1, 2), false);
+    assert.equal(defaultable(3, null), false);
+  });
+
+  test("a score already low bottoms out at 0, never below", () => {
+    assert.equal(clampScore(20 + outcomeChange("DEFAULTED")), 0);
   });
 });
 
@@ -194,18 +224,19 @@ describe("decidersOf", () => {
 });
 
 describe("createCircleCycle", () => {
-  test("runs the period engine, then payouts, then scoring, then reminders, at the same time", async () => {
+  test("runs the period engine, then debts, then payouts, then scoring, then reminders, at the same time", async () => {
     const calls: string[] = [];
     const now = new Date("2026-04-01T00:00:00Z");
     const cycle = createCircleCycle({
       engine: { advanceCircle: async (id, t) => void calls.push(`engine ${id} ${t.toISOString()}`) },
+      debts: { syncCircle: async (id) => void calls.push(`debts ${id}`) },
       payouts: { payCircle: async (id, t) => void calls.push(`payout ${id} ${t.toISOString()}`) },
       scoring: { scoreCircle: async (id, t) => (calls.push(`score ${id} ${t.toISOString()}`), 0) },
       reminders: { remindCircle: async (id, t) => (calls.push(`remind ${id} ${t.toISOString()}`), 0) },
     });
     await cycle.advanceCircle("c1", now);
     const iso = now.toISOString();
-    assert.deepEqual(calls, [`engine c1 ${iso}`, `payout c1 ${iso}`, `score c1 ${iso}`, `remind c1 ${iso}`]);
+    assert.deepEqual(calls, [`engine c1 ${iso}`, "debts c1", `payout c1 ${iso}`, `score c1 ${iso}`, `remind c1 ${iso}`]);
   });
 });
 

@@ -18,6 +18,7 @@ import { publicProfileColumns, toPublicProfile, type PublicProfileDto } from "..
 import type { Tx } from "../wallet.service";
 import type { ApplicationNotices } from "./application-notices";
 import { circleNotFound, lockCircle, mayDecide, membership, type CircleRow } from "./circle-access";
+import { assertNoOpenDebt } from "./debts";
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type VoteDecision = (typeof VOTE_DECISIONS)[number];
@@ -112,6 +113,8 @@ export function createApplicationService({ db, circles: circleService, notices }
         const circle = await lockCircle(tx, circleId);
         if (circle.visibility !== "PUBLIC") throw circleNotFound();
         if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+        // Checked again when a seat is taken; here so approvers never vote on someone who can't join.
+        await assertNoOpenDebt(tx, userId);
         if (await membership(tx, circleId, userId)) {
           throw new AppError(409, "ALREADY_MEMBER", "You already have a seat in this circle");
         }

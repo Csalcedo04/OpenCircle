@@ -26,6 +26,7 @@ import { AppError } from "../errors/app-error";
 import { circleGoal, planGoal, roundsTotal, type CircleTerms, type PayoutMode } from "./circles/circle-plan";
 import { lockCircle, mayDecide, membership, requireManager } from "./circles/circle-access";
 import { addressedTo, consumeInvite, insertStandingCode, inviteUrl as inviteUrlOf, matchedInvite, standingCodeOf } from "./circles/invite-access";
+import { assertNoOpenDebt } from "./circles/debts";
 import { expectedPayouts, payoutPerMember } from "./circles/payout-plan";
 import { payoutSequence, type PayoutOrder } from "./circles/payout-order";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
@@ -601,6 +602,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
    */
   async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: SeatInput): Promise<boolean> {
     if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+    // Every way in (invite link, direct invite, accepted application) takes a seat here.
+    await assertNoOpenDebt(tx, userId);
     const taken = (
       await tx.select({ payoutRound: circleMembers.payoutRound }).from(circleMembers).where(eq(circleMembers.circleId, circle.id))
     ).map((m) => m.payoutRound);
@@ -692,6 +695,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
 
     /** Creates an OPEN circle with its creator in the first seat. */
     async create(userId: string, input: CreateCircleInput): Promise<CircleDto> {
+      await assertNoOpenDebt(db, userId);
       if (input.testClockId !== undefined) await ownedTestClock(userId, input.testClockId);
       const funding = fundingTerms(input);
       const remote = await resolvePoolWallet();

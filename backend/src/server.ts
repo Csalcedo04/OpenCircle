@@ -13,6 +13,7 @@ import { createResendSender } from "./services/notifications/resend-sender";
 import { createChannelSender, createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
+import { createDebtService } from "./services/circles/debt.service";
 import { createPayouts } from "./services/circles/payout.service";
 import { createPoolAccess } from "./services/circles/pool-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
@@ -48,6 +49,8 @@ async function main(): Promise<void> {
   const memberAccess = createMemberAccess({ db, cipher, payments });
   const engine = createPeriodEngine({ db, payments, memberAccess });
   // Payouts: the pool pays members through its owner's wallet grant (see pool-access).
+  // Late payment of defaulted contributions, through the member's grant like any contribution.
+  const debts = createDebtService({ db, payments, memberAccess });
   const payouts = createPayouts({
     db,
     payments: createPayoutPayments({ client: openPaymentsAuth }),
@@ -65,6 +68,7 @@ async function main(): Promise<void> {
   // real-time circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
     engine,
+    debts,
     payouts,
     scoring: createScoring({ db }),
     reminders: createReminders({ db, sender }),
@@ -84,6 +88,7 @@ async function main(): Promise<void> {
       users,
       wallets: createWalletService(db),
       account: createAccountService({ db }),
+      debts,
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,

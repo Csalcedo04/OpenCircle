@@ -896,6 +896,68 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     });
   });
 
+  describe("open debts block new circles (DEBT_OUTSTANDING)", () => {
+    // A defaulted contribution of `debtor` in a circle of theirs: FAILED with its default recorded.
+    async function owe(debtor: Member): Promise<string> {
+      const own = await createCircle(debtor.token, { visibility: "PRIVATE" });
+      const [circle] = await db.select({ poolWalletId: circles.poolWalletId }).from(circles).where(eq(circles.id, own.id));
+      const [round] = await db
+        .insert(rounds)
+        .values({ circleId: own.id, number: 1, beneficiaryMemberId: own.seats[0]?.memberId ?? null, state: "PAID_OUT", startsAt: new Date(0), deadline: new Date(1) })
+        .returning({ id: rounds.id });
+      const [debt] = await db
+        .insert(contributions)
+        .values({
+          roundId: round?.id ?? "",
+          memberId: own.seats[0]?.memberId ?? "",
+          value: 2000000n,
+          assetCode: "COP",
+          assetScale: 2,
+          status: "FAILED",
+          failureCode: "DEADLINE_MISSED",
+          idempotencyKey: `contribution:debt:${randomUUID()}`,
+        })
+        .returning({ id: contributions.id });
+      await db.insert(auditEvents).values({ walletId: circle?.poolWalletId ?? "", eventType: "score.defaulted", externalId: `score.defaulted:${debt?.id}` });
+      return debt?.id ?? "";
+    }
+
+    const expectDebt = (res: { status: number; body: unknown }) => {
+      assert.equal(res.status, 409, JSON.stringify(res.body));
+      assert.equal(errorCode(res.body), "DEBT_OUTSTANDING");
+      assert.deepEqual((res.body as { error: { details?: unknown } }).error.details, { debts: 1 });
+    };
+
+    test("a debtor can't create, apply or join by link; a FAILED payment without a default doesn't block; paying lifts it", async () => {
+      const host = await member();
+      const debtor = await member({ name: "Mora Pérez" });
+      const debtId = await owe(debtor);
+      const open = await createCircle(host.token);
+
+      expectDebt(await server.request("/api/circles", { method: "POST", token: debtor.token, body: validCircle() }));
+      expectDebt(await applyTo(open.id, debtor.token));
+      expectDebt(await join(open.id, debtor.token));
+      assert.equal((await getCircle(open.id)).seatsTaken, 1);
+
+      // A FAILED contribution without a recorded default (yet) is not a debt that blocks.
+      const other = await member({ name: "Nora Ruiz" });
+      await db.insert(contributions).values({
+        roundId: (await db.select({ roundId: contributions.roundId }).from(contributions).where(eq(contributions.id, debtId)))[0]?.roundId ?? "",
+        memberId: (await createCircle(other.token, { visibility: "PRIVATE" })).seats[0]?.memberId ?? "",
+        value: 2000000n,
+        assetCode: "COP",
+        assetScale: 2,
+        status: "FAILED",
+        idempotencyKey: `contribution:debt:${randomUUID()}`,
+      });
+      assert.equal((await join(open.id, other.token)).status, 200);
+
+      // Paid (completed later): no longer owed.
+      await db.update(contributions).set({ status: "COMPLETED", completedAt: new Date() }).where(eq(contributions.id, debtId));
+      assert.equal((await server.request("/api/circles", { method: "POST", token: debtor.token, body: validCircle() })).status, 201);
+    });
+  });
+
   describe("approval settings on create", () => {
     test("DELEGATES by default with the creator as approver; MAJORITY when asked; others → 400", async () => {
       const { token } = await member();

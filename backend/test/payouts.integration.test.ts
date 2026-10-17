@@ -3,11 +3,18 @@ import { randomBytes, randomInt, randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import { and, asc, eq, inArray, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
-import { auditEvents, circleMembers, circles, contributions, payouts, rounds, users, wallets } from "../src/db/schema";
+import { auditEvents, circleMembers, circles, contributions, creditProfiles, payouts, rounds, users, wallets } from "../src/db/schema";
+import { AppError } from "../src/errors/app-error";
 import { createCircleService } from "../src/services/circle.service";
+import { createDebtService } from "../src/services/circles/debt.service";
+import { assertNoOpenDebt, openDebtCount } from "../src/services/circles/debts";
+import { NoGrantError } from "../src/services/circles/member-access";
 import { createPayouts } from "../src/services/circles/payout.service";
+import { createScoring } from "../src/services/circles/scoring.service";
+import { scoreFromFraction } from "../src/services/credit/credit-score";
 import { NoPoolGrantError } from "../src/services/circles/pool-access";
 import { PaymentRefusedError, type Amount, type PayoutPayments, type SentPayout } from "../src/services/open-payments/payments";
+import { fakePayments } from "./helpers/fakes";
 
 // Runs against DATABASE_URL like the other integration suites. Rows use the "[test-payouts] "
 // name prefix and wallets under https://payouts.test/, and are deleted before and after the run.
@@ -34,6 +41,7 @@ async function deleteTestData(): Promise<void> {
   }
   const testWallets = (await db.select({ id: wallets.id }).from(wallets).where(like(wallets.addressUrl, `https://${HOST}/%`))).map((w) => w.id);
   if (testWallets.length > 0) await db.delete(auditEvents).where(inArray(auditEvents.walletId, testWallets));
+  if (testWallets.length > 0) await db.delete(creditProfiles).where(inArray(creditProfiles.walletId, testWallets));
   await db.delete(users).where(or(like(users.fullName, `${PREFIX}%`), testWallets.length > 0 ? inArray(users.opWallet, testWallets) : undefined));
   if (testWallets.length > 0) await db.delete(wallets).where(inArray(wallets.id, testWallets));
 }
@@ -351,6 +359,42 @@ describe("payouts against Supabase", { skip: databaseUrl ? false : "DATABASE_URL
       assert.deepEqual(seat("cata")?.expected, money(3n * C));
     });
 
+    test("missing a round after being paid: DEFAULTED (−50, floor 0), an open debt, and the circle stays open", async () => {
+      // ana is paid in round 1, then misses round 2 (bob's): bob gets less and nothing can be netted.
+      const c = await circleWith({ members: ["ana", "bob"], rounds: [{ state: "FUNDED" }, { state: "BLOCKED", statuses: { ana: "FAILED" } }] });
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(c.id, NOW);
+      assert.deepEqual(await roundStates(c.id), ["PAID_OUT", "PAID_OUT"]);
+      assert.equal(await circleStatus(c.id), "ACTIVE", "completed with a default pending");
+
+      const userOf = async (name: string) =>
+        (await db.select({ userId: circleMembers.userId }).from(circleMembers).where(eq(circleMembers.id, c.memberIds[name] ?? "")))[0]?.userId ?? "";
+      const ana = await userOf("ana");
+      assert.equal(await openDebtCount(db, ana), 0, "a debt before its penalty time");
+
+      // Past the penalty time (last round: deadline + 14 days).
+      await createScoring({ db }).scoreCircle(c.id, new Date(NOW.getTime() + 15 * 86_400_000));
+      const [anaUser] = await db.select({ walletId: users.opWallet }).from(users).where(eq(users.id, ana));
+      const [profile] = await db.select().from(creditProfiles).where(eq(creditProfiles.walletId, anaUser?.walletId ?? ""));
+      // 50 − 4 (round 1 paid after its deadline in this fixture) − 50 → floored at 0, never negative.
+      assert.equal(scoreFromFraction(profile?.internalCreditScore ?? -1), 0);
+      assert.equal(await openDebtCount(db, ana), 1);
+      assert.equal(await openDebtCount(db, await userOf("bob")), 0);
+      await assert.rejects(assertNoOpenDebt(db, ana), (err: unknown) => err instanceof AppError && err.code === "DEBT_OUTSTANDING" && err.status === 409);
+
+      // Still visited, still not completed.
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(c.id, NOW);
+      assert.equal(await circleStatus(c.id), "ACTIVE");
+    });
+
+    test("a miss before one's own round is netted, not a default; the circle completes", async () => {
+      const c = await circleWith({ members: ["ana", "bob"], rounds: [{ state: "BLOCKED", statuses: { bob: "FAILED" } }, { state: "FUNDED" }] });
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(c.id, NOW);
+      assert.equal(await circleStatus(c.id), "COMPLETED");
+      await createScoring({ db }).scoreCircle(c.id, new Date(NOW.getTime() + 15 * 86_400_000));
+      const bob = (await db.select({ userId: circleMembers.userId }).from(circleMembers).where(eq(circleMembers.id, c.memberIds["bob"] ?? "")))[0]?.userId ?? "";
+      assert.equal(await openDebtCount(db, bob), 0);
+    });
+
     test("the cap: never plans more than the circle collected", async () => {
       const c = await circleWith({ members: ["ana", "bob"], rounds: [{ state: "FUNDED" }, { state: "UPCOMING" }] });
       // Something already promised the whole pot (and more) elsewhere in this circle.
@@ -371,6 +415,136 @@ describe("payouts against Supabase", { skip: databaseUrl ? false : "DATABASE_URL
       assert.equal(ops.sent.length, 0);
       assert.deepEqual(await roundStates(c.id), ["FUNDED", "UPCOMING"]);
     });
+  });
+
+  describe("debts: paying a default late", () => {
+    const PENALTY_PASSED = new Date(NOW.getTime() + 15 * 86_400_000);
+
+    // ana is paid in round 1, misses round 2 (bob's) and the default is scored.
+    async function defaulted() {
+      const c = await circleWith({ members: ["ana", "bob"], rounds: [{ state: "FUNDED" }, { state: "BLOCKED", statuses: { ana: "FAILED" } }] });
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(c.id, NOW);
+      await createScoring({ db }).scoreCircle(c.id, PENALTY_PASSED);
+      const userOf = async (name: string) =>
+        (await db.select({ userId: circleMembers.userId }).from(circleMembers).where(eq(circleMembers.id, c.memberIds[name] ?? "")))[0]?.userId ?? "";
+      const [debt] = await db
+        .select({ id: contributions.id })
+        .from(contributions)
+        .where(and(eq(contributions.roundId, c.roundIds[1] ?? ""), eq(contributions.memberId, c.memberIds["ana"] ?? "")));
+      return { ...c, ana: await userOf("ana"), bob: await userOf("bob"), debtId: debt?.id ?? "" };
+    }
+
+    // The member's grant, faked: `granted: false` is a member who revoked it.
+    const access = (walletOf: Record<string, string>, userOf: Record<string, string>, state = { granted: true }) => ({
+      async withAccess<T>(userId: string, call: (a: { walletAddressUrl: string; accessToken: string }) => Promise<T>): Promise<T> {
+        if (!state.granted) throw new NoGrantError();
+        const name = Object.keys(userOf).find((n) => userOf[n] === userId) ?? "";
+        return call({ walletAddressUrl: walletOf[name] ?? "", accessToken: "member-token" });
+      },
+    });
+
+    const statusOf = async (id: string) => (await db.select().from(contributions).where(eq(contributions.id, id)))[0];
+
+    test("paid: COMPLETED late, the short beneficiary is compensated, the block lifts, re-scored late, the circle completes", async () => {
+      const d = await defaulted();
+      const ops = fakePayments();
+      const debts = createDebtService({ db, payments: ops, memberAccess: access(d.walletOf, { ana: d.ana, bob: d.bob }), settleWait: { attempts: 1, intervalMs: 0 } });
+      assert.deepEqual(
+        (await debts.list(d.ana)).map((x) => [x.contributionId, x.roundNumber, x.amount.value, x.status]),
+        [[d.debtId, 2, String(C), "OWED"]],
+      );
+      assert.deepEqual(await debts.list(d.bob), []);
+
+      assert.equal(await debts.pay(d.ana, d.debtId), null, "not settled");
+      const paid = await statusOf(d.debtId);
+      assert.equal(paid?.status, "COMPLETED");
+      assert.equal(paid?.failureCode, null);
+      // Collected under its own key, never the first attempt's.
+      assert.deepEqual(ops.outgoing.map((o) => [o.key, o.walletAddressUrl]), [[`debt:${d.debtId}`, d.walletOf["ana"]]]);
+      assert.equal(await openDebtCount(db, d.ana), 0);
+      assert.deepEqual(await debts.list(d.ana), []);
+
+      const [compensation] = (await payoutsOf(d.id)).filter((p) => p.kind === "COMPENSATION");
+      assert.deepEqual([compensation?.memberId, compensation?.roundId, compensation?.value, compensation?.status], [d.memberIds["bob"], d.roundIds[1], C, "PENDING"]);
+
+      // The next cycle pays bob and completes the circle; scoring turns the default into a late payment.
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(d.id, NOW);
+      assert.equal((await payoutsOf(d.id)).find((p) => p.kind === "COMPENSATION")?.status, "COMPLETED");
+      assert.equal(await circleStatus(d.id), "COMPLETED");
+      await createScoring({ db }).scoreCircle(d.id, PENALTY_PASSED);
+      const late = await db.select().from(auditEvents).where(eq(auditEvents.externalId, `score.late:${d.debtId}`));
+      assert.equal(late.length, 1);
+
+      // Nothing left to pay.
+      await assert.rejects(debts.pay(d.ana, d.debtId), (err: unknown) => err instanceof AppError && err.code === "DEBT_NOT_FOUND");
+    });
+
+    test("on its way: PAYING, a second pay is 409, the cycle finishes it", async () => {
+      const d = await defaulted();
+      const ops = fakePayments({ settle: "later" });
+      const debts = createDebtService({ db, payments: ops, memberAccess: access(d.walletOf, { ana: d.ana, bob: d.bob }), settleWait: { attempts: 1, intervalMs: 0 } });
+      assert.equal((await debts.pay(d.ana, d.debtId))?.status, "PAYING");
+      await assert.rejects(debts.pay(d.ana, d.debtId), (err: unknown) => err instanceof AppError && err.code === "DEBT_IN_PROGRESS" && err.status === 409);
+      assert.deepEqual((await debts.list(d.ana)).map((x) => x.status), ["PAYING"]);
+      // While it's on its way the circle can't complete either.
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(d.id, NOW);
+      assert.equal(await circleStatus(d.id), "ACTIVE");
+
+      ops.settleAll();
+      await debts.syncCircle(d.id);
+      assert.equal((await statusOf(d.debtId))?.status, "COMPLETED");
+      assert.equal(ops.outgoing.length, 1);
+    });
+
+    test("refused, or no grant: still owed, with the reason, and the error says so", async () => {
+      const d = await defaulted();
+      const refusing = createDebtService({
+        db,
+        payments: fakePayments({ refuse: new Set([d.walletOf["ana"] ?? ""]) }),
+        memberAccess: access(d.walletOf, { ana: d.ana, bob: d.bob }),
+        settleWait: { attempts: 1, intervalMs: 0 },
+      });
+      await assert.rejects(refusing.pay(d.ana, d.debtId), (err: unknown) => err instanceof AppError && err.code === "PAYMENT_REFUSED" && err.status === 422);
+      assert.deepEqual([(await statusOf(d.debtId))?.status, (await statusOf(d.debtId))?.failureCode], ["FAILED", "QUOTE_FAILED"]);
+      assert.equal(await openDebtCount(db, d.ana), 1);
+
+      const revoked = createDebtService({
+        db,
+        payments: fakePayments(),
+        memberAccess: access(d.walletOf, { ana: d.ana, bob: d.bob }, { granted: false }),
+        settleWait: { attempts: 1, intervalMs: 0 },
+      });
+      await assert.rejects(revoked.pay(d.ana, d.debtId), (err: unknown) => err instanceof AppError && err.code === "WALLET_NOT_AUTHORIZED");
+      assert.deepEqual([(await statusOf(d.debtId))?.status, (await statusOf(d.debtId))?.failureCode], ["FAILED", "NO_GRANT"]);
+      assert.deepEqual((await owedBy(d)).map((x) => x.status), ["OWED"]);
+    });
+
+    test("a lost response is recovered after the lease without charging twice", async () => {
+      const d = await defaulted();
+      const ops = fakePayments({ loseResponses: 1 });
+      let real = new Date("2026-06-20T12:00:00Z");
+      const debts = createDebtService({ db, payments: ops, memberAccess: access(d.walletOf, { ana: d.ana, bob: d.bob }), realNow: () => real, settleWait: { attempts: 1, intervalMs: 0 } });
+      assert.equal((await debts.pay(d.ana, d.debtId))?.status, "PAYING");
+      await debts.syncCircle(d.id);
+      assert.equal((await statusOf(d.debtId))?.status, "PROCESSING");
+
+      real = new Date(real.getTime() + 3 * 60_000);
+      await debts.syncCircle(d.id);
+      assert.equal((await statusOf(d.debtId))?.status, "COMPLETED");
+      assert.equal(ops.outgoing.length, 1, "charged twice");
+    });
+
+    test("someone else's debt, or a contribution that isn't owed, is 404", async () => {
+      const d = await defaulted();
+      const debts = createDebtService({ db, payments: fakePayments(), memberAccess: access(d.walletOf, { ana: d.ana, bob: d.bob }), settleWait: { attempts: 1, intervalMs: 0 } });
+      await assert.rejects(debts.pay(d.bob, d.debtId), (err: unknown) => err instanceof AppError && err.code === "DEBT_NOT_FOUND");
+      const [onTime] = await db.select({ id: contributions.id }).from(contributions).where(eq(contributions.roundId, d.roundIds[0] ?? ""));
+      await assert.rejects(debts.pay(d.ana, onTime?.id ?? ""), (err: unknown) => err instanceof AppError && err.code === "DEBT_NOT_FOUND");
+    });
+
+    // The list as the debtor sees it.
+    const owedBy = (d: { ana: string }) =>
+      createDebtService({ db, payments: fakePayments(), memberAccess: { withAccess: async () => assert.fail("no payment") } }).list(d.ana);
   });
 
   describe("END", () => {
