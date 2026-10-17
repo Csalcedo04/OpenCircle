@@ -467,8 +467,12 @@ export async function getMyDebts(): Promise<DebtDto[]> {
 export function payMyDebt(contributionId: string): Promise<PayDebtResult> {
   return backendFetch(`/users/me/debts/${encodeURIComponent(contributionId)}/pay`, payDebtResultSchema, {
     method: "POST",
+    body: JSON.stringify({}),
   })
 }
+
+export const payDebt = payMyDebt
+
 
 const savingsSchema = z.object({
   walletAddress: z.string(),
@@ -588,20 +592,6 @@ export type RetryContributionResult = z.infer<typeof retryContributionSchema>
 /** Retries a failed contribution while its round is still COLLECTING before the deadline. */
 export function retryContribution(contributionId: string): Promise<RetryContributionResult> {
   return backendFetch(`/users/me/contributions/${encodeURIComponent(contributionId)}/retry`, retryContributionSchema, {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-const payDebtResponseSchema = z.object({
-  status: z.enum(["PAID", "PAYING", "OWED"]),
-})
-
-export type PayDebtResult = z.infer<typeof payDebtResponseSchema>
-
-/** Pays an open defaulted contribution after the round closed. */
-export function payDebt(contributionId: string): Promise<PayDebtResult> {
-  return backendFetch(`/users/me/debts/${encodeURIComponent(contributionId)}/pay`, payDebtResponseSchema, {
     method: "POST",
     body: JSON.stringify({}),
   })

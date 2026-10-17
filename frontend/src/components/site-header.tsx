@@ -39,7 +39,7 @@ export async function SiteHeader() {
           </Link>
           <LocaleToggle locale={locale} label={t.nav.language} switchTo={t.nav.switchTo} />
           <Suspense fallback={null}>
-            <HeaderAccount locale={locale} t={t.nav} linkClass={navLink} />
+            <HeaderAccount locale={locale} t={t.nav} notificationsT={t.notifications} linkClass={navLink} />
           </Suspense>
         </nav>
       </div>
