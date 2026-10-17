@@ -33,7 +33,7 @@ const seatFields = {
 export const createCircleSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(80),
-    city: z.string().trim().min(1).max(80),
+    city: z.string().trim().min(1).max(80).optional(),
     contributionValue: minorUnits("positive"),
     size: z.int().min(2).max(50),
     // One period per member; each period is a calendar week or month.

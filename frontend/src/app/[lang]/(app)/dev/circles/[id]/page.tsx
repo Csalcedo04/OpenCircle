@@ -48,7 +48,7 @@ export default async function DevCirclePage({ params, searchParams }: PageProps<
   return (
     <DevShell t={d} title={circle.name}>
       <p className="text-muted-foreground">
-        {circle.city}, {d.cadences[circle.cadence]}, <span className="tabular-nums">{formatAmount(circle.contribution, locale)}</span>.{" "}
+        {circle.city ? `${circle.city}, ` : null}{d.cadences[circle.cadence]}, <span className="tabular-nums">{formatAmount(circle.contribution, locale)}</span>.{" "}
         {fill(d.waiting, { taken: circle.seatsTaken, size: circle.size })}
       </p>
 

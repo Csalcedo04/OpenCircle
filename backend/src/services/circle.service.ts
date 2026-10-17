@@ -55,7 +55,7 @@ export interface SeatInput {
 
 export interface CreateCircleInput extends SeatInput {
   name: string;
-  city: string;
+  city?: string | undefined;
   contributionValue: bigint;
   size: number;
   cadence: Cadence;
@@ -73,7 +73,7 @@ export type SeatRequest = Omit<SeatInput, "payoutRound"> & { payoutRound: number
 export interface CircleSummaryDto {
   id: string;
   name: string;
-  city: string;
+  city: string | null;
   status: CircleStatus;
   contribution: AmountDto;
   size: number;
@@ -199,7 +199,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
   interface SummaryRow {
     id: string;
     name: string;
-    city: string;
+    city: string | null;
     status: CircleStatus;
     contributionValue: bigint;
     assetCode: string;
@@ -505,7 +505,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           .insert(circles)
           .values({
             name: input.name,
-            city: input.city,
+            city: input.city ?? null,
             contributionValue: input.contributionValue,
             // The pot's asset: every contribution is in the currency the pot wallet holds.
             assetCode: pool.assetCode,

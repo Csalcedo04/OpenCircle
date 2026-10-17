@@ -16,7 +16,6 @@ const MAX_CONTRIBUTION = 10_000_000n
 /** Message keys shared by both forms (dictionary section `circleErrors`). */
 export type CircleErrorKey =
   | "name"
-  | "city"
   | "amount"
   | "size"
   | "cadence"
@@ -29,7 +28,7 @@ export type CircleErrorKey =
   | "unavailable"
   | "generic"
 
-export type CircleField = "name" | "city" | "amount" | "size" | "cadence" | "seat" | "collateral"
+export type CircleField = "name" | "amount" | "size" | "cadence" | "seat" | "collateral"
 export type FieldErrors = Partial<Record<CircleField, CircleErrorKey>>
 
 /** Whole pesos ("20.000", "20000") → minor units, or null if not a whole amount. */
@@ -38,7 +37,6 @@ const pesos = (whole: bigint) => whole * 10n ** BigInt(CIRCLE_ASSET_SCALE)
 
 export interface CreateFields {
   name: string
-  city: string
   amount: string
   size: string
   cadence: string
@@ -48,7 +46,6 @@ export interface CreateFields {
 
 const createSchema = z.object({
   name: z.string().trim().min(3, "name").max(60, "name"),
-  city: z.string().trim().min(2, "city").max(80, "city"),
   cadence: z.enum(CADENCES, "cadence"),
   // Anything unexpected falls back to private, the safe default.
   visibility: z.enum(CIRCLE_VISIBILITIES).catch("PRIVATE"),
@@ -71,7 +68,6 @@ export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircle
     ok: true,
     request: {
       name: base.data.name,
-      city: base.data.city,
       contributionValue: contribution.toString(),
       size,
       cadence: base.data.cadence,

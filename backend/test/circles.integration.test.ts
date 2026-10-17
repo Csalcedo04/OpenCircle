@@ -256,6 +256,14 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal((await db.select().from(circles).where(eq(circles.createdBy, id))).length, 0);
     });
 
+    test("the city is optional: without one it's stored and returned as null", async () => {
+      const { token } = await member();
+      const { city: _city, ...withoutCity } = validCircle();
+      const res = await server.request("/api/circles", { method: "POST", token, body: withoutCity });
+      assert.equal(res.status, 201, res.text);
+      assert.equal((res.body as CircleDto).city, null);
+    });
+
     test("→ 201: OPEN, creator seated in the chosen round, amounts in the pot's asset", async () => {
       const { id, token } = await member();
       const circle = await createCircle(token, { payoutRound: 2 });

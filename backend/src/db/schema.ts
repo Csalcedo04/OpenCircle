@@ -258,7 +258,8 @@ export const circles = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
-    city: text("city").notNull(),
+    // Optional: the create form no longer asks for it; older circles keep theirs.
+    city: text("city"),
     status: text("status").$type<(typeof CIRCLE_STATUSES)[number]>().notNull().default("OPEN"),
     // What each member pays per round.
     contributionValue: bigint("contribution_value", { mode: "bigint" }).notNull(),

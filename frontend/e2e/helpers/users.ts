@@ -134,6 +134,11 @@ export async function seedCircle(owner: TestUser, options: { size?: number; name
   return { id: circle.id, inviteCode }
 }
 
+/** Seats a user in a circle directly, skipping the join flow. */
+export async function seatMember(circleId: string, user: TestUser, payoutRound: number) {
+  must(await admin().from("circle_members").insert({ circle_id: circleId, user_id: user.id, payout_round: payoutRound }), "seat member")
+}
+
 /** The invite code of a circle (what the creator's invite link carries). */
 export async function inviteCodeOf(circleId: string): Promise<string> {
   const row = must(await admin().from("circles").select("invite_code").eq("id", circleId).single(), "read invite code")

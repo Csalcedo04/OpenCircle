@@ -1,7 +1,7 @@
 "use client"
 
 import { useActionState, useState } from "react"
-import { CheckCircle2, Coins, LoaderCircle, Sparkles, Users, Zap } from "lucide-react"
+import { CheckCircle2, ChevronDown, Coins, LoaderCircle, Sparkles, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,14 +9,14 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { CIRCLE_VISIBILITIES, type CircleVisibility } from "@/lib/flows/circle-invite"
-import { CADENCES, CIRCLE_ASSET_SCALE } from "@/lib/flows/circles"
+import { CADENCES, CIRCLE_ASSET_SCALE, MAX_SIZE, MIN_SIZE } from "@/lib/flows/circles"
 import { cn } from "@/lib/utils"
 import { createCircleAction, type CreateState } from "./actions"
 
 const COP = { assetCode: "COP", assetScale: CIRCLE_ASSET_SCALE } as const
 // Shown in the projection; the API applies the real fee.
 const FEE_BPS = 200
-const SIZES = ["3", "5", "8", "10", "12"]
+const SIZES = Array.from({ length: MAX_SIZE - MIN_SIZE + 1 }, (_, i) => String(MIN_SIZE + i))
 
 type Props = { locale: Locale; t: Dictionary["create"]; tErr: Dictionary["circleErrors"] }
 
@@ -52,7 +52,6 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
         <form action={action} noValidate className="space-y-6">
           {/* Chip pickers are buttons; their choice travels in hidden fields. */}
-          <input type="hidden" name="size" value={size} />
           <input type="hidden" name="cadence" value={cadence} />
           <input type="hidden" name="payoutRound" value={payoutRound} />
           <input type="hidden" name="visibility" value={visibility} />
@@ -64,18 +63,6 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
               placeholder={t.namePlaceholder}
               aria-invalid={err("name") ? true : undefined}
               aria-describedby={describedBy("name", err("name"))}
-              className="h-11 rounded-xl text-base"
-            />
-          </FormField>
-
-          <FormField id="city" label={t.city} error={err("city")}>
-            <Input
-              id="city"
-              name="city"
-              autoComplete="address-level2"
-              placeholder={t.cityPlaceholder}
-              aria-invalid={err("city") ? true : undefined}
-              aria-describedby={describedBy("city", err("city"))}
               className="h-11 rounded-xl text-base"
             />
           </FormField>
@@ -96,26 +83,29 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
             </div>
           </FormField>
 
-          <fieldset>
-            <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.size}</legend>
-            <div className="flex flex-wrap gap-2">
-              {SIZES.map((s) => (
-                <button
-                  type="button"
-                  key={s}
-                  aria-pressed={size === s}
-                  onClick={() => {
-                    setSize(s)
-                    if (payoutRound > Number(s)) setPayoutRound(1)
-                  }}
-                  className={chip(size === s)}
-                >
-                  {s}
-                </button>
-              ))}
+          <FormField id="size" label={t.size} help={t.sizeHelp} error={err("size")}>
+            <div className="relative">
+              <select
+                id="size"
+                name="size"
+                value={size}
+                onChange={(e) => {
+                  setSize(e.target.value)
+                  if (payoutRound > Number(e.target.value)) setPayoutRound(1)
+                }}
+                aria-invalid={err("size") ? true : undefined}
+                aria-describedby={describedBy("size", err("size"))}
+                className="h-11 w-full min-w-0 appearance-none rounded-xl border border-input bg-transparent pr-10 pl-3.5 text-base text-brand-navy outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
+              >
+                {SIZES.map((s) => (
+                  <option key={s} value={s}>
+                    {fill(t.sizeOption, { count: s })}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-brand-slate" aria-hidden="true" />
             </div>
-            {err("size") && <p className="oc-fade-in mt-1.5 text-sm font-medium text-brand-violet-ink">{err("size")}</p>}
-          </fieldset>
+          </FormField>
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.cadence}</legend>

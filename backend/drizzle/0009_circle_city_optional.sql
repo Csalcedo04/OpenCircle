@@ -1,0 +1,1 @@
+ALTER TABLE "circles" ALTER COLUMN "city" DROP NOT NULL;

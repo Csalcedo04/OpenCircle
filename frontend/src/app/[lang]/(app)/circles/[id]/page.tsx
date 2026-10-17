@@ -95,10 +95,12 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
-                <MapPin className="size-3 text-brand-slate" aria-hidden="true" />
-                <span>{circle.city}</span>
-              </span>
+              {circle.city && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
+                  <MapPin className="size-3 text-brand-slate" aria-hidden="true" />
+                  <span>{circle.city}</span>
+                </span>
+              )}
               <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
                 <Calendar className="size-3 text-brand-slate" aria-hidden="true" />
                 <span>{circle.roundLengthDays}d {locale === "es" ? "por turno" : "per round"}</span>

@@ -67,7 +67,7 @@ export type Seat = {
 export type Circle = {
   id: string
   name: string
-  city: string
+  city: string | null
   status: CircleStatus
   contribution: Amount
   feeBps: number

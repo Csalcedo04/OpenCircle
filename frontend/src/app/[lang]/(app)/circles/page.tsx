@@ -78,9 +78,13 @@ export default async function CirclesPage() {
                   {/* Top Bar: Location & Status */}
                   <div className="flex items-center justify-between gap-3">
                     <div className="inline-flex items-center gap-1.5 text-xs font-medium text-brand-slate">
-                      <MapPin className="size-3.5 text-brand-slate" aria-hidden="true" />
-                      <span>{circle.city}</span>
-                      <span className="text-brand-line">•</span>
+                      {circle.city && (
+                        <>
+                          <MapPin className="size-3.5 text-brand-slate" aria-hidden="true" />
+                          <span>{circle.city}</span>
+                          <span className="text-brand-line">•</span>
+                        </>
+                      )}
                       <Calendar className="size-3.5 text-brand-slate" aria-hidden="true" />
                       <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>
                     </div>

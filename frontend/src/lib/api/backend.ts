@@ -208,7 +208,7 @@ const reviewSchema = z.object({
 const circleSummarySchema = z.object({
   id: z.uuid(),
   name: z.string(),
-  city: z.string(),
+  city: z.string().nullable(),
   status: circleStatusSchema,
   contribution: amountSchema,
   size: z.number().int(),
@@ -301,7 +301,8 @@ export interface SeatRequest {
 
 export interface NewCircleRequest extends SeatRequest {
   name: string
-  city: string
+  /** Optional; the create form doesn't ask for it (the dev form still does). */
+  city?: string
   /** Minor units, integer string. */
   contributionValue: string
   size: number
