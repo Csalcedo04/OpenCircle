@@ -1,5 +1,6 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { hasLocale } from "@/i18n/config"
 import { BackendError, createCircle } from "@/lib/api/backend"
@@ -30,5 +31,8 @@ export async function createCircleAction(locale: string, _prev: CreateState, for
     console.error("Circle create failed", code)
     return { errors: {}, form: circleErrorKey(code) }
   }
+  // The new circle shows up in the lists right away, not after their cache expires.
+  revalidatePath(`/${locale}/circles`)
+  revalidatePath(`/${locale}/account`)
   redirect(`/${locale}/circles/${id}`)
 }

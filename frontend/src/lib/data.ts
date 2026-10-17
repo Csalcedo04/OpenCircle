@@ -1,6 +1,6 @@
 import "server-only"
 
-import { fetchCircle, fetchCircles, fetchMember, getMyCircles } from "@/lib/api/backend"
+import { BackendError, fetchCircle, fetchCircleApplications, fetchCircles, fetchMember, getMyCircles, type ApplicationDto } from "@/lib/api/backend"
 import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
 import type { Circle, Member, Review } from "@/lib/domain/types"
 import type { CircleVisibility } from "@/lib/flows/circle-invite"
@@ -19,7 +19,7 @@ export interface CircleView {
    * Who can find and join it, and what the viewer may do: `canInvite` for the creator and
    * approvers (who also get `inviteUrl`), `isCreator` for who may change the visibility.
    */
-  access: { visibility: CircleVisibility; inviteUrl: string | null; canInvite: boolean; isCreator: boolean }
+  access: { visibility: CircleVisibility; inviteUrl: string | null; canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean }
 }
 
 /** A member with the reviews they received and the circles they're in. */
@@ -37,6 +37,16 @@ export async function getCircleView(id: string, invite?: string): Promise<Circle
     members: membersOf(dto),
     reviews: dto.reviews.map(toReview),
     access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl, ...dto.access },
+  }
+}
+
+/** The circle's applications, or null when the circle doesn't exist or the viewer isn't a member. */
+export async function getCircleApplications(id: string): Promise<ApplicationDto[] | null> {
+  try {
+    return await fetchCircleApplications(id)
+  } catch (err) {
+    if (err instanceof BackendError && err.code === "CIRCLE_NOT_FOUND") return null
+    throw err
   }
 }
 

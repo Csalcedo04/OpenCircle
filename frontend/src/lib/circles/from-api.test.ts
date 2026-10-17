@@ -58,7 +58,8 @@ const dto: CircleDto = {
   reviews: [review],
   visibility: "PRIVATE",
   inviteUrl: null,
-  access: { canInvite: false, isCreator: false },
+  approvalMode: "DELEGATES",
+  access: { canInvite: false, isCreator: false, isMember: false, canVote: false },
 }
 
 describe("toCircle", () => {

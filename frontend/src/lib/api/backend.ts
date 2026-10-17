@@ -260,11 +260,28 @@ const circleSchema = circleSummarySchema.extend({
   ),
   reviews: z.array(reviewSchema),
   visibility: z.enum(["PRIVATE", "PUBLIC"]),
+  /** Who decides applications to a public circle: the creator and delegates, or a majority of members. */
+  approvalMode: z.enum(["DELEGATES", "MAJORITY"]),
   /** The standing invite link; for the creator and approvers, null otherwise. */
   inviteUrl: z.string().nullable(),
-  /** What the viewer may do here. */
-  access: z.object({ canInvite: z.boolean(), isCreator: z.boolean() }),
+  /** What the viewer may do here; `canVote` follows the approval mode. */
+  access: z.object({ canInvite: z.boolean(), isCreator: z.boolean(), isMember: z.boolean(), canVote: z.boolean() }),
 })
+
+// Applications to a public circle, decided by its approvers or a majority of members.
+const applicationSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(["PENDING", "ACCEPTED", "REJECTED", "WITHDRAWN"]),
+  /** Name, wallet and ICS only: what members need to decide. No user id. */
+  applicant: z.object({ fullName: z.string().nullable(), walletAddress: z.string(), ics: z.number().nullable() }),
+  votes: z.object({ accept: z.number().int(), reject: z.number().int() }),
+  createdAt: z.string(),
+  decidedAt: z.string().nullable(),
+})
+
+export type ApplicationDto = z.infer<typeof applicationSchema>
+export type ApplicationStatus = ApplicationDto["status"]
+export type VoteDecision = "ACCEPT" | "REJECT"
 
 const memberSchema = recordSchema.extend({
   id: z.uuid(),
@@ -333,6 +350,24 @@ export interface NewCircleRequest extends SeatRequest {
 
 export function createCircle(input: NewCircleRequest): Promise<CircleDto> {
   return backendFetch("/circles", circleSchema, { method: "POST", body: JSON.stringify(input) })
+}
+
+/** Asks for a seat in a PUBLIC circle; its approvers (or a majority) decide. */
+export function applyToCircle(id: string, seat: SeatRequest): Promise<ApplicationDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications`, applicationSchema, { method: "POST", body: JSON.stringify(seat) })
+}
+
+/** The circle's applications, oldest first. Members only (404 otherwise). */
+export function fetchCircleApplications(id: string): Promise<ApplicationDto[]> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications`, z.array(applicationSchema))
+}
+
+/** One member's decision; returns the application with its new counts and status. */
+export function voteOnApplication(id: string, applicationId: string, decision: VoteDecision): Promise<ApplicationDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications/${encodeURIComponent(applicationId)}/votes`, applicationSchema, {
+    method: "POST",
+    body: JSON.stringify({ decision }),
+  })
 }
 
 export function joinCircle(id: string, seat: SeatRequest, invite?: string): Promise<CircleDto> {

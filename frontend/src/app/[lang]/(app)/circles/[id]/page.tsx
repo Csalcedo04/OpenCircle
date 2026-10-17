@@ -22,11 +22,15 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Avatar, PEOPLE } from "@/components/landing/shared"
 import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ApplicationsSection } from "@/components/applications-section"
 import { CircleInvitesPanel } from "@/components/invites/circle-invites-panel"
+import { RoundReminderBanner } from "@/components/round-reminder-banner"
 import { ShareDialog } from "@/components/share-dialog"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { getCircleView } from "@/lib/data"
+import { getCircleApplications, getCircleView } from "@/lib/data"
+import { roundReminderStatus } from "@/lib/domain/reminders"
+import { createClient } from "@/lib/supabase/server"
 import { localizedInviteUrl } from "@/lib/flows/circle-invite"
 import { siteUrl } from "@/lib/site"
 import { amount, formatAmount, percent } from "@/lib/domain/money"
@@ -64,12 +68,17 @@ const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
 export default async function CirclePage({ params, searchParams }: PageProps<"/[lang]/circles/[id]">) {
   const { id } = await params
   // A private circle's link carries its invite code; keep it for the join page too.
-  const inviteParam = (await searchParams).invite
+  const { invite: inviteParam, applied } = await searchParams
   const invite = typeof inviteParam === "string" ? inviteParam : undefined
   const { locale, t } = await getDictionary()
   const view = await getCircleView(id, invite)
   if (!view) notFound()
   const { circle, members, reviews: circleReviews, access } = view
+  // Members see the applicants and are reminded about their own contribution.
+  const [applications, claims] = access.isMember
+    ? await Promise.all([getCircleApplications(id), (await createClient()).auth.getClaims()])
+    : [null, null]
+  const viewerId = claims?.data?.claims.sub
 
   const byId = new Map(members.map((m) => [m.id, m]))
   const nameOf = (memberId: string) => byId.get(memberId)?.name ?? memberId
@@ -83,6 +92,11 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
+  const ownContribution = round && viewerId ? round.contributions.find((c) => c.memberId === viewerId) : undefined
+  const reminder = round ? roundReminderStatus(round, ownContribution) : null
+  const pendingApplications = applications?.filter((a) => a.status === "PENDING").length ?? 0
+  // Without an invite link, a public circle takes applications instead of direct joins.
+  const seatCta = access.isMember ? null : access.visibility === "PUBLIC" && !invite ? t.circle.applyCta : t.circle.joinCta
   // Managers share the standing invite link (it carries the code); a public circle is shared by its page.
   const shareUrl = access.inviteUrl
     ? localizedInviteUrl(access.inviteUrl, locale)
@@ -148,12 +162,14 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
           <div className="flex shrink-0 flex-wrap items-center gap-3">
             {shareUrl && <ShareDialog url={shareUrl} circleName={circle.name} t={t.share} />}
             {circle.status === "OPEN" ? (
-              <Link
-                href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
-              >
-                {t.circle.joinCta}
-              </Link>
+              seatCta && (
+                <Link
+                  href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
+                >
+                  {seatCta}
+                </Link>
+              )
             ) : (
               round && <RoundStatusBadge status={round.status} label={t.circle.states[round.status]} className="text-sm px-3.5 py-1.5" />
             )}
@@ -193,6 +209,16 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
           </div>
         </div>
       </header>
+
+      {reminder && round && (
+        <RoundReminderBanner status={reminder} deadline={round.deadline} amount={formatAmount(circle.contribution, locale)} locale={locale} t={t.circle.reminders} />
+      )}
+
+      {applied === "1" && !access.isMember && (
+        <p role="status" className="oc-fade-in mt-6 rounded-2xl bg-brand-mint/40 p-4 text-sm font-medium text-brand-navy">
+          {t.circle.applicationSent}
+        </p>
+      )}
 
       {access.canInvite && (
         <div className="mt-8">
@@ -483,6 +509,12 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             <TabsTrigger value="reviews" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
               {t.circle.tabs.reviews} ({circleReviews.length})
             </TabsTrigger>
+            {applications !== null && (
+              <TabsTrigger value="applications" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
+                {t.circle.tabs.applications}
+                {pendingApplications > 0 && <span className="ml-1 rounded-full bg-brand-violet px-1.5 text-[10px] text-brand-white">{pendingApplications}</span>}
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -562,6 +594,20 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             )}
           </div>
         </TabsContent>
+
+        {applications !== null && (
+          <TabsContent value="applications" className="mt-6">
+            <ApplicationsSection
+              locale={locale}
+              circleId={circle.id}
+              applications={applications}
+              canVote={access.canVote}
+              approvalMode={circle.approvalMode ?? "DELEGATES"}
+              t={t.circle}
+              tErr={t.circleErrors}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )
