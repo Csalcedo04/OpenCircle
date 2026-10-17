@@ -21,6 +21,7 @@ const en = {
     interledger: "Interledger",
     safety: "Security",
     account: "Account",
+    friends: "Friends",
   },
   testFunds: "Demo with test funds only. No real money moves.",
   circles: {

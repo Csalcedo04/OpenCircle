@@ -277,13 +277,22 @@ export default async function AccountPage() {
           </div>
 
           <div className="mt-6 pt-4 border-t border-brand-line flex items-center justify-between">
-            <Link
-              href={`/${locale}/circles`}
-              className="text-xs font-semibold text-brand-navy hover:text-brand-violet flex items-center gap-1 transition-colors"
-            >
-              <span>{locale === "es" ? "Ir a mis círculos" : "Go to my circles"}</span>
-              <ArrowRight className="size-3" />
-            </Link>
+            <div className="flex flex-wrap items-center gap-4">
+              <Link
+                href={`/${locale}/circles`}
+                className="text-xs font-semibold text-brand-navy hover:text-brand-violet flex items-center gap-1 transition-colors"
+              >
+                <span>{t.circles.myTab}</span>
+                <ArrowRight className="size-3" />
+              </Link>
+              <Link
+                href={`/${locale}/friends`}
+                className="text-xs font-semibold text-brand-navy hover:text-brand-violet flex items-center gap-1 transition-colors"
+              >
+                <span>{t.nav.friends}</span>
+                <ArrowRight className="size-3" />
+              </Link>
+            </div>
 
             <Link
               href={`/${locale}/circles/new`}

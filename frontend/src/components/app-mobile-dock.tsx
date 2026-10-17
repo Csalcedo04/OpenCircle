@@ -2,20 +2,14 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CircleDot, PlusCircle, Compass, ShieldCheck, UserRound } from "lucide-react"
+import { PlusCircle, Compass, ShieldCheck, UserRound, UsersRound } from "lucide-react"
 import type { Locale } from "@/i18n/config"
+import type { Dictionary } from "@/i18n/dictionaries/en"
 import { cn } from "@/lib/utils"
 
 interface AppMobileDockProps {
   locale: Locale
-  t: {
-    circles: string
-    create: string
-    account?: string
-    appQuickNavAria?: string
-    interledger?: string
-    safety?: string
-  }
+  t: Pick<Dictionary["nav"], "circles" | "create" | "friends" | "safety" | "account" | "appQuickNavAria">
 }
 
 export function AppMobileDock({ locale, t }: AppMobileDockProps) {
@@ -36,20 +30,20 @@ export function AppMobileDock({ locale, t }: AppMobileDockProps) {
       highlight: true,
     },
     {
-      href: `/${locale}#como-funciona`,
-      label: t.interledger ?? "Interledger",
-      icon: CircleDot,
-      isActive: false,
+      href: `/${locale}/friends`,
+      label: t.friends,
+      icon: UsersRound,
+      isActive: pathname.startsWith(`/${locale}/friends`),
     },
     {
       href: `/${locale}#seguridad`,
-      label: t.safety ?? "Seguridad",
+      label: t.safety,
       icon: ShieldCheck,
       isActive: false,
     },
     {
       href: `/${locale}/account`,
-      label: t.account ?? "Cuenta",
+      label: t.account,
       icon: UserRound,
       isActive: pathname.startsWith(`/${locale}/account`),
     },
@@ -57,7 +51,7 @@ export function AppMobileDock({ locale, t }: AppMobileDockProps) {
 
   return (
     <aside
-      aria-label={t.appQuickNavAria ?? "Navegación móvil del demo"}
+      aria-label={t.appQuickNavAria}
       className="fixed inset-x-3 bottom-3 z-40 block pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden"
     >
       <nav className="mx-auto flex max-w-md items-center justify-around gap-0.5 rounded-full border border-brand-navy/10 bg-brand-navy/95 px-2 py-2 sm:gap-1 sm:px-3 shadow-[0_16px_40px_-10px_color-mix(in_srgb,var(--color-brand-navy)_65%,transparent)] backdrop-blur-xl">

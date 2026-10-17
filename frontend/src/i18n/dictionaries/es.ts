@@ -22,6 +22,7 @@ const es: Dictionary = {
     interledger: "Interledger",
     safety: "Seguridad",
     account: "Mi cuenta",
+    friends: "Amigos",
   },
   testFunds: "Demo solo con fondos de prueba. No se mueve dinero real.",
   circles: {

@@ -29,6 +29,9 @@ export async function SiteHeader() {
           <Link href={`/${locale}/circles/new`} className={cn(navLink, "max-md:hidden")}>
             {t.nav.create}
           </Link>
+          <Link href={`/${locale}/friends`} className={cn(navLink, "max-md:hidden")}>
+            {t.nav.friends}
+          </Link>
           <LocaleToggle locale={locale} label={t.nav.language} switchTo={t.nav.switchTo} />
           <Suspense fallback={null}>
             <HeaderAccount locale={locale} t={t.nav} linkClass={navLink} />
