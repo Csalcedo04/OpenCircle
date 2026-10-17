@@ -17,15 +17,17 @@ import {
   Wallet,
 } from "lucide-react"
 import { CircleRing } from "@/components/circle-ring"
+import { RoundReminderBanner } from "@/components/round-reminder-banner"
 import { RoundStatusBadge } from "@/components/round-status"
-import { Avatar, PEOPLE } from "@/components/landing/shared"
+import { MemberAvatar } from "@/components/member-avatar"
 import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ShareInviteDialog } from "./share-invite-dialog"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { InviteLink } from "@/components/invite-link"
-import { getCircleView } from "@/lib/data"
+import { getCircleView, getCircleApplications } from "@/lib/data"
+import { ApplicationsSection } from "./applications-section"
 import { localizedInviteUrl } from "@/lib/flows/circle-invite"
 import { siteUrl } from "@/lib/site"
 import { amount, formatAmount, percent } from "@/lib/domain/money"
@@ -81,6 +83,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const coverage = beneficiarySeat ? evaluateCoverage(circle, beneficiarySeat) : undefined
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
+  const applications = await getCircleApplications(circle.id)
   const openSeats = circle.size - circle.seats.length
   // The creator shares the invite link (it carries the code); a public circle is shared by its page.
   const shareUrl = access.inviteUrl
@@ -149,7 +152,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                 href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
                 className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
               >
-                {t.circle.joinCta}
+                {access.visibility === "PUBLIC" && !invite ? t.circle.applyCta : t.circle.joinCta}
               </Link>
             ) : (
               round && <RoundStatusBadge status={round.status} label={t.circle.states[round.status]} className="text-sm px-3.5 py-1.5" />
@@ -202,6 +205,15 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             t={t.invite}
           />
         </div>
+      )}
+
+      {round && (
+        <RoundReminderBanner
+          round={round}
+          contributionFormatted={formatAmount(circle.contribution, locale)}
+          locale={locale}
+          tReminders={t.circle.reminders}
+        />
       )}
 
       {/* Main Interactive Round Arena */}
@@ -336,17 +348,16 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
 
               {/* Cards Grid for Participants */}
               <div className="mt-4 grid grid-cols-1 gap-2.5">
-                {round.contributions.map((c, idx) => {
+                {round.contributions.map((c) => {
                   const Icon = contributionIcon[c.status]
                   const personName = nameOf(c.memberId)
-                  const person = PEOPLE[idx % PEOPLE.length]
                   return (
                     <div
                       key={c.memberId}
                       className="flex items-center justify-between rounded-2xl border border-brand-line/80 bg-brand-canvas px-4 py-3 transition-colors hover:border-brand-navy/20"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <Avatar name={person?.name ?? personName} tone={person?.tone ?? "navy"} size="sm" />
+                        <MemberAvatar name={personName} id={c.memberId} size="sm" />
                         <Link href={`/${locale}/members/${c.memberId}`} className="truncate text-sm font-semibold text-brand-navy hover:underline">
                           {personName}
                         </Link>
@@ -477,6 +488,11 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             <TabsTrigger value="reviews" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
               {t.circle.tabs.reviews} ({circleReviews.length})
             </TabsTrigger>
+            {(access.isCreator || applications.length > 0) && (
+              <TabsTrigger value="applications" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
+                {t.circle.tabs.applications} ({applications.length})
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -556,6 +572,18 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             )}
           </div>
         </TabsContent>
+
+        {(access.isCreator || applications.length > 0) && (
+          <TabsContent value="applications" className="mt-6">
+            <ApplicationsSection
+              circle={circle}
+              applications={applications}
+              canVote={access.isCreator}
+              locale={locale}
+              t={t.circle}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

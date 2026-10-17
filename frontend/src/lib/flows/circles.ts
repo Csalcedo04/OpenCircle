@@ -26,6 +26,8 @@ export type CircleErrorKey =
   | "alreadyMember"
   | "notOpen"
   | "kyc"
+  | "applicationRequired"
+  | "applicationPending"
   | "unavailable"
   | "generic"
 
@@ -107,6 +109,8 @@ const apiErrors: Record<string, CircleErrorKey> = {
   CIRCLE_NOT_OPEN: "notOpen",
   INVALID_PAYOUT_ROUND: "seat",
   KYC_REQUIRED: "kyc",
+  APPLICATION_REQUIRED: "applicationRequired",
+  APPLICATION_EXISTS: "applicationPending",
   BACKEND_UNAVAILABLE: "unavailable",
 }
 

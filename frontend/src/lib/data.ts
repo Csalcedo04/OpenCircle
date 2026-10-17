@@ -1,9 +1,8 @@
 import "server-only"
 
-import { fetchCircle, fetchCircles, fetchMember, getMyCircles } from "@/lib/api/backend"
-import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
-import type { Circle, Member, Review } from "@/lib/domain/types"
-import type { CircleVisibility } from "@/lib/flows/circle-invite"
+import { fetchCircle, fetchCircleApplications, fetchCircles, fetchMember, getMyCircles } from "@/lib/api/backend"
+import { membersOf, toCircle, toCircleApplication, toMember, toReview } from "@/lib/circles/from-api"
+import type { ApprovalMode, Circle, CircleApplication, CircleVisibility, Member, Review } from "@/lib/domain/types"
 
 /**
  * Read API for pages, backed by the OpenCircle API (signed-in requests). Pages get the
@@ -16,7 +15,7 @@ export interface CircleView {
   members: Member[]
   reviews: Review[]
   /** Who can find and join it; `inviteUrl` is set only when the viewer created the circle. */
-  access: { visibility: CircleVisibility; inviteUrl: string | null }
+  access: { visibility: CircleVisibility; approvalMode: ApprovalMode; inviteUrl: string | null; isCreator: boolean }
 }
 
 /** A member with the reviews they received and the circles they're in. */
@@ -33,7 +32,21 @@ export async function getCircleView(id: string, invite?: string): Promise<Circle
     circle: toCircle(dto),
     members: membersOf(dto),
     reviews: dto.reviews.map(toReview),
-    access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl },
+    access: {
+      visibility: dto.visibility,
+      approvalMode: dto.approvalMode,
+      inviteUrl: dto.inviteUrl,
+      isCreator: dto.inviteUrl !== null,
+    },
+  }
+}
+
+export async function getCircleApplications(id: string): Promise<CircleApplication[]> {
+  try {
+    const dtos = await fetchCircleApplications(id)
+    return dtos.map(toCircleApplication)
+  } catch {
+    return []
   }
 }
 

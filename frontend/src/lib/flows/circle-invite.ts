@@ -1,6 +1,6 @@
 import type { Locale } from "@/i18n/config"
 
-export const CIRCLE_VISIBILITIES = ["PRIVATE", "PUBLIC"] as const
+export const CIRCLE_VISIBILITIES = ["PRIVATE", "SEMI_PUBLIC", "PUBLIC"] as const
 export type CircleVisibility = (typeof CIRCLE_VISIBILITIES)[number]
 
 /**

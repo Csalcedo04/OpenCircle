@@ -1,5 +1,5 @@
-import type { CircleDto, MemberDto, ReviewDto } from "@/lib/api/backend"
-import type { Circle, ContributionStatus, Member, Review } from "@/lib/domain/types"
+import type { ApplicationDto, CircleDto, MemberDto, ReviewDto } from "@/lib/api/backend"
+import type { Circle, CircleApplication, ContributionStatus, Member, Review } from "@/lib/domain/types"
 
 // API data → the UI's domain types. Pure functions, so pages stay unchanged and this is easy to test.
 
@@ -57,7 +57,24 @@ export function toCircle(dto: CircleDto): Circle {
     // The UI's "no current round" is 0.
     currentRound: dto.currentRound ?? 0,
     visibility: dto.visibility,
+    approvalMode: dto.approvalMode,
     cadence: dto.cadence,
+  }
+}
+
+export function toCircleApplication(dto: ApplicationDto): CircleApplication {
+  return {
+    id: dto.id,
+    status: dto.status,
+    applicant: {
+      id: dto.applicant.id,
+      name: dto.applicant.displayName,
+      walletAddress: dto.applicant.walletAddress,
+      ics: dto.applicant.ics,
+    },
+    votes: dto.votes,
+    createdAt: dto.createdAt,
+    decidedAt: dto.decidedAt,
   }
 }
 

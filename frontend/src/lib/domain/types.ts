@@ -65,6 +65,25 @@ export type Seat = {
   grant: GrantMode | null
 }
 
+export type CircleVisibility = "PRIVATE" | "SEMI_PUBLIC" | "PUBLIC"
+export type ApprovalMode = "CREATOR_ONLY" | "DELEGATES" | "MAJORITY"
+export type ApplicationStatus = "PENDING" | "APPROVED" | "REJECTED" | "WITHDRAWN"
+export type VoteDecision = "ACCEPT" | "REJECT"
+
+export type CircleApplication = {
+  id: string
+  status: ApplicationStatus
+  applicant: {
+    id: string
+    name: string
+    walletAddress: string | null
+    ics: number | null
+  }
+  votes: { accept: number; reject: number }
+  createdAt: string
+  decidedAt: string | null
+}
+
 export type Circle = {
   id: string
   name: string
@@ -82,7 +101,8 @@ export type Circle = {
   seats: Seat[]
   rounds: Round[]
   currentRound: number
-  visibility?: "PRIVATE" | "PUBLIC" | undefined
+  visibility?: CircleVisibility | undefined
+  approvalMode?: ApprovalMode | undefined
   cadence?: "WEEKLY" | "MONTHLY" | undefined
 }
 

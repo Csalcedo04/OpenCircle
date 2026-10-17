@@ -3,7 +3,6 @@ import "server-only"
 import { z } from "zod"
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 import { createClient } from "@/lib/supabase/server"
-import type { CircleVisibility } from "@/lib/flows/circle-invite"
 import { apiCircleSchema, testClockSchema, type ApiCircle, type NewCircle, type TestClock } from "@/lib/api/test-clocks"
 
 export type { ApiCircle, NewCircle, TestClock }
@@ -213,7 +212,13 @@ const reviewSchema = z.object({
   createdAt: z.string(),
 })
 
-const circleSummarySchema = z.object({
+export const circleVisibilitySchema = z.enum(["PRIVATE", "SEMI_PUBLIC", "PUBLIC"])
+export type CircleVisibility = z.infer<typeof circleVisibilitySchema>
+
+export const approvalModeSchema = z.enum(["CREATOR_ONLY", "DELEGATES", "MAJORITY"])
+export type ApprovalMode = z.infer<typeof approvalModeSchema>
+
+export const circleSummarySchema = z.object({
   id: z.uuid(),
   name: z.string(),
   city: z.string(),
@@ -222,13 +227,15 @@ const circleSummarySchema = z.object({
   size: z.number().int(),
   seatsTaken: z.number().int(),
   cadence: cadenceSchema,
+  visibility: circleVisibilitySchema.default("PUBLIC"),
   createdAt: z.string(),
 })
 
-const circleSchema = circleSummarySchema.extend({
+export const circleSchema = circleSummarySchema.extend({
   feeBps: z.number().int(),
   threshold: amountSchema,
   grantWeightBps: z.number().int(),
+  approvalMode: approvalModeSchema.default("DELEGATES"),
   poolWalletAddress: z.string(),
   startedAt: z.string().nullable(),
   currentRound: z.number().int().nullable(),
@@ -254,7 +261,7 @@ const circleSchema = circleSummarySchema.extend({
     }),
   ),
   reviews: z.array(reviewSchema),
-  visibility: z.enum(["PRIVATE", "PUBLIC"]),
+  visibility: circleVisibilitySchema,
   /** Only for the circle's creator; null otherwise. */
   inviteUrl: z.string().nullable(),
 })
@@ -272,6 +279,28 @@ export type CircleDto = z.infer<typeof circleSchema>
 export type MemberDto = z.infer<typeof memberSchema>
 export type ReviewDto = z.infer<typeof reviewSchema>
 export type Cadence = z.infer<typeof cadenceSchema>
+
+export const applicationStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED", "WITHDRAWN"])
+export type ApplicationStatus = z.infer<typeof applicationStatusSchema>
+
+export const voteDecisionSchema = z.enum(["ACCEPT", "REJECT"])
+export type VoteDecision = z.infer<typeof voteDecisionSchema>
+
+export const applicationDtoSchema = z.object({
+  id: z.uuid(),
+  status: applicationStatusSchema,
+  applicant: z.object({
+    id: z.uuid(),
+    displayName: z.string(),
+    walletAddress: z.string().nullable(),
+    ics: z.number().nullable(),
+  }),
+  votes: z.object({ accept: z.number().int(), reject: z.number().int() }),
+  createdAt: z.string(),
+  decidedAt: z.string().nullable(),
+})
+
+export type ApplicationDto = z.infer<typeof applicationDtoSchema>
 
 /** `?invite=` for circles shared by link (private circles). */
 const inviteQuery = (invite: string | undefined) => (invite ? `?invite=${encodeURIComponent(invite)}` : "")
@@ -329,6 +358,29 @@ export function joinCircle(id: string, seat: SeatRequest, invite?: string): Prom
     method: "POST",
     body: JSON.stringify(invite ? { ...seat, invite } : seat),
   })
+}
+
+export function applyToCircle(id: string, seat: SeatRequest): Promise<ApplicationDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications`, applicationDtoSchema, {
+    method: "POST",
+    body: JSON.stringify(seat),
+  })
+}
+
+export function fetchCircleApplications(id: string, status?: ApplicationStatus): Promise<ApplicationDto[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : ""
+  return backendFetch(`/circles/${encodeURIComponent(id)}/applications${query}`, z.array(applicationDtoSchema))
+}
+
+export function voteOnApplication(circleId: string, applicationId: string, decision: VoteDecision): Promise<ApplicationDto> {
+  return backendFetch(
+    `/circles/${encodeURIComponent(circleId)}/applications/${encodeURIComponent(applicationId)}/votes`,
+    applicationDtoSchema,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    },
+  )
 }
 
 // ── The signed-in user's savings and circles ───────────────────────────────

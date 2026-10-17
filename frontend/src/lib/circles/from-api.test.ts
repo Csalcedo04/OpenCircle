@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { CircleDto, MemberDto } from "@/lib/api/backend"
-import { CADENCE_DAYS, contributionStatus, membersOf, toCircle, toMember, toReview } from "./from-api"
+import type { ApplicationDto, CircleDto, MemberDto } from "@/lib/api/backend"
+import { CADENCE_DAYS, contributionStatus, membersOf, toCircle, toCircleApplication, toMember, toReview } from "./from-api"
 
 const COP = { assetCode: "COP", assetScale: 2 }
 const record = (onTime: number) => ({
@@ -34,6 +34,7 @@ const dto: CircleDto = {
   feeBps: 200,
   threshold: { value: "2000000", ...COP },
   grantWeightBps: 5000,
+  approvalMode: "DELEGATES",
   poolWalletAddress: "https://ilp.interledger-test.dev/opencircle",
   startedAt: "2026-01-03T00:00:00.000Z",
   currentRound: 1,
@@ -114,5 +115,35 @@ describe("members and reviews", () => {
 
   it("reviews carry author and circle names; a missing comment is empty", () => {
     expect(toReview(review)).toMatchObject({ authorName: "Ana G.", circleName: "Natillera", rating: 4, comment: "", date: review.createdAt })
+  })
+
+  it("maps application DTO to domain CircleApplication", () => {
+    const appDto: ApplicationDto = {
+      id: "00000000-0000-4000-8000-000000000099",
+      status: "PENDING",
+      applicant: {
+        id: "00000000-0000-4000-8000-0000000000aa",
+        displayName: "Carlos S.",
+        walletAddress: "https://ilp.rafiki.money/carlos",
+        ics: 88,
+      },
+      votes: { accept: 1, reject: 0 },
+      createdAt: "2026-03-01T00:00:00.000Z",
+      decidedAt: null,
+    }
+    const domain = toCircleApplication(appDto)
+    expect(domain).toEqual({
+      id: "00000000-0000-4000-8000-000000000099",
+      status: "PENDING",
+      applicant: {
+        id: "00000000-0000-4000-8000-0000000000aa",
+        name: "Carlos S.",
+        walletAddress: "https://ilp.rafiki.money/carlos",
+        ics: 88,
+      },
+      votes: { accept: 1, reject: 0 },
+      createdAt: "2026-03-01T00:00:00.000Z",
+      decidedAt: null,
+    })
   })
 })
