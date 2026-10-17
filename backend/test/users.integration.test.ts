@@ -116,6 +116,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       account: createAccountService({ db }),
       internalAccounts: fakeServices().internalAccounts,
       deposits: fakeServices().deposits,
+      debts: fakeServices().debts,
       walletAddresses: createWalletAddressService(fakeOpenPayments()),
       walletConsent: createWalletConsentService({
         db,

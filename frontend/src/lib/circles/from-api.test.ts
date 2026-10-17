@@ -59,7 +59,7 @@ const dto: CircleDto = {
   visibility: "PRIVATE",
   inviteUrl: null,
   approvalMode: "DELEGATES",
-  access: { canInvite: false, isCreator: false, isMember: false, canVote: false },
+  access: { canInvite: false, isCreator: false, isMember: false, canVote: false, canJoin: false },
 }
 
 describe("toCircle", () => {
@@ -69,7 +69,7 @@ describe("toCircle", () => {
     expect(c.rounds[0]?.beneficiaryId).toBe("user-a")
     expect(c.rounds[0]?.contributions).toEqual([
       { memberId: "user-a", status: "VERIFIED" },
-      { memberId: "user-b", status: "PENDING" },
+      { memberId: "user-b", status: "PROCESSING" },
     ])
   })
 
@@ -124,12 +124,12 @@ describe("toCircle", () => {
 })
 
 describe("contributionStatus", () => {
-  it("only completed payments count as verified", () => {
+  it("only completed payments count as verified; a payment in flight is not pending", () => {
     expect(contributionStatus("COMPLETED")).toBe("VERIFIED")
     expect(contributionStatus("FAILED")).toBe("MISSING")
     expect(contributionStatus("CANCELLED")).toBe("REFUNDED")
     expect(contributionStatus("PENDING")).toBe("PENDING")
-    expect(contributionStatus("PROCESSING")).toBe("PENDING")
+    expect(contributionStatus("PROCESSING")).toBe("PROCESSING")
     expect(contributionStatus("SOMETHING_NEW")).toBe("PENDING")
   })
 })

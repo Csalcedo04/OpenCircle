@@ -5,8 +5,10 @@ import {
   APPROVAL_MODES,
   CIRCLE_STATUSES,
   CIRCLE_VISIBILITIES,
+  CONTRIBUTION_STATUSES,
   FUNDING_SOURCES,
   GRANT_MODES,
+  PAYOUT_STATUSES,
   ROUND_STATES,
   auditEvents,
   circleInvites,
@@ -15,6 +17,7 @@ import {
   contributions,
   creditProfiles,
   ledgerAccounts,
+  payouts,
   reviews,
   rounds,
   testClocks,
@@ -22,8 +25,11 @@ import {
   wallets,
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
-import { lockCircle, membership, requireManager } from "./circles/circle-access";
+import { circleGoal, planGoal, roundsTotal, type CircleTerms, type PayoutMode } from "./circles/circle-plan";
+import { lockCircle, mayDecide, membership, requireManager } from "./circles/circle-access";
 import { addressedTo, consumeInvite, insertStandingCode, inviteUrl as inviteUrlOf, matchedInvite, standingCodeOf } from "./circles/invite-access";
+import { assertNoOpenDebt } from "./circles/debts";
+import { expectedPayouts, payoutPerMember } from "./circles/payout-plan";
 import { payoutSequence, type PayoutOrder } from "./circles/payout-order";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
@@ -39,6 +45,8 @@ export type GrantMode = (typeof GRANT_MODES)[number];
 export type CircleVisibility = (typeof CIRCLE_VISIBILITIES)[number];
 export type ApprovalMode = (typeof APPROVAL_MODES)[number];
 type RoundState = (typeof ROUND_STATES)[number];
+type ContributionStatus = (typeof CONTRIBUTION_STATUSES)[number];
+type PayoutStatus = (typeof PAYOUT_STATUSES)[number];
 
 // Defaults for new circles, matching the demo data. Placeholder policy until the team sets real values.
 const DEFAULT_FEE_BPS = 200;
@@ -61,10 +69,31 @@ export interface SeatInput {
   fundingSource?: FundingSource | undefined;
 }
 
-export interface CreateCircleInput extends SeatInput {
+/**
+ * How the pot pays out. PER_ROUND (default): each round's pot to its beneficiary; the creator
+ * sets the contribution. END: held until the goal; the creator sets the goal and either the
+ * contribution or the number of rounds, and the other is derived.
+ */
+export type CircleFunding =
+  | { payoutMode?: "PER_ROUND" | undefined; contributionValue: bigint }
+  | { payoutMode: "END"; goalValue: bigint; contributionValue: bigint }
+  | { payoutMode: "END"; goalValue: bigint; roundsTotal: number };
+
+export type CreateCircleInput = CircleFunding & CircleSettings;
+
+/** POST /circles/plan: the funding terms and the size, nothing else. */
+export type PlanCircleInput = CircleFunding & { size: number };
+
+/** The terms stored for these inputs; 422 when an END goal doesn't work out. */
+function fundingTerms(input: PlanCircleInput) {
+  return input.payoutMode === "END"
+    ? { payoutMode: "END" as const, goalValue: input.goalValue, contributionValue: planGoal(input).contributionValue }
+    : { payoutMode: "PER_ROUND" as const, goalValue: null, contributionValue: input.contributionValue };
+}
+
+interface CircleSettings extends SeatInput {
   name: string;
   city?: string | undefined;
-  contributionValue: bigint;
   size: number;
   cadence: Cadence;
   /** Dev only: run this circle on a test clock the user owns. */
@@ -106,12 +135,39 @@ export interface SeatDto {
   fundingSource: FundingSource;
   // Accepts or rejects applicants when the circle uses DELEGATES.
   isApprover: boolean;
+  payout: SeatPayoutDto;
+}
+
+/** What a member gets out of the pot. Amounts in the circle's asset. */
+export interface SeatPayoutDto {
+  /** If everyone pays from now on, after the fee: their round's pot (PER_ROUND) or what they put in
+   * (END), less what they owe others, plus compensation owed to them. */
+  expected: AmountDto;
+  /** What they have paid in so far (COMPLETED contributions). */
+  saved: AmountDto;
+  /** When it is paid: their round's deadline (PER_ROUND) or the last round's (END). Null before the start. */
+  payoutAt: string | null;
+  /** Their round or final payout; SCHEDULED until it exists. */
+  status: "SCHEDULED" | PayoutStatus;
+  /** What actually reached their wallet (COMPLETED payouts, compensations included); null if nothing yet. */
+  received: AmountDto | null;
+}
+
+/** POST /circles/plan: what a circle with these terms would look like, before creating it. */
+export interface CirclePlanDto {
+  payoutMode: PayoutMode;
+  contribution: AmountDto;
+  goal: AmountDto;
+  roundsTotal: number;
+  feeBps: number;
+  payoutPerMember: AmountDto;
 }
 
 export interface RoundDto {
   number: number;
   state: RoundState;
-  beneficiaryMemberId: string;
+  // Null in END circles: the pot is held until the last round.
+  beneficiaryMemberId: string | null;
   startsAt: string;
   deadline: string;
   contributions: { memberId: string; status: string }[];
@@ -122,6 +178,14 @@ export interface CircleDto extends CircleSummaryDto {
   threshold: AmountDto;
   grantWeightBps: number;
   approvalMode: ApprovalMode;
+  payoutMode: PayoutMode;
+  // Everything the pot collects if everyone pays: the END goal, or every round's pot.
+  goal: AmountDto;
+  roundsTotal: number;
+  // COMPLETED contributions of every round.
+  poolCollected: AmountDto;
+  // What each member receives if everyone pays, after the fee (see SeatPayoutDto.expected).
+  payoutPerMember: AmountDto;
   poolWalletAddress: string;
   startedAt: string | null;
   // Dev only (TEST_CLOCKS_ENABLED): the test clock this circle runs on.
@@ -130,9 +194,11 @@ export interface CircleDto extends CircleSummaryDto {
   inviteUrl: string | null;
   /**
    * What the viewer may do here: invite people (creator or approver), change visibility (creator),
-   * see and decide applications (members; who decides depends on the approval mode).
+   * see and decide applications (members; who decides depends on the approval mode), and take a
+   * seat right away (`canJoin`: an OPEN circle, a non-member, and a usable invite made for them).
+   * Without `canJoin`, a PUBLIC circle takes an application instead.
    */
-  access: { canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean };
+  access: { canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean; canJoin: boolean };
   // The round being collected or paid out; null before the circle starts or once it is over.
   currentRound: number | null;
   seats: SeatDto[];
@@ -149,6 +215,47 @@ const amount = (value: bigint, assetCode: string, assetScale: number): AmountDto
   assetCode,
   assetScale,
 });
+
+const paidIn = (rows: readonly { value: bigint; status: string }[]) => rows.filter((c) => c.status === "COMPLETED").reduce((sum, c) => sum + c.value, 0n);
+
+/** Each seat's payout view, from the circle's rounds, contributions and payouts. */
+function seatPayouts(
+  circle: CircleTerms & { id: string; feeBps: number; assetCode: string; assetScale: number },
+  seats: readonly { memberId: string }[],
+  roundRows: readonly { id: string; number: number; beneficiaryMemberId: string | null; deadline: Date }[],
+  contributionRows: readonly { id: string; roundId: string; memberId: string; value: bigint; status: ContributionStatus }[],
+  payoutRows: readonly { memberId: string; kind: string; value: bigint; status: PayoutStatus }[],
+): (memberId: string) => SeatPayoutDto {
+  const money = (value: bigint) => amount(value, circle.assetCode, circle.assetScale);
+  const memberIds = seats.map((s) => s.memberId);
+  // Before the start every seat expects the same; the payout order is only set then.
+  const expected =
+    roundRows.length === 0
+      ? null
+      : expectedPayouts({
+          circleId: circle.id,
+          payoutMode: circle.payoutMode,
+          feeBps: circle.feeBps,
+          contributionValue: circle.contributionValue,
+          memberIds,
+          rounds: roundRows.map((r) => ({ ...r, contributions: contributionRows.filter((c) => c.roundId === r.id) })),
+        });
+  const last = roundRows.at(-1);
+
+  return (memberId) => {
+    const mine = payoutRows.filter((p) => p.memberId === memberId);
+    const main = mine.find((p) => p.kind === "ROUND" || p.kind === "FINAL");
+    const done = mine.filter((p) => p.status === "COMPLETED");
+    const payoutAt = circle.payoutMode === "END" ? last?.deadline : roundRows.find((r) => r.beneficiaryMemberId === memberId)?.deadline;
+    return {
+      expected: money(expected?.get(memberId) ?? payoutPerMember(circle)),
+      saved: money(paidIn(contributionRows.filter((c) => c.memberId === memberId))),
+      payoutAt: payoutAt?.toISOString() ?? null,
+      status: main?.status ?? "SCHEDULED",
+      received: done.length === 0 ? null : money(done.reduce((sum, p) => sum + p.value, 0n)),
+    };
+  };
+}
 
 export interface CircleServiceDeps {
   db: Db;
@@ -199,6 +306,16 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
   async function canSee(circle: { id: string; visibility: CircleVisibility }, viewer: CircleViewer): Promise<boolean> {
     if (circle.visibility === "PUBLIC" || (await isMember(circle.id, viewer.userId))) return true;
     return (await matchedInvite(db, circle.id, viewer.invite, new Date())) !== null;
+  }
+
+  // Whether the viewer's invite (if any) would seat them: a code, or a direct invite made for them.
+  async function admittedBy(circleId: string, viewer: CircleViewer): Promise<boolean> {
+    const matched = await matchedInvite(db, circleId, viewer.invite, new Date());
+    if (matched === null) return false;
+    if (matched.kind === "CODE") return true;
+    if (viewer.userId === undefined) return false;
+    const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, viewer.userId)).limit(1);
+    return user !== undefined && addressedTo(matched, user);
   }
   const summaryColumns = {
     id: circles.id,
@@ -253,6 +370,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         thresholdValue: circles.thresholdValue,
         grantWeightBps: circles.grantWeightBps,
         approvalMode: circles.approvalMode,
+        payoutMode: circles.payoutMode,
+        goalValue: circles.goalValue,
         startedAt: circles.startedAt,
         testClockId: circles.testClockId,
         createdBy: circles.createdBy,
@@ -285,7 +404,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       roundRows.length === 0
         ? []
         : await db
-            .select({ roundId: contributions.roundId, memberId: contributions.memberId, status: contributions.status })
+            .select({ id: contributions.id, roundId: contributions.roundId, memberId: contributions.memberId, value: contributions.value, status: contributions.status })
             .from(contributions)
             .where(
               inArray(
@@ -293,34 +412,45 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
                 roundRows.map((r) => r.id),
               ),
             );
+    const payoutRows = await db
+      .select({ memberId: payouts.memberId, kind: payouts.kind, value: payouts.value, status: payouts.status })
+      .from(payouts)
+      .where(eq(payouts.circleId, id));
 
-    const [records, circleReviews, viewerSeat] = await Promise.all([
+    const [records, circleReviews, viewerSeat, admitted] = await Promise.all([
       memberRecords(
         db,
         seats.map((s) => s.userId),
       ),
       findReviews(db, eq(reviews.circleId, id)),
       viewer.userId === undefined ? null : membership(db, id, viewer.userId),
+      admittedBy(id, viewer),
     ]);
     const isCreator = viewer.userId === circle.createdBy;
     const isMember = viewerSeat !== null;
     const canInvite = isCreator || (viewerSeat?.isApprover ?? false);
-    // DELEGATES: the creator and the delegated approvers decide; MAJORITY: every member votes.
-    const canVote = circle.approvalMode === "MAJORITY" ? isMember : canInvite;
+    const canVote = mayDecide(circle, viewerSeat);
+    const canJoin = circle.status === "OPEN" && !isMember && admitted;
     const standingCode = canInvite ? await standingCodeOf(db, id, new Date()) : null;
 
     const { assetCode, assetScale } = circle;
+    const payoutOf = seatPayouts(circle, seats, roundRows, contributionRows, payoutRows);
     return {
       ...toSummary(circle),
       feeBps: circle.feeBps,
       threshold: amount(circle.thresholdValue, assetCode, assetScale),
       grantWeightBps: circle.grantWeightBps,
       approvalMode: circle.approvalMode,
+      payoutMode: circle.payoutMode,
+      goal: amount(circleGoal(circle), assetCode, assetScale),
+      roundsTotal: roundsTotal(circle),
+      poolCollected: amount(paidIn(contributionRows), assetCode, assetScale),
+      payoutPerMember: amount(payoutPerMember(circle), assetCode, assetScale),
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
       inviteUrl: standingCode === null ? null : inviteUrl(circle.id, standingCode),
-      access: { canInvite, isCreator, isMember, canVote },
+      access: { canInvite, isCreator, isMember, canVote, canJoin },
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
@@ -332,6 +462,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         grantMode: s.grantMode ?? null,
         fundingSource: s.fundingSource,
         isApprover: s.isApprover,
+        payout: payoutOf(s.memberId),
       })),
       rounds: roundRows.map((r) => ({
         number: r.number,
@@ -435,17 +566,24 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
 
     await tx.update(circles).set({ status: "ACTIVE", startedAt: now }).where(eq(circles.id, circle.id));
 
+    // PER_ROUND: round n pays the seat with payout round n. END: no beneficiary, the pot is held.
+    const beneficiary = (n: number): string | null => {
+      if (circle.payoutMode === "END") return null;
+      const seat = seats.find((s) => s.payoutRound === n);
+      if (!seat) throw new Error(`No seat for payout round ${n}`);
+      return seat.id;
+    };
     const created = await tx
       .insert(rounds)
       .values(
-        seats.map((seat) => ({
+        Array.from({ length: roundsTotal(circle) }, (_, i) => i + 1).map((n) => ({
           circleId: circle.id,
-          number: seat.payoutRound,
-          beneficiaryMemberId: seat.id,
-          state: seat.payoutRound === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
-          startsAt: periodStart(now, circle.cadence, seat.payoutRound),
-          deadline: periodEnd(now, circle.cadence, seat.payoutRound),
-          openedAt: seat.payoutRound === 1 ? now : null,
+          number: n,
+          beneficiaryMemberId: beneficiary(n),
+          state: n === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
+          startsAt: periodStart(now, circle.cadence, n),
+          deadline: periodEnd(now, circle.cadence, n),
+          openedAt: n === 1 ? now : null,
         })),
       )
       .returning({ id: rounds.id, number: rounds.number });
@@ -495,6 +633,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
    */
   async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: SeatInput): Promise<boolean> {
     if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+    // Every way in (invite link, direct invite, accepted application) takes a seat here.
+    await assertNoOpenDebt(tx, userId);
     const taken = (
       await tx.select({ payoutRound: circleMembers.payoutRound }).from(circleMembers).where(eq(circleMembers.circleId, circle.id))
     ).map((m) => m.payoutRound);
@@ -570,9 +710,27 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       return new Set(rows.map((r) => r.id));
     },
 
+    /** What a circle with these terms would look like (contribution, rounds, payouts); stores nothing. */
+    async plan(input: PlanCircleInput): Promise<CirclePlanDto> {
+      const terms = { ...fundingTerms(input), size: input.size, feeBps: DEFAULT_FEE_BPS };
+      // Amounts are in the pot's asset, as on the circle once created.
+      const pool = await resolvePoolWallet();
+      const money = (value: bigint) => amount(value, pool.assetCode, pool.assetScale);
+      return {
+        payoutMode: terms.payoutMode,
+        contribution: money(terms.contributionValue),
+        goal: money(circleGoal(terms)),
+        roundsTotal: roundsTotal(terms),
+        feeBps: terms.feeBps,
+        payoutPerMember: money(payoutPerMember(terms)),
+      };
+    },
+
     /** Creates an OPEN circle with its creator in the first seat. */
     async create(userId: string, input: CreateCircleInput): Promise<CircleDto> {
+      await assertNoOpenDebt(db, userId);
       if (input.testClockId !== undefined) await ownedTestClock(userId, input.testClockId);
+      const funding = fundingTerms(input);
       const remote = await resolvePoolWallet();
       const id = await db.transaction(async (tx) => {
         const pool = await poolWalletId(tx, remote);
@@ -581,12 +739,12 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           .values({
             name: input.name,
             city: input.city ?? null,
-            contributionValue: input.contributionValue,
+            ...funding,
             // The pot's asset: every contribution is in the currency the pot wallet holds.
             assetCode: pool.assetCode,
             assetScale: pool.assetScale,
             feeBps: DEFAULT_FEE_BPS,
-            thresholdValue: input.contributionValue,
+            thresholdValue: funding.contributionValue,
             grantWeightBps: DEFAULT_GRANT_WEIGHT_BPS,
             cadence: input.cadence,
             roundLengthDays: cadenceDays[input.cadence],

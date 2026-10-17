@@ -7,6 +7,7 @@ import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
 import type { AccountService } from "../services/account.service";
 import type { CircleService } from "../services/circle.service";
+import type { DebtService } from "../services/circles/debt.service";
 import type { InviteService } from "../services/circles/invite.service";
 import { emailSchema } from "./shared";
 import type { KycService } from "../services/kyc.service";
@@ -98,6 +99,7 @@ export interface UserRouteServices {
   circles: CircleService;
   invites: Pick<InviteService, "listMine">;
   account: AccountService;
+  debts: Pick<DebtService, "list" | "pay">;
 }
 
 // requireUser runs at router level, so the claims are always present here.
@@ -117,7 +119,14 @@ function currentUserEmail(res: Response): string {
   return parsed.data;
 }
 
-export function userRoutes({ users, wallets, walletConsent, kyc, circles, invites, account }: UserRouteServices): Router {
+// A malformed id can't be one of the user's debts: same answer as an unknown one.
+function debtId(id: unknown): string {
+  const parsed = z.uuid().safeParse(id);
+  if (!parsed.success) throw new AppError(404, "DEBT_NOT_FOUND", "Debt not found");
+  return parsed.data;
+}
+
+export function userRoutes({ users, wallets, walletConsent, kyc, circles, invites, account, debts }: UserRouteServices): Router {
   const getMe: RequestHandler = async (_req, res) => {
     res.json(await users.getProfile(currentUserId(res)));
   };
@@ -179,6 +188,19 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles, invite
     res.json(await wallets.getSavings(currentUserId(res)));
   };
 
+  // What the user owes their circles (defaulted contributions); while any is owed they can't
+  // create or join circles (409 DEBT_OUTSTANDING).
+  const getMyDebts: RequestHandler = async (_req, res) => {
+    res.json(await debts.list(currentUserId(res)));
+  };
+
+  // Pays one through the user's wallet grant: 200 once the pool has it, 202 while it's on its way.
+  const payMyDebt: RequestHandler = async (req, res) => {
+    const paying = await debts.pay(currentUserId(res), debtId(req.params.contributionId));
+    if (paying) res.status(202).json(paying);
+    else res.json({ status: "PAID" });
+  };
+
   // Everything the account page shows, read in one call. Reads only.
   const getMyDashboard: RequestHandler = async (_req, res) => {
     res.json(await account.getDashboard(currentUserId(res)));
@@ -196,6 +218,8 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles, invite
     .get("/me/kyc", getMyKyc)
     .post("/me/kyc/session", startMyKyc)
     .get("/me/savings", getMySavings)
+    .get("/me/debts", getMyDebts)
+    .post("/me/debts/:contributionId/pay", payMyDebt)
     .get("/me/dashboard", getMyDashboard)
     .get("/public", publicProfileLimit, getPublicByWallet)
     .get("/:id/public", publicProfileLimit, getPublicById);

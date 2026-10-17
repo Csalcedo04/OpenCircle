@@ -27,8 +27,10 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
   const view = await getCircleView(id, inviteCode)
   if (!view) notFound()
   const { circle, access } = view
-  // A public circle without an invite link takes applications; a link, or a private circle, seats directly.
-  const mode = access.visibility === "PUBLIC" && !inviteCode && !access.isMember ? "apply" : "join"
+  // The API says whether the viewer's link seats them; otherwise a public circle takes an application.
+  const mode = access.canJoin ? "join" : "apply"
+  // A private circle seen through someone else's invite, or a member: nothing to do here.
+  const admitted = access.canJoin || (mode === "apply" && access.visibility === "PUBLIC" && !access.isMember)
   // How this user can pay. Signed-out or unreachable: the gate below explains; the form never shows.
   const profile = await getMyProfile().catch((err: unknown) => {
     if (isBackendUnavailable(err)) return null
@@ -46,6 +48,11 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
       <h1 className="mt-4 font-heading text-4xl font-semibold tracking-tight">{fill(mode === "apply" ? t.join.applyTitle : t.join.title, { circle: circle.name })}</h1>
       <p className="mt-2 max-w-2xl text-muted-foreground">{mode === "apply" ? t.join.applyLead : t.join.lead}</p>
       <div className="mt-10">
+        {!admitted ? (
+          <p role="status" className="rounded-[32px] border border-brand-line bg-brand-white p-8 text-center text-sm text-brand-slate">
+            {access.isMember ? t.join.alreadyMember : t.join.notAdmitted}
+          </p>
+        ) : (
         <Suspense fallback={<p className="text-muted-foreground">{t.common.loading}</p>}>
           <KycGate locale={locale} t={t.kyc} tc={t.common} returnPath={withInvite(`/${locale}/circles/${circle.id}/join`, inviteCode)}>
             <JoinCircleForm
@@ -69,6 +76,7 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
             />
           </KycGate>
         </Suspense>
+        )}
       </div>
     </div>
   )

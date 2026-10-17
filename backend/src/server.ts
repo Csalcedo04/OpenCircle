@@ -13,13 +13,16 @@ import { createResendSender } from "./services/notifications/resend-sender";
 import { createChannelSender, createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
+import { createDebtService } from "./services/circles/debt.service";
+import { createPayouts } from "./services/circles/payout.service";
+import { createPoolAccess } from "./services/circles/pool-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
 import { createFriendService } from "./services/friend.service";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./services/open-payments/client";
-import { createContributionPayments } from "./services/open-payments/payments";
+import { createContributionPayments, createPayoutPayments } from "./services/open-payments/payments";
 import { createTokenCipher } from "./services/open-payments/token-cipher";
 import { createWalletAddressService } from "./services/open-payments/wallet-address.service";
 import { createTestClockService } from "./services/test-clock.service";
@@ -47,6 +50,14 @@ async function main(): Promise<void> {
   const payments = createContributionPayments({ client: openPaymentsAuth, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS });
   const memberAccess = createMemberAccess({ db, cipher, payments });
   const engine = createPeriodEngine({ db, payments, memberAccess });
+  // Payouts: the pool pays members through its owner's wallet grant (see pool-access).
+  // Late payment of defaulted contributions, through the member's grant like any contribution.
+  const debts = createDebtService({ db, payments, memberAccess });
+  const payouts = createPayouts({
+    db,
+    payments: createPayoutPayments({ client: openPaymentsAuth }),
+    pool: createPoolAccess({ db, memberAccess, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS }),
+  });
   // Emails through Resend when configured; SMS and WhatsApp (and everything else, otherwise) are only logged.
   const log = createLogSender();
   const sender =
@@ -55,10 +66,12 @@ async function main(): Promise<void> {
       : log;
   const notices = createApplicationNotices({ db, sender });
   const inviteNotices = createInviteNotices({ db, sender, frontendUrl: env.FRONTEND_URL });
-  // Periods, then scores (ICS), then payment reminders. The scheduler runs it for real-time
-  // circles (POST /api/internal/circles/tick); test clocks run it for theirs.
+  // Periods, then payouts, then scores (ICS), then payment reminders. The scheduler runs it for
+  // real-time circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
     engine,
+    debts,
+    payouts,
     scoring: createScoring({ db }),
     reminders: createReminders({ db, sender }),
   });
@@ -85,6 +98,7 @@ async function main(): Promise<void> {
       }),
       // Deposits are incoming payments on OpenCircle's wallet; a linked wallet can pay them.
       deposits: createDepositService({ db, payments, memberAccess, receiverWalletAddress: env.OP_CLIENT_WALLET_ADDRESS }),
+      debts,
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,
@@ -106,7 +120,7 @@ async function main(): Promise<void> {
         frontendUrl: env.FRONTEND_URL,
       }),
     },
-    { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET, cronSecret: env.CRON_SECRET },
+    { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET, cronSecret: env.CRON_SECRET, logRequests: true },
   );
 
   app.listen(env.PORT, () => {

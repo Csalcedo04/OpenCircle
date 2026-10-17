@@ -1,163 +1,9 @@
 {
-  "id": "dfcd8870-72a8-4926-afaf-44b4a60797df",
+  "id": "fcaf93c6-2bc1-4da5-8f25-6ac131d4d572",
   "prevId": "7c93b0b9-85dc-4add-8688-da56d88e33c4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.account_deposits": {
-      "name": "account_deposits",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_code": {
-          "name": "asset_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_scale": {
-          "name": "asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'PENDING'"
-        },
-        "failure_code": {
-          "name": "failure_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "incoming_payment_url": {
-          "name": "incoming_payment_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "account_deposits_account_id_created_idx": {
-          "name": "account_deposits_account_id_created_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "account_deposits_account_id_ledger_accounts_id_fk": {
-          "name": "account_deposits_account_id_ledger_accounts_id_fk",
-          "tableFrom": "account_deposits",
-          "tableTo": "ledger_accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "account_deposits_incoming_payment_url_unique": {
-          "name": "account_deposits_incoming_payment_url_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "incoming_payment_url"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "account_deposits_status": {
-          "name": "account_deposits_status",
-          "value": "\"account_deposits\".\"status\" in ('PENDING', 'COMPLETED', 'FAILED')"
-        },
-        "account_deposits_value_positive": {
-          "name": "account_deposits_value_positive",
-          "value": "\"account_deposits\".\"value\" > 0"
-        },
-        "account_deposits_asset_scale_range": {
-          "name": "account_deposits_asset_scale_range",
-          "value": "\"account_deposits\".\"asset_scale\" between 0 and 255"
-        },
-        "account_deposits_completed_at": {
-          "name": "account_deposits_completed_at",
-          "value": "(\"account_deposits\".\"status\" = 'COMPLETED') = (\"account_deposits\".\"completed_at\" is not null)"
-        },
-        "account_deposits_failure_code": {
-          "name": "account_deposits_failure_code",
-          "value": "\"account_deposits\".\"failure_code\" is null or \"account_deposits\".\"status\" = 'FAILED'"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "public.application_votes": {
       "name": "application_votes",
       "schema": "",
@@ -251,13 +97,7 @@
           "name": "wallet_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "account_id": {
-          "name": "account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "event_type": {
           "name": "event_type",
@@ -306,27 +146,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "audit_events_account_id_created_at_idx": {
-          "name": "audit_events_account_id_created_at_idx",
-          "columns": [
-            {
-              "expression": "account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -336,19 +155,6 @@
           "tableTo": "wallets",
           "columnsFrom": [
             "wallet_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "audit_events_account_id_ledger_accounts_id_fk": {
-          "name": "audit_events_account_id_ledger_accounts_id_fk",
-          "tableFrom": "audit_events",
-          "tableTo": "ledger_accounts",
-          "columnsFrom": [
-            "account_id"
           ],
           "columnsTo": [
             "id"
@@ -368,12 +174,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "audit_events_subject": {
-          "name": "audit_events_subject",
-          "value": "\"audit_events\".\"wallet_id\" is not null or \"audit_events\".\"account_id\" is not null"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": true
     },
     "public.circle_applications": {
@@ -811,13 +612,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "funding_source": {
-          "name": "funding_source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'EXTERNAL_WALLET'"
-        },
         "is_approver": {
           "name": "is_approver",
           "type": "boolean",
@@ -910,10 +704,6 @@
         "circle_members_grant_mode": {
           "name": "circle_members_grant_mode",
           "value": "\"circle_members\".\"grant_mode\" is null or \"circle_members\".\"grant_mode\" in ('RECURRING', 'PER_ROUND')"
-        },
-        "circle_members_funding_source": {
-          "name": "circle_members_funding_source",
-          "value": "\"circle_members\".\"funding_source\" in ('INTERNAL_ACCOUNT', 'EXTERNAL_WALLET')"
         }
       },
       "isRLSEnabled": true
@@ -1025,6 +815,19 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "payout_mode": {
+          "name": "payout_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PER_ROUND'"
+        },
+        "goal_value": {
+          "name": "goal_value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
         },
         "pool_wallet_id": {
           "name": "pool_wallet_id",
@@ -1223,6 +1026,18 @@
         "circles_approval_mode": {
           "name": "circles_approval_mode",
           "value": "\"circles\".\"approval_mode\" in ('DELEGATES', 'MAJORITY')"
+        },
+        "circles_payout_mode": {
+          "name": "circles_payout_mode",
+          "value": "\"circles\".\"payout_mode\" in ('PER_ROUND', 'END')"
+        },
+        "circles_goal_only_end": {
+          "name": "circles_goal_only_end",
+          "value": "(\"circles\".\"payout_mode\" = 'END') = (\"circles\".\"goal_value\" is not null)"
+        },
+        "circles_goal_divisible": {
+          "name": "circles_goal_divisible",
+          "value": "\"circles\".\"goal_value\" is null or (\"circles\".\"goal_value\" > 0 and \"circles\".\"goal_value\" % (\"circles\".\"contribution_value\" * \"circles\".\"size\") = 0)"
         }
       },
       "isRLSEnabled": true
@@ -1834,8 +1649,8 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
-    "public.ledger_accounts": {
-      "name": "ledger_accounts",
+    "public.payouts": {
+      "name": "payouts",
       "schema": "",
       "columns": {
         "id": {
@@ -1844,185 +1659,28 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "circle_id": {
           "name": "circle_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
-        },
-        "system_code": {
-          "name": "system_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "asset_code": {
-          "name": "asset_code",
-          "type": "text",
-          "primaryKey": false,
           "notNull": true
         },
-        "asset_scale": {
-          "name": "asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "balance": {
-          "name": "balance",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "0"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "ledger_accounts_owner_user_id_users_id_fk": {
-          "name": "ledger_accounts_owner_user_id_users_id_fk",
-          "tableFrom": "ledger_accounts",
-          "tableTo": "users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "ledger_accounts_circle_id_circles_id_fk": {
-          "name": "ledger_accounts_circle_id_circles_id_fk",
-          "tableFrom": "ledger_accounts",
-          "tableTo": "circles",
-          "columnsFrom": [
-            "circle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "ledger_accounts_owner_user_id_unique": {
-          "name": "ledger_accounts_owner_user_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "owner_user_id"
-          ]
-        },
-        "ledger_accounts_circle_id_unique": {
-          "name": "ledger_accounts_circle_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "circle_id"
-          ]
-        },
-        "ledger_accounts_system_unique": {
-          "name": "ledger_accounts_system_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "system_code",
-            "asset_code",
-            "asset_scale"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "ledger_accounts_kind": {
-          "name": "ledger_accounts_kind",
-          "value": "\"ledger_accounts\".\"kind\" in ('USER', 'CIRCLE_POOL', 'SYSTEM')"
-        },
-        "ledger_accounts_user_owner": {
-          "name": "ledger_accounts_user_owner",
-          "value": "(\"ledger_accounts\".\"kind\" = 'USER') = (\"ledger_accounts\".\"owner_user_id\" is not null)"
-        },
-        "ledger_accounts_pool_circle": {
-          "name": "ledger_accounts_pool_circle",
-          "value": "(\"ledger_accounts\".\"kind\" = 'CIRCLE_POOL') = (\"ledger_accounts\".\"circle_id\" is not null)"
-        },
-        "ledger_accounts_system_code": {
-          "name": "ledger_accounts_system_code",
-          "value": "(\"ledger_accounts\".\"kind\" = 'SYSTEM') = (\"ledger_accounts\".\"system_code\" is not null)"
-        },
-        "ledger_accounts_system_code_values": {
-          "name": "ledger_accounts_system_code_values",
-          "value": "\"ledger_accounts\".\"system_code\" is null or \"ledger_accounts\".\"system_code\" in ('DEMO_SEED', 'OP_WALLET')"
-        },
-        "ledger_accounts_balance_non_negative": {
-          "name": "ledger_accounts_balance_non_negative",
-          "value": "\"ledger_accounts\".\"kind\" = 'SYSTEM' or \"ledger_accounts\".\"balance\" >= 0"
-        },
-        "ledger_accounts_asset_scale_range": {
-          "name": "ledger_accounts_asset_scale_range",
-          "value": "\"ledger_accounts\".\"asset_scale\" between 0 and 255"
-        }
-      },
-      "isRLSEnabled": true
-    },
-    "public.ledger_transfers": {
-      "name": "ledger_transfers",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
+        "round_id": {
+          "name": "round_id",
           "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
+          "primaryKey": false,
+          "notNull": false
         },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
+        "member_id": {
+          "name": "member_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
         "kind": {
           "name": "kind",
           "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "from_account_id": {
-          "name": "from_account_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "to_account_id": {
-          "name": "to_account_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -2044,8 +1702,82 @@
           "primaryKey": false,
           "notNull": true
         },
+        "receive_value": {
+          "name": "receive_value",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receive_asset_code": {
+          "name": "receive_asset_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "receive_asset_scale": {
+          "name": "receive_asset_scale",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PENDING'"
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "incoming_payment_url": {
+          "name": "incoming_payment_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quote_url": {
+          "name": "quote_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outgoing_payment_url": {
+          "name": "outgoing_payment_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -2053,17 +1785,11 @@
         }
       },
       "indexes": {
-        "ledger_transfers_from_account_created_idx": {
-          "name": "ledger_transfers_from_account_created_idx",
+        "payouts_circle_id_idx": {
+          "name": "payouts_circle_id_idx",
           "columns": [
             {
-              "expression": "from_account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
+              "expression": "circle_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2074,17 +1800,11 @@
           "method": "btree",
           "with": {}
         },
-        "ledger_transfers_to_account_created_idx": {
-          "name": "ledger_transfers_to_account_created_idx",
+        "payouts_member_id_idx": {
+          "name": "payouts_member_id_idx",
           "columns": [
             {
-              "expression": "to_account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
+              "expression": "member_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2097,12 +1817,12 @@
         }
       },
       "foreignKeys": {
-        "ledger_transfers_from_account_id_ledger_accounts_id_fk": {
-          "name": "ledger_transfers_from_account_id_ledger_accounts_id_fk",
-          "tableFrom": "ledger_transfers",
-          "tableTo": "ledger_accounts",
+        "payouts_circle_id_circles_id_fk": {
+          "name": "payouts_circle_id_circles_id_fk",
+          "tableFrom": "payouts",
+          "tableTo": "circles",
           "columnsFrom": [
-            "from_account_id"
+            "circle_id"
           ],
           "columnsTo": [
             "id"
@@ -2110,12 +1830,25 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "ledger_transfers_to_account_id_ledger_accounts_id_fk": {
-          "name": "ledger_transfers_to_account_id_ledger_accounts_id_fk",
-          "tableFrom": "ledger_transfers",
-          "tableTo": "ledger_accounts",
+        "payouts_round_id_rounds_id_fk": {
+          "name": "payouts_round_id_rounds_id_fk",
+          "tableFrom": "payouts",
+          "tableTo": "rounds",
           "columnsFrom": [
-            "to_account_id"
+            "round_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "payouts_member_id_circle_members_id_fk": {
+          "name": "payouts_member_id_circle_members_id_fk",
+          "tableFrom": "payouts",
+          "tableTo": "circle_members",
+          "columnsFrom": [
+            "member_id"
           ],
           "columnsTo": [
             "id"
@@ -2126,8 +1859,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "ledger_transfers_idempotency_key_unique": {
-          "name": "ledger_transfers_idempotency_key_unique",
+        "payouts_idempotency_key_unique": {
+          "name": "payouts_idempotency_key_unique",
           "nullsNotDistinct": false,
           "columns": [
             "idempotency_key"
@@ -2136,21 +1869,33 @@
       },
       "policies": {},
       "checkConstraints": {
-        "ledger_transfers_kind": {
-          "name": "ledger_transfers_kind",
-          "value": "\"ledger_transfers\".\"kind\" in ('SEED', 'DEPOSIT', 'CONTRIBUTION')"
+        "payouts_kind": {
+          "name": "payouts_kind",
+          "value": "\"payouts\".\"kind\" in ('ROUND', 'FINAL', 'COMPENSATION')"
         },
-        "ledger_transfers_value_positive": {
-          "name": "ledger_transfers_value_positive",
-          "value": "\"ledger_transfers\".\"value\" > 0"
+        "payouts_round_only_final_null": {
+          "name": "payouts_round_only_final_null",
+          "value": "(\"payouts\".\"kind\" = 'FINAL') = (\"payouts\".\"round_id\" is null)"
         },
-        "ledger_transfers_distinct_accounts": {
-          "name": "ledger_transfers_distinct_accounts",
-          "value": "\"ledger_transfers\".\"from_account_id\" <> \"ledger_transfers\".\"to_account_id\""
+        "payouts_value_positive": {
+          "name": "payouts_value_positive",
+          "value": "\"payouts\".\"value\" > 0"
         },
-        "ledger_transfers_asset_scale_range": {
-          "name": "ledger_transfers_asset_scale_range",
-          "value": "\"ledger_transfers\".\"asset_scale\" between 0 and 255"
+        "payouts_asset_scale_range": {
+          "name": "payouts_asset_scale_range",
+          "value": "\"payouts\".\"asset_scale\" between 0 and 255"
+        },
+        "payouts_receive_amount": {
+          "name": "payouts_receive_amount",
+          "value": "(\"payouts\".\"receive_value\" is null) = (\"payouts\".\"receive_asset_code\" is null) and (\"payouts\".\"receive_value\" is null) = (\"payouts\".\"receive_asset_scale\" is null)"
+        },
+        "payouts_status": {
+          "name": "payouts_status",
+          "value": "\"payouts\".\"status\" in ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')"
+        },
+        "payouts_completed_at": {
+          "name": "payouts_completed_at",
+          "value": "(\"payouts\".\"status\" = 'COMPLETED') = (\"payouts\".\"completed_at\" is not null)"
         }
       },
       "isRLSEnabled": true
@@ -2318,7 +2063,7 @@
           "name": "beneficiary_member_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "state": {
           "name": "state",

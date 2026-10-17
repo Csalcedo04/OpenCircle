@@ -1,12 +1,15 @@
 /**
  * Checks OpenCircle's Open Payments client identity without printing secrets:
  * the wallet address resolves, it publishes OP_KEY_ID in its jwks.json, and
- * OP_PRIVATE_KEY is the private half of that published key.
+ * OP_PRIVATE_KEY is the private half of that published key. With DATABASE_URL set, also
+ * whether payouts are authorized: the pool wallet's owner linked it and approved the grant.
  *
  *   npm run op:check
  */
 import { createPublicKey } from "node:crypto";
 import { z } from "zod";
+import { createDb } from "../db/client";
+import { hasPoolGrant } from "../services/circles/pool-access";
 import { loadPrivateKey } from "../services/open-payments/client-key";
 
 const jwksSchema = z.object({ keys: z.array(z.object({ kid: z.string(), x: z.string().optional() })) });
@@ -57,7 +60,24 @@ async function main(): Promise<boolean> {
     return false;
   }
   console.log("✓ OP_PRIVATE_KEY matches the published key");
+
+  if (process.env.DATABASE_URL) await checkPoolGrant(process.env.DATABASE_URL, wallet);
   return true;
+}
+
+// Contributions work without it; payouts to members need it.
+async function checkPoolGrant(databaseUrl: string, wallet: string): Promise<void> {
+  const db = createDb(databaseUrl);
+  try {
+    if (await hasPoolGrant(db, wallet)) {
+      console.log("✓ Payouts authorized: the pool wallet's owner has an active grant on it");
+    } else {
+      console.log("! Payouts not authorized yet: sign in to OpenCircle with the account that owns this wallet,");
+      console.log("  link it as their wallet and approve the grant in the wallet");
+    }
+  } finally {
+    await db.$client.end();
+  }
 }
 
 main().then(

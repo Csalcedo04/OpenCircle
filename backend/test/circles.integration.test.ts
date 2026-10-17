@@ -331,10 +331,159 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(circle.seats[0]?.payoutRound, 1);
       assert.equal(circle.payoutOrder, "BEST_SCORE_FIRST");
       assert.equal(circle.seats[0]?.displayName, "[test-circles] G.");
+      // PER_ROUND by default: one round per member, each round's pot to its beneficiary.
+      assert.equal(circle.payoutMode, "PER_ROUND");
+      assert.equal(circle.roundsTotal, 3);
+      assert.deepEqual(circle.goal, { value: "18000000", assetCode: "COP", assetScale: 2 });
 
       const [row] = await db.select().from(circles).where(eq(circles.id, circle.id));
       assert.equal(row?.createdBy, id);
       assert.equal(row?.contributionValue, 2000000n);
+      assert.equal(row?.goalValue, null);
+    });
+
+    describe("END circles (pot held until the goal)", () => {
+      // 500.000,00 COP.
+      const endCircle = (overrides: Record<string, unknown>) =>
+        validCircle({ payoutMode: "END", goalValue: "50000000", size: 5, contributionValue: undefined, ...overrides });
+
+      test("goal + rounds → the contribution is derived (500k, 5 members, 5 rounds → 20k)", async () => {
+        const { token } = await member();
+        const circle = await createCircle(token, endCircle({ roundsTotal: 5 }));
+        assert.equal(circle.payoutMode, "END");
+        assert.equal(circle.roundsTotal, 5);
+        assert.deepEqual(circle.goal, { value: "50000000", assetCode: "COP", assetScale: 2 });
+        assert.deepEqual(circle.contribution, { value: "2000000", assetCode: "COP", assetScale: 2 });
+        assert.deepEqual(circle.threshold, circle.contribution);
+
+        const [row] = await db.select().from(circles).where(eq(circles.id, circle.id));
+        assert.equal(row?.goalValue, 50000000n);
+        assert.equal(row?.contributionValue, 2000000n);
+      });
+
+      test("goal + contribution → the rounds are derived (500k, 5 members, 50k → 2 rounds)", async () => {
+        const { token } = await member();
+        const circle = await createCircle(token, endCircle({ contributionValue: "5000000" }));
+        assert.equal(circle.roundsTotal, 2);
+        assert.deepEqual(circle.contribution, { value: "5000000", assetCode: "COP", assetScale: 2 });
+      });
+
+      test("terms that don't work → 422 with what would, nothing stored", async () => {
+        const { id, token } = await member();
+        const cases: [Record<string, unknown>, string, Record<string, unknown>][] = [
+          [{ goalValue: "50000001", roundsTotal: 5 }, "GOAL_NOT_DIVISIBLE", { validGoals: ["50000000", "50000025"] }],
+          [{ contributionValue: "30000000" }, "CONTRIBUTION_TOO_HIGH", { maxContribution: "10000000" }],
+          [{ goalValue: "610", size: 2, contributionValue: "5" }, "TOO_MANY_ROUNDS", { maxRounds: 60 }],
+        ];
+        for (const [overrides, code, details] of cases) {
+          const res = await server.request("/api/circles", { method: "POST", token, body: endCircle(overrides) });
+          assert.equal(res.status, 422, JSON.stringify(overrides));
+          assert.equal(errorCode(res.body), code);
+          assert.deepEqual((res.body as { error: { details?: unknown } }).error.details, details);
+        }
+        assert.equal((await db.select().from(circles).where(eq(circles.createdBy, id))).length, 0);
+      });
+
+      test("mixed-up terms → 400 VALIDATION_ERROR", async () => {
+        const { token } = await member();
+        for (const body of [
+          endCircle({}),
+          endCircle({ goalValue: undefined, roundsTotal: 5 }),
+          endCircle({ roundsTotal: 5, contributionValue: "2000000" }),
+          validCircle({ goalValue: "50000000" }),
+          validCircle({ roundsTotal: 3 }),
+          validCircle({ contributionValue: undefined }),
+        ]) {
+          const res = await server.request("/api/circles", { method: "POST", token, body });
+          assert.equal(res.status, 400, JSON.stringify(body));
+          assert.equal(errorCode(res.body), "VALIDATION_ERROR");
+        }
+      });
+
+      test("filling it schedules every round with no beneficiary; only round 1 collects", async () => {
+        const creator = await member();
+        const other = await member({ name: "Bruno Ríos" });
+        // 2 members × 20k × 4 rounds = 160k.
+        const circle = await createCircle(creator.token, endCircle({ size: 2, goalValue: "16000000", roundsTotal: 4 }));
+        const res = await join(circle.id, other.token, {});
+        assert.equal(res.status, 200, res.text);
+
+        const started = res.body as CircleDto;
+        assert.equal(started.status, "ACTIVE");
+        assert.equal(started.currentRound, 1);
+        assert.deepEqual(
+          started.rounds.map((r) => [r.number, r.state, r.beneficiaryMemberId]),
+          [
+            [1, "COLLECTING", null],
+            [2, "UPCOMING", null],
+            [3, "UPCOMING", null],
+            [4, "UPCOMING", null],
+          ],
+        );
+        assert.equal(started.rounds[0]?.contributions.length, 2);
+        assert.ok(started.rounds.slice(1).every((r) => r.contributions.length === 0));
+      });
+
+      test("POST /api/circles/plan previews the terms in the pot's asset and stores nothing", async () => {
+        const { id, token } = await member({ kyc: false });
+        const ok = await server.request("/api/circles/plan", { method: "POST", token, body: { payoutMode: "END", goalValue: "50000000", roundsTotal: 5, size: 5 } });
+        assert.equal(ok.status, 200, ok.text);
+        const money = (value: string) => ({ value, assetCode: "COP", assetScale: 2 });
+        assert.deepEqual(ok.body, {
+          payoutMode: "END",
+          contribution: money("2000000"),
+          goal: money("50000000"),
+          roundsTotal: 5,
+          feeBps: 200,
+          payoutPerMember: money("9800000"),
+        });
+
+        const perRound = await server.request("/api/circles/plan", { method: "POST", token, body: { contributionValue: "2000000", size: 3 } });
+        assert.deepEqual((perRound.body as { goal: unknown; payoutPerMember: unknown }).goal, money("18000000"));
+        assert.deepEqual((perRound.body as { payoutPerMember: unknown }).payoutPerMember, money("5880000"));
+
+        const bad = await server.request("/api/circles/plan", { method: "POST", token, body: { payoutMode: "END", goalValue: "50000001", roundsTotal: 5, size: 5 } });
+        assert.equal(bad.status, 422);
+        assert.equal(errorCode(bad.body), "GOAL_NOT_DIVISIBLE");
+        assert.equal((await db.select().from(circles).where(eq(circles.createdBy, id))).length, 0);
+      });
+
+      test("each seat shows its payout: the same before the start; dated and personal once started", async () => {
+        const creator = await member();
+        const other = await member({ name: "Bruno Ríos" });
+        // 2 members × 20k × 3 rounds = 120k: each puts in (and gets back) 60k, less 2%.
+        const circle = await createCircle(creator.token, endCircle({ size: 2, goalValue: "12000000", roundsTotal: 3 }));
+        const money = (value: string) => ({ value, assetCode: "COP", assetScale: 2 });
+        assert.deepEqual(circle.poolCollected, money("0"));
+        assert.deepEqual(circle.payoutPerMember, money("5880000"));
+        assert.deepEqual(circle.seats[0]?.payout, { expected: money("5880000"), saved: money("0"), payoutAt: null, status: "SCHEDULED", received: null });
+
+        const started = (await join(circle.id, other.token, {})).body as CircleDto;
+        const lastDeadline = started.rounds.at(-1)?.deadline;
+        assert.ok(lastDeadline);
+        for (const seat of started.seats) {
+          assert.deepEqual(seat.payout, { expected: money("5880000"), saved: money("0"), payoutAt: lastDeadline, status: "SCHEDULED", received: null });
+        }
+
+        // A PER_ROUND circle pays each seat on its own round's deadline.
+        const perRound = await createCircle(creator.token, { size: 2 });
+        const running = (await join(perRound.id, other.token, {})).body as CircleDto;
+        for (const seat of running.seats) {
+          const own = running.rounds.find((r) => r.beneficiaryMemberId === seat.memberId);
+          assert.equal(seat.payout.payoutAt, own?.deadline);
+          assert.deepEqual(seat.payout.expected, money("3920000"));
+        }
+      });
+
+      test("the database keeps the goal exact and only on END circles", async () => {
+        const { token } = await member();
+        const circle = await createCircle(token, endCircle({ roundsTotal: 5 }));
+        // 5 members × 20k: the goal must stay a multiple of 100k.
+        await assert.rejects(db.update(circles).set({ goalValue: 50000001n }).where(eq(circles.id, circle.id)));
+        await assert.rejects(db.update(circles).set({ goalValue: null }).where(eq(circles.id, circle.id)));
+        const perRound = await createCircle(token);
+        await assert.rejects(db.update(circles).set({ goalValue: 18000000n }).where(eq(circles.id, perRound.id)));
+      });
     });
 
     test("shows members as 'Ana G.': never their full name, email or document", async () => {
@@ -794,6 +943,68 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const res = await server.request(`/api/circles/${circle.id}/visibility`, { method: "PATCH", token: owner.token, body: { visibility: "PRIVATE" } });
       assert.equal(res.status, 409);
       assert.equal(errorCode(res.body), "CIRCLE_NOT_OPEN");
+    });
+  });
+
+  describe("open debts block new circles (DEBT_OUTSTANDING)", () => {
+    // A defaulted contribution of `debtor` in a circle of theirs: FAILED with its default recorded.
+    async function owe(debtor: Member): Promise<string> {
+      const own = await createCircle(debtor.token, { visibility: "PRIVATE" });
+      const [circle] = await db.select({ poolWalletId: circles.poolWalletId }).from(circles).where(eq(circles.id, own.id));
+      const [round] = await db
+        .insert(rounds)
+        .values({ circleId: own.id, number: 1, beneficiaryMemberId: own.seats[0]?.memberId ?? null, state: "PAID_OUT", startsAt: new Date(0), deadline: new Date(1) })
+        .returning({ id: rounds.id });
+      const [debt] = await db
+        .insert(contributions)
+        .values({
+          roundId: round?.id ?? "",
+          memberId: own.seats[0]?.memberId ?? "",
+          value: 2000000n,
+          assetCode: "COP",
+          assetScale: 2,
+          status: "FAILED",
+          failureCode: "DEADLINE_MISSED",
+          idempotencyKey: `contribution:debt:${randomUUID()}`,
+        })
+        .returning({ id: contributions.id });
+      await db.insert(auditEvents).values({ walletId: circle?.poolWalletId ?? "", eventType: "score.defaulted", externalId: `score.defaulted:${debt?.id}` });
+      return debt?.id ?? "";
+    }
+
+    const expectDebt = (res: { status: number; body: unknown }) => {
+      assert.equal(res.status, 409, JSON.stringify(res.body));
+      assert.equal(errorCode(res.body), "DEBT_OUTSTANDING");
+      assert.deepEqual((res.body as { error: { details?: unknown } }).error.details, { debts: 1 });
+    };
+
+    test("a debtor can't create, apply or join by link; a FAILED payment without a default doesn't block; paying lifts it", async () => {
+      const host = await member();
+      const debtor = await member({ name: "Mora Pérez" });
+      const debtId = await owe(debtor);
+      const open = await createCircle(host.token);
+
+      expectDebt(await server.request("/api/circles", { method: "POST", token: debtor.token, body: validCircle() }));
+      expectDebt(await applyTo(open.id, debtor.token));
+      expectDebt(await join(open.id, debtor.token));
+      assert.equal((await getCircle(open.id)).seatsTaken, 1);
+
+      // A FAILED contribution without a recorded default (yet) is not a debt that blocks.
+      const other = await member({ name: "Nora Ruiz" });
+      await db.insert(contributions).values({
+        roundId: (await db.select({ roundId: contributions.roundId }).from(contributions).where(eq(contributions.id, debtId)))[0]?.roundId ?? "",
+        memberId: (await createCircle(other.token, { visibility: "PRIVATE" })).seats[0]?.memberId ?? "",
+        value: 2000000n,
+        assetCode: "COP",
+        assetScale: 2,
+        status: "FAILED",
+        idempotencyKey: `contribution:debt:${randomUUID()}`,
+      });
+      assert.equal((await join(open.id, other.token)).status, 200);
+
+      // Paid (completed later): no longer owed.
+      await db.update(contributions).set({ status: "COMPLETED", completedAt: new Date() }).where(eq(contributions.id, debtId));
+      assert.equal((await server.request("/api/circles", { method: "POST", token: debtor.token, body: validCircle() })).status, 201);
     });
   });
 
@@ -1578,30 +1789,52 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const [owner, bob, stranger] = await Promise.all([member(), member(), member()]);
       const circle = await createCircle(owner.token, { size: 4 });
       assert.ok(circle.inviteUrl, "no standing code");
-      assert.deepEqual(circle.access, { canInvite: true, isCreator: true, isMember: true, canVote: true });
+      assert.deepEqual(circle.access, { canInvite: true, isCreator: true, isMember: true, canVote: true, canJoin: false });
 
       assert.equal((await join(circle.id, bob.token, {})).status, 200);
       const asMember = await getCircle(circle.id, bob.token);
       assert.equal(asMember.inviteUrl, null);
-      assert.deepEqual(asMember.access, { canInvite: false, isCreator: false, isMember: true, canVote: false });
-      assert.deepEqual((await getCircle(circle.id, stranger.token)).access, { canInvite: false, isCreator: false, isMember: false, canVote: false });
+      assert.deepEqual(asMember.access, { canInvite: false, isCreator: false, isMember: true, canVote: false, canJoin: false });
+      assert.deepEqual((await getCircle(circle.id, stranger.token)).access, { canInvite: false, isCreator: false, isMember: false, canVote: false, canJoin: false });
 
       await makeApprover(circle.id, owner, bob);
       const asApprover = await getCircle(circle.id, bob.token);
       assert.equal(asApprover.inviteUrl, circle.inviteUrl);
-      assert.deepEqual(asApprover.access, { canInvite: true, isCreator: false, isMember: true, canVote: true });
+      assert.deepEqual(asApprover.access, { canInvite: true, isCreator: false, isMember: true, canVote: true, canJoin: false });
     });
 
     test("under MAJORITY every member may vote; under DELEGATES only the creator and approvers", async () => {
       const [owner, bob] = await Promise.all([member(), member()]);
       const majority = await createCircle(owner.token, { size: 4, approvalMode: "MAJORITY" });
       assert.equal((await join(majority.id, bob.token)).status, 200);
-      assert.deepEqual((await getCircle(majority.id, bob.token)).access, { canInvite: false, isCreator: false, isMember: true, canVote: true });
+      assert.deepEqual((await getCircle(majority.id, bob.token)).access, { canInvite: false, isCreator: false, isMember: true, canVote: true, canJoin: false });
       const delegates = await createCircle(owner.token, { size: 4 });
       assert.equal((await join(delegates.id, bob.token)).status, 200);
       assert.equal((await getCircle(delegates.id, bob.token)).access.canVote, false);
       assert.equal((await getCircle(delegates.id, owner.token)).access.canVote, true);
       assert.equal((await getCircle(delegates.id)).access.canVote, false, "anonymous");
+    });
+
+    test("canJoin says whether the viewer's link would seat them: a usable code yes, a spent or foreign one no", async () => {
+      const [owner, bob, carol] = await Promise.all([member(), member(), member()]);
+      const circle = await createCircle(owner.token, { size: 4 });
+      const code = inviteOf(circle);
+      const [limited] = (await makeInvite(circle.id, owner.token, { kind: "CODE", maxUses: 1 })).body as CodeInviteDto[];
+      assert.ok(limited);
+      const withCode = (token: string, who: Member) => server.request(`/api/circles/${circle.id}?invite=${encodeURIComponent(token)}`, { token: who.token });
+
+      assert.equal(((await withCode(code, bob)).body as CircleDto).access.canJoin, true);
+      assert.equal((await getCircle(circle.id, bob.token)).access.canJoin, false, "public without a link: apply instead");
+      assert.equal((await join(circle.id, bob.token, { invite: tokenOf(limited) })).status, 200);
+      assert.equal(((await withCode(tokenOf(limited), carol)).body as CircleDto).access.canJoin, false, "spent code");
+      assert.equal(((await withCode(code, bob)).body as CircleDto).access.canJoin, false, "already a member");
+
+      const [direct] = (await makeInvite(circle.id, owner.token, { kind: "DIRECT", targets: [{ email: `${carol.id}@example.test` }] })).body as DirectInviteDto[];
+      assert.ok(direct);
+      const [row] = await db.select({ token: circleInvites.token }).from(circleInvites).where(eq(circleInvites.id, direct.id));
+      const dave = await member();
+      assert.equal(((await withCode(row?.token ?? "", carol)).body as CircleDto).access.canJoin, true, "addressee");
+      assert.equal(((await withCode(row?.token ?? "", dave)).body as CircleDto).access.canJoin, false, "someone else's invite");
     });
 
     test("an approver makes a limited code; it counts uses and shows EXPIRED once spent", async () => {

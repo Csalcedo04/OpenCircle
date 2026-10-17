@@ -9,12 +9,14 @@ import {
   CIRCLE_VISIBILITIES,
   FUNDING_SOURCES,
   GRANT_MODES,
+  PAYOUT_MODES,
   PAYOUT_ORDERS,
   VOTE_DECISIONS,
 } from "../db/schema";
 import { requireKyc } from "../middleware/require-kyc";
 import { optionalUser, requireUser } from "../middleware/require-user";
-import type { CircleService } from "../services/circle.service";
+import type { CircleFunding, CircleService, CreateCircleInput, PlanCircleInput } from "../services/circle.service";
+import { MAX_ROUNDS, type PayoutMode } from "../services/circles/circle-plan";
 import type { ApplicationService } from "../services/circles/application.service";
 import type { InviteService } from "../services/circles/invite.service";
 import type { KycService } from "../services/kyc.service";
@@ -29,24 +31,65 @@ const seatFields = {
   fundingSource: z.enum(FUNDING_SOURCES).optional(),
 };
 
-// Strict objects: unknown keys (status, feeBps, poolWallet...) are rejected, never silently stored.
-export const createCircleSchema = z.strictObject({
-  name: z.string().trim().min(1).max(80),
-  city: z.string().trim().min(1).max(80).optional(),
-  contributionValue: minorUnits("positive"),
+// How the pot pays out, and its amounts.
+const fundingFields = {
+  // PER_ROUND: each round's pot to its beneficiary. END: the pot is held until the goal.
+  payoutMode: z.enum(PAYOUT_MODES).default("PER_ROUND"),
+  // PER_ROUND: required. END: give it or `roundsTotal`, and the other is derived from the goal.
+  contributionValue: minorUnits("positive").optional(),
+  // END only.
+  goalValue: minorUnits("positive").optional(),
+  roundsTotal: z.int().min(1).max(MAX_ROUNDS).optional(),
   size: z.int().min(2).max(50),
-  // One period per member; each period is one or two calendar weeks, or a calendar month.
-  cadence: z.enum(CIRCLE_CADENCES),
-  // Dev only: rejected with 404 unless test clocks are enabled and the user owns the clock.
-  testClockId: z.uuid().optional(),
-  // Private (invite only) by default.
-  visibility: z.enum(CIRCLE_VISIBILITIES).default("PRIVATE"),
-  // Who accepts applicants to a public circle.
-  approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
-  // Who receives the pot first, by reliability score; members agree to it by joining.
-  payoutOrder: z.enum(PAYOUT_ORDERS).default("BEST_SCORE_FIRST"),
-  ...seatFields,
-});
+};
+
+type FundingBody = { payoutMode: PayoutMode; contributionValue?: bigint | undefined; goalValue?: bigint | undefined; roundsTotal?: number | undefined };
+
+// The one valid combination of funding fields for the mode, or issues on the field at fault.
+function funding({ payoutMode, contributionValue, goalValue, roundsTotal }: FundingBody, ctx: z.RefinementCtx): CircleFunding {
+  const fail = (path: string, message: string) => {
+    ctx.addIssue({ code: "custom", path: [path], message });
+    return z.NEVER;
+  };
+  if (payoutMode === "PER_ROUND") {
+    if (goalValue !== undefined) return fail("goalValue", "Only for END circles");
+    if (roundsTotal !== undefined) return fail("roundsTotal", "Only for END circles");
+    if (contributionValue === undefined) return fail("contributionValue", "Required");
+    return { payoutMode, contributionValue };
+  }
+  if (goalValue === undefined) return fail("goalValue", "Required for END circles");
+  if (contributionValue !== undefined && roundsTotal === undefined) return { payoutMode, goalValue, contributionValue };
+  if (roundsTotal !== undefined && contributionValue === undefined) return { payoutMode, goalValue, roundsTotal };
+  return fail("contributionValue", "Give either contributionValue or roundsTotal");
+}
+
+// Strict objects: unknown keys (status, feeBps, poolWallet...) are rejected, never silently stored.
+export const createCircleSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(80),
+    city: z.string().trim().min(1).max(80).optional(),
+    ...fundingFields,
+    // One period per member; each period is one or two calendar weeks, or a calendar month.
+    cadence: z.enum(CIRCLE_CADENCES),
+    // Dev only: rejected with 404 unless test clocks are enabled and the user owns the clock.
+    testClockId: z.uuid().optional(),
+    // Private (invite only) by default.
+    visibility: z.enum(CIRCLE_VISIBILITIES).default("PRIVATE"),
+    // Who accepts applicants to a public circle.
+    approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
+    // Who receives the pot first, by reliability score; members agree to it by joining. PER_ROUND only.
+    payoutOrder: z.enum(PAYOUT_ORDERS).default("BEST_SCORE_FIRST"),
+    ...seatFields,
+  })
+  .transform(({ payoutMode, contributionValue, goalValue, roundsTotal, ...settings }, ctx): CreateCircleInput => ({
+    ...settings,
+    ...funding({ payoutMode, contributionValue, goalValue, roundsTotal }, ctx),
+  }));
+
+// The same terms as creating, to preview the plan before creating.
+export const planCircleSchema = z
+  .strictObject(fundingFields)
+  .transform(({ size, ...terms }, ctx): PlanCircleInput => ({ size, ...funding(terms, ctx) }));
 
 // The invite token from a link (base64url); bounded so it can't be used to send huge input.
 const inviteCode = z.string().min(1).max(128);
@@ -126,6 +169,10 @@ export function circleRoutes({ circles, applications, invites, kyc }: CircleRout
     res.status(201).json(await circles.create(currentUserId(res), body));
   };
 
+  const plan: RequestHandler = async (req, res) => {
+    res.json(await circles.plan(planCircleSchema.parse(req.body)));
+  };
+
   const join: RequestHandler = async (req, res) => {
     const id = circleId(req.params.id);
     const { invite, ...seat }: JoinCircleBody = joinCircleSchema.parse(req.body);
@@ -190,6 +237,8 @@ export function circleRoutes({ circles, applications, invites, kyc }: CircleRout
     .get("/", list)
     .get("/:id", optionalUser, getOne)
     .post("/", ...verified, create)
+    // Signed in, no KYC: a preview that stores nothing.
+    .post("/plan", requireUser, plan)
     .post("/:id/join", ...verified, join)
     .patch("/:id/visibility", requireUser, setVisibility)
     .post("/:id/invite-code", requireUser, rotateInvite)

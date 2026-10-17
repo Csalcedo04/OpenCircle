@@ -63,6 +63,7 @@ const ENGINE_STATES: RoundStatus[] = ["FUNDED", "RISK_CHECK", "BLOCKED", "PAYING
 const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
   VERIFIED: CircleCheck,
   PENDING: CircleDashed,
+  PROCESSING: CircleDashed,
   MISSING: Lock,
   REFUNDED: Undo2,
 }
@@ -109,8 +110,9 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const ownContribution = round && viewerId ? round.contributions.find((c) => c.memberId === viewerId) : undefined
   const reminder = round ? roundReminderStatus(round, ownContribution) : null
   const pendingApplications = applications?.filter((a) => a.status === "PENDING").length ?? 0
-  // Without an invite link, a public circle takes applications instead of direct joins.
-  const seatCta = access.isMember ? null : access.visibility === "PUBLIC" && !invite ? t.circle.applyCta : t.circle.joinCta
+  // A usable invite made for the viewer seats them; otherwise a public circle takes an application.
+  const seatCta = access.isMember ? null : access.canJoin ? t.circle.joinCta : access.visibility === "PUBLIC" ? t.circle.applyCta : null
+  const seatHref = `/${locale}/circles/${circle.id}/join${access.canJoin && invite ? `?invite=${encodeURIComponent(invite)}` : ""}`
   // Managers share the standing invite link (it carries the code); a public circle is shared by its page.
   const shareUrl = access.inviteUrl
     ? localizedInviteUrl(access.inviteUrl, locale)
@@ -189,7 +191,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             {circle.status === "OPEN" ? (
               seatCta && (
                 <Link
-                  href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
+                  href={seatHref}
                   className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
                 >
                   {seatCta}
@@ -668,7 +670,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
               </p>
             </div>
             <Link
-              href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
+              href={seatHref}
               className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-brand-violet px-5 text-xs font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-transform active:scale-95"
             >
               {seatCta}

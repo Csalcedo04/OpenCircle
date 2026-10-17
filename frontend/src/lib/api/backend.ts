@@ -291,10 +291,12 @@ export const circleSchema = circleSummarySchema.extend({
       isCreator: z.boolean().nullable().optional().transform((v) => v ?? false),
       isMember: z.boolean().nullable().optional().transform((v) => v ?? false),
       canVote: z.boolean().nullable().optional().transform((v) => v ?? false),
+      /** An OPEN circle, a non-member, and a usable invite made for the viewer. */
+      canJoin: z.boolean().nullable().optional().transform((v) => v ?? false),
     })
     .nullable()
     .optional()
-    .transform((v) => v ?? { canInvite: false, isCreator: false, isMember: false, canVote: false }),
+    .transform((v) => v ?? { canInvite: false, isCreator: false, isMember: false, canVote: false, canJoin: false }),
 })
 
 // Applications to a public circle, decided by its approvers or a majority of members.

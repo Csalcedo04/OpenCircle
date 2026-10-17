@@ -308,6 +308,36 @@ test("GET /api/circles/:id is optional-auth: anonymous, signed in, or 401 for a 
   }
 });
 
+test("POST /api/circles/plan: signed in, validated, returns the service's plan and passes it the parsed terms", async () => {
+  const seen: unknown[] = [];
+  const money = (value: string) => ({ value, assetCode: "COP", assetScale: 2 });
+  const plan = { payoutMode: "END" as const, contribution: money("2000000"), goal: money("50000000"), roundsTotal: 5, feeBps: 200, payoutPerMember: money("9800000") };
+  const circles: Services["circles"] = {
+    ...fakeServices().circles,
+    plan: async (input) => (seen.push(input), plan),
+  };
+  const planServer = await startServer(fakeServices({ circles }));
+  try {
+    const body = { payoutMode: "END", goalValue: "50000000", roundsTotal: 5, size: 5 };
+    assert.equal((await planServer.request("/api/circles/plan", { method: "POST", body })).status, 401);
+
+    const token = await auth.token("11111111-1111-4111-8111-111111111111");
+    const ok = await planServer.request("/api/circles/plan", { method: "POST", token, body });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(ok.body, plan);
+    assert.deepEqual(seen, [{ size: 5, payoutMode: "END", goalValue: 50_000_000n, roundsTotal: 5 }]);
+
+    for (const bad of [{ ...body, roundsTotal: undefined }, { ...body, name: "x" }, { contributionValue: "1.5", size: 5 }]) {
+      const res = await planServer.request("/api/circles/plan", { method: "POST", token, body: bad });
+      assert.equal(res.status, 400, JSON.stringify(bad));
+      assert.equal(errorCode(res.body), "VALIDATION_ERROR");
+    }
+    assert.equal(seen.length, 1);
+  } finally {
+    await planServer.close();
+  }
+});
+
 test("invite and friend routes require a token → 401", async () => {
   const circle = "11111111-1111-4111-8111-111111111111";
   const id = "22222222-2222-4222-8222-222222222222";
@@ -362,5 +392,52 @@ test("invite and friend routes validate ids and bodies before reaching the servi
     const res = await server.request(path, { method, token, body });
     assert.equal(res.status, status, `${method} ${path} ${JSON.stringify(body)}`);
     assert.equal(errorCode(res.body), code);
+  }
+});
+
+test("GET /api/users/me/debts and POST .../:contributionId/pay: signed in; 404 for a bad id; 200 paid, 202 on its way", async () => {
+  const userId = "11111111-1111-4111-8111-111111111111";
+  const owed = "22222222-2222-4222-8222-222222222222";
+  const slow = "33333333-3333-4333-8333-333333333333";
+  const calls: string[] = [];
+  const paying = {
+    contributionId: slow,
+    circleId: owed,
+    circleName: "Natillera",
+    roundNumber: 2,
+    amount: { value: "2000000", assetCode: "COP", assetScale: 2 },
+    deadline: "2026-06-01T00:00:00.000Z",
+    status: "PAYING" as const,
+  };
+  const debtServer = await startServer(
+    fakeServices({
+      debts: {
+        list: async (id) => (calls.push(`list ${id}`), [paying]),
+        pay: async (id, contributionId) => (calls.push(`pay ${id} ${contributionId}`), contributionId === slow ? paying : null),
+      },
+    }),
+  );
+  try {
+    assert.equal((await debtServer.request("/api/users/me/debts")).status, 401);
+    assert.equal((await debtServer.request(`/api/users/me/debts/${owed}/pay`, { method: "POST" })).status, 401);
+
+    const token = await auth.token(userId);
+    const list = await debtServer.request("/api/users/me/debts", { token });
+    assert.equal(list.status, 200);
+    assert.deepEqual(list.body, [paying]);
+
+    const paid = await debtServer.request(`/api/users/me/debts/${owed}/pay`, { method: "POST", token });
+    assert.equal(paid.status, 200);
+    assert.deepEqual(paid.body, { status: "PAID" });
+    const onItsWay = await debtServer.request(`/api/users/me/debts/${slow}/pay`, { method: "POST", token });
+    assert.equal(onItsWay.status, 202);
+    assert.deepEqual(onItsWay.body, paying);
+
+    const bad = await debtServer.request("/api/users/me/debts/not-a-uuid/pay", { method: "POST", token });
+    assert.equal(bad.status, 404);
+    assert.equal(errorCode(bad.body), "DEBT_NOT_FOUND");
+    assert.deepEqual(calls, [`list ${userId}`, `pay ${userId} ${owed}`, `pay ${userId} ${slow}`]);
+  } finally {
+    await debtServer.close();
   }
 });

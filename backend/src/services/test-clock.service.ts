@@ -34,7 +34,8 @@ export interface TestClockCircleDto {
     state: string;
     startsAt: string;
     deadline: string;
-    beneficiary: { memberId: string; displayName: string };
+    // Null in END circles: the pot is held until the last period.
+    beneficiary: { memberId: string; displayName: string } | null;
     contributions: TestClockMemberDto[];
   } | null;
   // The next period start or deadline after the frozen time; null when nothing is left.
@@ -104,7 +105,7 @@ export function createTestClockService({ db, engine }: { db: Db; engine: Pick<Pe
         state: current.state,
         startsAt: current.startsAt.toISOString(),
         deadline: current.deadline.toISOString(),
-        beneficiary: { memberId: current.beneficiaryMemberId, displayName: name(current.beneficiaryMemberId) },
+        beneficiary: current.beneficiaryMemberId === null ? null : { memberId: current.beneficiaryMemberId, displayName: name(current.beneficiaryMemberId) },
         contributions: rows.map((c) => ({ memberId: c.memberId, displayName: name(c.memberId), status: c.status, failureCode: c.failureCode })),
       },
       nextBoundary: next?.toISOString() ?? null,
