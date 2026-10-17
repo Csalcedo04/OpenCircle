@@ -272,10 +272,108 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(circle.seats.length, 1);
       assert.equal(circle.seats[0]?.payoutRound, 2);
       assert.equal(circle.seats[0]?.displayName, "[test-circles] G.");
+      // PER_ROUND by default: one round per member, each round's pot to its beneficiary.
+      assert.equal(circle.payoutMode, "PER_ROUND");
+      assert.equal(circle.roundsTotal, 3);
+      assert.deepEqual(circle.goal, { value: "18000000", assetCode: "COP", assetScale: 2 });
 
       const [row] = await db.select().from(circles).where(eq(circles.id, circle.id));
       assert.equal(row?.createdBy, id);
       assert.equal(row?.contributionValue, 2000000n);
+      assert.equal(row?.goalValue, null);
+    });
+
+    describe("END circles (pot held until the goal)", () => {
+      // 500.000,00 COP.
+      const endCircle = (overrides: Record<string, unknown>) =>
+        validCircle({ payoutMode: "END", goalValue: "50000000", size: 5, contributionValue: undefined, ...overrides });
+
+      test("goal + rounds → the contribution is derived (500k, 5 members, 5 rounds → 20k)", async () => {
+        const { token } = await member();
+        const circle = await createCircle(token, endCircle({ roundsTotal: 5 }));
+        assert.equal(circle.payoutMode, "END");
+        assert.equal(circle.roundsTotal, 5);
+        assert.deepEqual(circle.goal, { value: "50000000", assetCode: "COP", assetScale: 2 });
+        assert.deepEqual(circle.contribution, { value: "2000000", assetCode: "COP", assetScale: 2 });
+        assert.deepEqual(circle.threshold, circle.contribution);
+
+        const [row] = await db.select().from(circles).where(eq(circles.id, circle.id));
+        assert.equal(row?.goalValue, 50000000n);
+        assert.equal(row?.contributionValue, 2000000n);
+      });
+
+      test("goal + contribution → the rounds are derived (500k, 5 members, 50k → 2 rounds)", async () => {
+        const { token } = await member();
+        const circle = await createCircle(token, endCircle({ contributionValue: "5000000" }));
+        assert.equal(circle.roundsTotal, 2);
+        assert.deepEqual(circle.contribution, { value: "5000000", assetCode: "COP", assetScale: 2 });
+      });
+
+      test("terms that don't work → 422 with what would, nothing stored", async () => {
+        const { id, token } = await member();
+        const cases: [Record<string, unknown>, string, Record<string, unknown>][] = [
+          [{ goalValue: "50000001", roundsTotal: 5 }, "GOAL_NOT_DIVISIBLE", { validGoals: ["50000000", "50000025"] }],
+          [{ contributionValue: "30000000" }, "CONTRIBUTION_TOO_HIGH", { maxContribution: "10000000" }],
+          [{ goalValue: "610", size: 2, contributionValue: "5" }, "TOO_MANY_ROUNDS", { maxRounds: 60 }],
+        ];
+        for (const [overrides, code, details] of cases) {
+          const res = await server.request("/api/circles", { method: "POST", token, body: endCircle(overrides) });
+          assert.equal(res.status, 422, JSON.stringify(overrides));
+          assert.equal(errorCode(res.body), code);
+          assert.deepEqual((res.body as { error: { details?: unknown } }).error.details, details);
+        }
+        assert.equal((await db.select().from(circles).where(eq(circles.createdBy, id))).length, 0);
+      });
+
+      test("mixed-up terms → 400 VALIDATION_ERROR", async () => {
+        const { token } = await member();
+        for (const body of [
+          endCircle({}),
+          endCircle({ goalValue: undefined, roundsTotal: 5 }),
+          endCircle({ roundsTotal: 5, contributionValue: "2000000" }),
+          validCircle({ goalValue: "50000000" }),
+          validCircle({ roundsTotal: 3 }),
+          validCircle({ contributionValue: undefined }),
+        ]) {
+          const res = await server.request("/api/circles", { method: "POST", token, body });
+          assert.equal(res.status, 400, JSON.stringify(body));
+          assert.equal(errorCode(res.body), "VALIDATION_ERROR");
+        }
+      });
+
+      test("filling it schedules every round with no beneficiary; only round 1 collects", async () => {
+        const creator = await member();
+        const other = await member({ name: "Bruno Ríos" });
+        // 2 members × 20k × 4 rounds = 160k.
+        const circle = await createCircle(creator.token, endCircle({ size: 2, goalValue: "16000000", roundsTotal: 4 }));
+        const res = await join(circle.id, other.token, { payoutRound: 2 });
+        assert.equal(res.status, 200, res.text);
+
+        const started = res.body as CircleDto;
+        assert.equal(started.status, "ACTIVE");
+        assert.equal(started.currentRound, 1);
+        assert.deepEqual(
+          started.rounds.map((r) => [r.number, r.state, r.beneficiaryMemberId]),
+          [
+            [1, "COLLECTING", null],
+            [2, "UPCOMING", null],
+            [3, "UPCOMING", null],
+            [4, "UPCOMING", null],
+          ],
+        );
+        assert.equal(started.rounds[0]?.contributions.length, 2);
+        assert.ok(started.rounds.slice(1).every((r) => r.contributions.length === 0));
+      });
+
+      test("the database keeps the goal exact and only on END circles", async () => {
+        const { token } = await member();
+        const circle = await createCircle(token, endCircle({ roundsTotal: 5 }));
+        // 5 members × 20k: the goal must stay a multiple of 100k.
+        await assert.rejects(db.update(circles).set({ goalValue: 50000001n }).where(eq(circles.id, circle.id)));
+        await assert.rejects(db.update(circles).set({ goalValue: null }).where(eq(circles.id, circle.id)));
+        const perRound = await createCircle(token);
+        await assert.rejects(db.update(circles).set({ goalValue: 18000000n }).where(eq(circles.id, perRound.id)));
+      });
     });
 
     test("shows members as 'Ana G.': never their full name, email or document", async () => {

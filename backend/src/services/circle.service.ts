@@ -19,6 +19,7 @@ import {
   wallets,
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
+import { circleGoal, planGoal, roundsTotal, type PayoutMode } from "./circles/circle-plan";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
 import { sameSecret } from "./secret-compare";
@@ -53,10 +54,21 @@ export interface SeatInput {
   grantMode: GrantMode | null;
 }
 
-export interface CreateCircleInput extends SeatInput {
+/**
+ * How the pot pays out. PER_ROUND (default): each round's pot to its beneficiary; the creator
+ * sets the contribution. END: held until the goal; the creator sets the goal and either the
+ * contribution or the number of rounds, and the other is derived.
+ */
+export type CircleFunding =
+  | { payoutMode?: "PER_ROUND" | undefined; contributionValue: bigint }
+  | { payoutMode: "END"; goalValue: bigint; contributionValue: bigint }
+  | { payoutMode: "END"; goalValue: bigint; roundsTotal: number };
+
+export type CreateCircleInput = CircleFunding & CircleSettings;
+
+interface CircleSettings extends SeatInput {
   name: string;
   city: string;
-  contributionValue: bigint;
   size: number;
   cadence: Cadence;
   /** Dev only: run this circle on a test clock the user owns. */
@@ -101,7 +113,8 @@ export interface SeatDto {
 export interface RoundDto {
   number: number;
   state: RoundState;
-  beneficiaryMemberId: string;
+  // Null in END circles: the pot is held until the last round.
+  beneficiaryMemberId: string | null;
   startsAt: string;
   deadline: string;
   contributions: { memberId: string; status: string }[];
@@ -112,6 +125,10 @@ export interface CircleDto extends CircleSummaryDto {
   threshold: AmountDto;
   grantWeightBps: number;
   approvalMode: ApprovalMode;
+  payoutMode: PayoutMode;
+  // Everything the pot collects if everyone pays: the END goal, or every round's pot.
+  goal: AmountDto;
+  roundsTotal: number;
   poolWalletAddress: string;
   startedAt: string | null;
   // Dev only (TEST_CLOCKS_ENABLED): the test clock this circle runs on.
@@ -232,6 +249,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         thresholdValue: circles.thresholdValue,
         grantWeightBps: circles.grantWeightBps,
         approvalMode: circles.approvalMode,
+        payoutMode: circles.payoutMode,
+        goalValue: circles.goalValue,
         startedAt: circles.startedAt,
         testClockId: circles.testClockId,
         createdBy: circles.createdBy,
@@ -288,6 +307,9 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       threshold: amount(circle.thresholdValue, assetCode, assetScale),
       grantWeightBps: circle.grantWeightBps,
       approvalMode: circle.approvalMode,
+      payoutMode: circle.payoutMode,
+      goal: amount(circleGoal(circle), assetCode, assetScale),
+      roundsTotal: roundsTotal(circle),
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
@@ -385,17 +407,24 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
 
     await tx.update(circles).set({ status: "ACTIVE", startedAt: now }).where(eq(circles.id, circle.id));
 
+    // PER_ROUND: round n pays the seat with payout round n. END: no beneficiary, the pot is held.
+    const beneficiary = (n: number): string | null => {
+      if (circle.payoutMode === "END") return null;
+      const seat = seats.find((s) => s.payoutRound === n);
+      if (!seat) throw new Error(`No seat for payout round ${n}`);
+      return seat.id;
+    };
     const created = await tx
       .insert(rounds)
       .values(
-        seats.map((seat) => ({
+        Array.from({ length: roundsTotal(circle) }, (_, i) => i + 1).map((n) => ({
           circleId: circle.id,
-          number: seat.payoutRound,
-          beneficiaryMemberId: seat.id,
-          state: seat.payoutRound === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
-          startsAt: periodStart(now, circle.cadence, seat.payoutRound),
-          deadline: periodEnd(now, circle.cadence, seat.payoutRound),
-          openedAt: seat.payoutRound === 1 ? now : null,
+          number: n,
+          beneficiaryMemberId: beneficiary(n),
+          state: n === 1 ? ("COLLECTING" as const) : ("UPCOMING" as const),
+          startsAt: periodStart(now, circle.cadence, n),
+          deadline: periodEnd(now, circle.cadence, n),
+          openedAt: n === 1 ? now : null,
         })),
       )
       .returning({ id: rounds.id, number: rounds.number });
@@ -498,6 +527,10 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
       }
       if (input.testClockId !== undefined) await ownedTestClock(userId, input.testClockId);
+      const funding =
+        input.payoutMode === "END"
+          ? { payoutMode: "END" as const, goalValue: input.goalValue, contributionValue: planGoal(input).contributionValue }
+          : { payoutMode: "PER_ROUND" as const, goalValue: null, contributionValue: input.contributionValue };
       const remote = await resolvePoolWallet();
       const id = await db.transaction(async (tx) => {
         const pool = await poolWalletId(tx, remote);
@@ -506,12 +539,12 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           .values({
             name: input.name,
             city: input.city,
-            contributionValue: input.contributionValue,
+            ...funding,
             // The pot's asset: every contribution is in the currency the pot wallet holds.
             assetCode: pool.assetCode,
             assetScale: pool.assetScale,
             feeBps: DEFAULT_FEE_BPS,
-            thresholdValue: input.contributionValue,
+            thresholdValue: funding.contributionValue,
             grantWeightBps: DEFAULT_GRANT_WEIGHT_BPS,
             cadence: input.cadence,
             roundLengthDays: cadenceDays[input.cadence],

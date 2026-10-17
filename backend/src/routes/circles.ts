@@ -8,11 +8,13 @@ import {
   CIRCLE_STATUSES,
   CIRCLE_VISIBILITIES,
   GRANT_MODES,
+  PAYOUT_MODES,
   VOTE_DECISIONS,
 } from "../db/schema";
 import { requireKyc } from "../middleware/require-kyc";
 import { optionalUser, requireUser } from "../middleware/require-user";
-import type { CircleService } from "../services/circle.service";
+import type { CircleService, CreateCircleInput } from "../services/circle.service";
+import { MAX_ROUNDS } from "../services/circles/circle-plan";
 import type { ApplicationService } from "../services/circles/application.service";
 import type { KycService } from "../services/kyc.service";
 
@@ -34,7 +36,13 @@ export const createCircleSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(80),
     city: z.string().trim().min(1).max(80),
-    contributionValue: minorUnits("positive"),
+    // PER_ROUND: each round's pot to its beneficiary. END: the pot is held until the goal.
+    payoutMode: z.enum(PAYOUT_MODES).default("PER_ROUND"),
+    // PER_ROUND: required. END: give it or `roundsTotal`, and the other is derived from the goal.
+    contributionValue: minorUnits("positive").optional(),
+    // END only.
+    goalValue: minorUnits("positive").optional(),
+    roundsTotal: z.int().min(1).max(MAX_ROUNDS).optional(),
     size: z.int().min(2).max(50),
     // One period per member; each period is a calendar week or month.
     cadence: z.enum(CIRCLE_CADENCES),
@@ -46,7 +54,23 @@ export const createCircleSchema = z
     approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
     ...seatFields,
   })
-  .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" });
+  .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" })
+  .transform(({ payoutMode, contributionValue, goalValue, roundsTotal, ...settings }, ctx): CreateCircleInput => {
+    const fail = (path: string, message: string) => {
+      ctx.addIssue({ code: "custom", path: [path], message });
+      return z.NEVER;
+    };
+    if (payoutMode === "PER_ROUND") {
+      if (goalValue !== undefined) return fail("goalValue", "Only for END circles");
+      if (roundsTotal !== undefined) return fail("roundsTotal", "Only for END circles");
+      if (contributionValue === undefined) return fail("contributionValue", "Required");
+      return { ...settings, payoutMode, contributionValue };
+    }
+    if (goalValue === undefined) return fail("goalValue", "Required for END circles");
+    if (contributionValue !== undefined && roundsTotal === undefined) return { ...settings, payoutMode, goalValue, contributionValue };
+    if (roundsTotal !== undefined && contributionValue === undefined) return { ...settings, payoutMode, goalValue, roundsTotal };
+    return fail("contributionValue", "Give either contributionValue or roundsTotal");
+  });
 
 // The invite code from a private circle's link (base64url); bounded so it can't be used to send huge input.
 const inviteCode = z.string().min(1).max(128);
