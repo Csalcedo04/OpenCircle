@@ -20,6 +20,15 @@ export interface Email {
 
 export function renderEmail(n: Notification): Email {
   switch (n.kind) {
+    case "COLLECTING":
+      return {
+        subject: `Comenzó el cobro en ${n.circleName} / Collection started in ${n.circleName}`,
+        text: [
+          `Comenzó el cobro de esta ronda de ${n.circleName}: tu aporte es de ${money(n.amount)} y vence el ${day(n.deadline)}. Tu billetera lo enviará sola si tienes una autorización activa.`,
+          ``,
+          `This round of ${n.circleName} is collecting: your payment is ${money(n.amount)}, due on ${day(n.deadline)}. Your wallet sends it on its own if you have an active approval.`,
+        ].join("\n"),
+      };
     case "DUE_SOON":
       return {
         subject: `Tu aporte a ${n.circleName} vence pronto / Your ${n.circleName} payment is due soon`,

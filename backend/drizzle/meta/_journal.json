@@ -92,6 +92,20 @@
       "when": 1792243232965,
       "tag": "0012_circle_payouts",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792246418964,
+      "tag": "0013_users_id_on_update_cascade",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792248724284,
+      "tag": "0014_user_notifications",
+      "breakpoints": true
     }
   ]
 }

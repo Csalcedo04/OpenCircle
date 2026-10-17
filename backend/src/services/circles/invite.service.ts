@@ -10,6 +10,7 @@ import type { Tx } from "../wallet.service";
 import { circleNotFound, lockCircle, requireManager, type CircleRow } from "./circle-access";
 import { inviteUrl, newInviteToken, shownStatus, usableAt, type InviteRow, type InviteShownStatus } from "./invite-access";
 import type { InviteNotices } from "./invite-notices";
+import type { NotificationService } from "../notification.service";
 
 export type InviteStatus = InviteShownStatus;
 
@@ -59,6 +60,8 @@ export interface InviteServiceDeps {
   db: Db;
   circles: Pick<CircleService, "summariesOf">;
   notices: Pick<InviteNotices, "created">;
+  /** In-app notifications for invitees who have an account. */
+  notifications: Pick<NotificationService, "invited">;
   frontendUrl: string;
   now?: () => Date;
 }
@@ -74,7 +77,7 @@ async function notify(send: () => Promise<number>): Promise<void> {
   await send().catch((err: unknown) => console.error("Invite notice failed", err instanceof Error ? err.name : "unknown"));
 }
 
-export function createInviteService({ db, circles: circleService, notices, frontendUrl, now = () => new Date() }: InviteServiceDeps) {
+export function createInviteService({ db, circles: circleService, notices, notifications, frontendUrl, now = () => new Date() }: InviteServiceDeps) {
   const creator = alias(users, "creator");
   const invitee = alias(users, "invitee");
 
@@ -203,7 +206,10 @@ export function createInviteService({ db, circles: circleService, notices, front
         await audit(tx, circle, "created", created);
         return created;
       });
-      if (input.kind === "DIRECT") await notify(() => notices.created(ids));
+      if (input.kind === "DIRECT") {
+        await notify(() => notices.created(ids));
+        await notifications.invited(ids).catch((err: unknown) => console.error("Invite notification failed", err instanceof Error ? err.name : "unknown"));
+      }
       return find(db, and(inArray(circleInvites.id, ids)));
     },
 

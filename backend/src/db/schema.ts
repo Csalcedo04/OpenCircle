@@ -126,7 +126,7 @@ export const consentChallenges = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     state: text("state").notNull().unique(),
     walletAddressUrl: text("wallet_address_url").notNull(),
     grantEndpoint: text("grant_endpoint").notNull(),
@@ -152,7 +152,7 @@ export const walletGrants = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     walletId: uuid("wallet_id")
       .notNull()
       .references(() => wallets.id),
@@ -185,7 +185,7 @@ export const kycVerifications = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     sessionId: uuid("session_id").notNull().unique(),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -248,7 +248,7 @@ export const testClocks = pgTable(
     name: text("name").notNull(),
     ownerUserId: uuid("owner_user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onUpdate: "cascade" }),
     frozenTime: timestamp("frozen_time", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
@@ -299,7 +299,7 @@ export const circles = pgTable(
       .references(() => wallets.id),
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onUpdate: "cascade" }),
     // Set only at creation, and only while test clocks are enabled.
     testClockId: uuid("test_clock_id").references(() => testClocks.id),
     // Who accepts applicants; chosen by the creator.
@@ -349,7 +349,7 @@ export const circleMembers = pgTable(
       .references(() => circles.id),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onUpdate: "cascade" }),
     // 1-based; at most the circle's size (checked by the service, the DB can't see circles.size here).
     // Provisional (join order) while the circle is OPEN; set from the payout order when it starts.
     // In END circles nobody is paid per round: it is only the seat's order.
@@ -382,7 +382,7 @@ export const circleApplications = pgTable(
       .references(() => circles.id),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     // Seat preferences, copied to circle_members on acceptance. Null payout round: next free one.
     payoutRound: integer("payout_round"),
     collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
@@ -442,10 +442,10 @@ export const friendships = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     requesterId: uuid("requester_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     addresseeId: uuid("addressee_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     status: text("status").$type<(typeof FRIENDSHIP_STATUSES)[number]>().notNull().default("PENDING"),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -477,9 +477,9 @@ export const circleInvites = pgTable(
     // Inviters hold a seat, so they can't be deleted while the circle exists.
     createdBy: uuid("created_by")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onUpdate: "cascade" }),
     // DIRECT: the invitee, once known. Set at creation for an existing user, or when the email's owner joins.
-    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     // DIRECT by email: lowercase, as users.email. Shown only to the circle's approvers.
     email: text("email"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -502,6 +502,40 @@ export const circleInvites = pgTable(
     check("circle_invites_accepted", sql`(${t.status} = 'ACCEPTED') = (${t.acceptedMemberId} is not null)`),
     check("circle_invites_accepted_direct", sql`${t.acceptedMemberId} is null or ${t.kind} = 'DIRECT'`),
     check("circle_invites_email_lower", sql`${t.email} is null or ${t.email} = lower(${t.email})`),
+  ],
+).enableRLS();
+
+// ── In-app notifications ─────────────────────────────────────────────────────
+
+export const NOTIFICATION_KINDS = ["FRIEND_REQUEST", "CIRCLE_INVITE"] as const;
+
+// Something that happened to the user and waits for them in the app: a friend request, or a
+// direct invite to a circle. One row per source event (the request or the invite), which also
+// takes the notification with it when it goes away. Goes with the user.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<(typeof NOTIFICATION_KINDS)[number]>().notNull(),
+    // Who caused it (the requester, the inviter); kept as null if that account is deleted.
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    friendshipId: uuid("friendship_id").references(() => friendships.id, { onDelete: "cascade" }),
+    inviteId: uuid("invite_id").references(() => circleInvites.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("notifications_user_id_created_at_idx").on(t.userId, t.createdAt),
+    uniqueIndex("notifications_friendship_unique").on(t.friendshipId).where(sql`${t.friendshipId} is not null`),
+    uniqueIndex("notifications_invite_unique").on(t.inviteId).where(sql`${t.inviteId} is not null`),
+    check("notifications_kind", sql`${t.kind} in (${inList(NOTIFICATION_KINDS)})`),
+    check(
+      "notifications_source",
+      sql`(${t.kind} = 'FRIEND_REQUEST' and ${t.friendshipId} is not null and ${t.inviteId} is null) or (${t.kind} = 'CIRCLE_INVITE' and ${t.inviteId} is not null and ${t.friendshipId} is null)`,
+    ),
   ],
 ).enableRLS();
 
@@ -645,10 +679,10 @@ export const reviews = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     authorId: uuid("author_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     subjectId: uuid("subject_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     circleId: uuid("circle_id")
       .notNull()
       .references(() => circles.id),

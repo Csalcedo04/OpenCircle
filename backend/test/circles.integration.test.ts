@@ -13,6 +13,7 @@ import {
   contributions,
   creditProfiles,
   friendships,
+  notifications,
   reviews,
   rounds,
   testClocks,
@@ -28,6 +29,7 @@ import { createApplicationNotices } from "../src/services/circles/application-no
 import { createInviteNotices, type InviteNotices } from "../src/services/circles/invite-notices";
 import { createInviteService, type CodeInviteDto, type DirectInviteDto, type InviteDto, type MyInvitationDto } from "../src/services/circles/invite.service";
 import { createFriendService } from "../src/services/friend.service";
+import { createNotificationService, type NotificationList } from "../src/services/notification.service";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
 import { createApplicationService, type ApplicationDto } from "../src/services/circles/application.service";
@@ -252,12 +254,14 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     };
     notices = createApplicationNotices({ db, sender });
     inviteNotices = createInviteNotices({ db, sender, frontendUrl: FRONTEND_URL });
+    const notifications = createNotificationService({ db, frontendUrl: FRONTEND_URL });
     server = await startServer(
       fakeServices({
         circles: circleService,
         applications: createApplicationService({ db, circles: circleService, notices }),
-        invites: createInviteService({ db, circles: circleService, notices: inviteNotices, frontendUrl: FRONTEND_URL }),
-        friends: createFriendService({ db }),
+        invites: createInviteService({ db, circles: circleService, notices: inviteNotices, notifications, frontendUrl: FRONTEND_URL }),
+        friends: createFriendService({ db, notifications }),
+        notifications,
         users: createUserService(db),
         kyc,
         members: createMemberService({ db, circles: circleService }),
@@ -1543,12 +1547,15 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal((await events(`score.missed:${bobPayment.id}`)).length, 0);
     });
 
-    test("reminders: due soon, due today and late, by email and WhatsApp, once each, only to who hasn't paid", async () => {
+    test("reminders: collecting to everyone, then due soon, due today and late only to who hasn't paid, by email and WhatsApp, once each", async () => {
       const { circle, owner, deadline, contributionOf } = await startedCircle();
       const sent: PaymentReminder[] = [];
       const reminders = createReminders({ db, sender: { send: async (n) => void ("contributionId" in n && sent.push(n)) } });
 
-      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -4)), 0);
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -4)), 4);
+      assert.ok(sent.every((n) => n.kind === "COLLECTING"));
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -3.5)), 0, "collecting sent twice");
+      sent.length = 0;
 
       assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 4);
       assert.deepEqual([...new Set(sent.map((n) => n.kind))], ["DUE_SOON"]);
@@ -1571,7 +1578,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
       // Audit rows identify the reminder only: no email or phone.
       const rows = await db.select().from(auditEvents).where(like(auditEvents.externalId, `notification.sent:%:${ownerPayment.id}:%`));
-      assert.equal(rows.length, 4);
+      assert.equal(rows.length, 6, "collecting, due soon and due today, on both channels");
       assert.ok(rows.every((r) => !r.externalId?.includes("@") && !r.externalId?.includes("+57")));
     });
 
@@ -1588,10 +1595,11 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
           },
         },
       });
-      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 3);
+      // Collecting and due soon, by email and WhatsApp, for both members: 8 sends, the first fails.
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 7);
       assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 1);
       assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 0);
-      assert.equal(sent.length, 4);
+      assert.equal(sent.length, 8);
     });
 
     test("the tick runs the cycle for active real-time circles only, and survives one circle failing", async () => {
@@ -1626,6 +1634,23 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.ok(!seen.includes(waiting.id), "open circle ticked");
       assert.equal(result.circles, seen.length);
       assert.ok(result.failed >= 1);
+    });
+
+    test("runCircle (the start hook) advances only the circle asked, and only if it's active on real time", async () => {
+      const { circle: running } = await startedCircle();
+      const { circle: onClock, owner } = await startedCircle();
+      const waiting = await createCircle((await member()).token, { size: 3 });
+      const [clock] = await db
+        .insert(testClocks)
+        .values({ name: `${PREFIX}clock`, ownerUserId: owner.id, frozenTime: new Date() })
+        .returning({ id: testClocks.id });
+      await db.update(circles).set({ testClockId: clock?.id ?? null }).where(eq(circles.id, onClock.id));
+
+      const seen: string[] = [];
+      const tick = createCircleTick({ db, notices: [], cycle: { advanceCircle: async (id) => void seen.push(id) } });
+      for (const id of [running.id, onClock.id, waiting.id]) await tick.runCircle(id);
+
+      assert.deepEqual(seen, [running.id]);
     });
   });
 
@@ -1951,6 +1976,21 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const unknown = made.find((i) => i.invitee.email === nobody);
       assert.deepEqual(unknown?.invitee, { userId: null, displayName: null, email: nobody });
       assert.ok(!res.text.includes("invite="), "a direct token leaked to the manager");
+
+      // Bob and Carol have accounts, so they also get a notification in the app; the unknown email can't.
+      for (const who of [bob, carol]) {
+        const list = (await server.request("/api/notifications?unread=true", { token: who.token })).body as NotificationList;
+        assert.equal(list.unread, 1, `${who.id} unread`);
+        const [n] = list.items;
+        assert.ok(n && n.kind === "CIRCLE_INVITE" && n.invite);
+        assert.equal(n.actor?.displayName, displayName(`${PREFIX}Olga Pérez`));
+        assert.equal(n.invite.circleId, circle.id);
+        assert.equal(n.invite.circleName, circle.name);
+        assert.equal(n.invite.status, "ACTIVE");
+        assert.ok(n.invite.inviteUrl.startsWith(`${FRONTEND_URL}/es/circles/${circle.id}?invite=`));
+        assert.equal(n.friendRequestId, null);
+      }
+      assert.equal((await db.select({ id: notifications.id }).from(notifications).where(inArray(notifications.inviteId, made.map((i) => i.id)))).length, 2);
 
       const sent = sentInvites().slice(before);
       assert.deepEqual(sent.map((n) => n.to).sort(), [emailOf(bob), emailOf(carol), nobody].sort());

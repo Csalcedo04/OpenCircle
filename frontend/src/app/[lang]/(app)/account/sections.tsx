@@ -41,6 +41,7 @@ import {
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/view"
 import { CopyButton } from "./copy-button"
+import { RetryPaymentButton } from "./retry-payment-button"
 
 type T = Dictionary["account"]
 
@@ -296,10 +297,24 @@ export function NextActionCard({ action, t, locale }: { action: NextAction | nul
   const circleHref = `/${locale}/circles/${circle.id}`
   const failure = kind === "FAILED" ? failureText(round?.myFailureCode ?? null, n.failure) : null
   const help = fill(n.help[kind], { size: circle.size, taken: circle.seatsTaken })
-  // Only actions the backend supports: contributions are charged automatically under the wallet grant,
-  // so there is no manual "pay" or "retry"; the user can (re)authorize the wallet or inspect it.
+  // NO_GRANT needs a fresh wallet authorization; a refused payment in an open round can be
+  // retried before the deadline, and a missed payment after the round closed is paid as a debt.
   const needsGrant = kind === "AUTHORIZATION_REQUIRED" || (kind === "FAILED" && round?.myFailureCode === "NO_GRANT")
   const showsGrant = kind === "SCHEDULED" || kind === "DUE_TODAY" || kind === "UPCOMING"
+  const contributionId = round?.myContributionId ?? null
+  const canRetry =
+    kind === "FAILED" &&
+    contributionId !== null &&
+    round?.state === "COLLECTING" &&
+    Date.parse(circle.now) < Date.parse(round.deadline) &&
+    (round.myFailureCode === "PAYMENT_REFUSED" || round.myFailureCode === "QUOTE_FAILED")
+  const canPayDebt =
+    kind === "FAILED" &&
+    contributionId !== null &&
+    round !== null &&
+    round.state !== "UPCOMING" &&
+    round.state !== "COLLECTING" &&
+    round.myFailureCode !== "NO_GRANT"
 
   return (
     <section
@@ -353,12 +368,30 @@ export function NextActionCard({ action, t, locale }: { action: NextAction | nul
         )}
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-3">
+      <div className="mt-6 flex flex-wrap items-start gap-3">
         {needsGrant && (
           <Link href={`/${locale}/onboarding?edit=wallet`} className={primaryLink}>
             <KeyRound className="size-4" aria-hidden="true" />
             {n.authorize}
           </Link>
+        )}
+        {canRetry && contributionId && (
+          <RetryPaymentButton
+            locale={locale}
+            contributionId={contributionId}
+            mode="retry"
+            label={n.retryPayment}
+            errors={n.retryErrors}
+          />
+        )}
+        {canPayDebt && contributionId && (
+          <RetryPaymentButton
+            locale={locale}
+            contributionId={contributionId}
+            mode="debt"
+            label={n.payNow}
+            errors={n.retryErrors}
+          />
         )}
         {showsGrant && (
           <Link href="#wallet" className={primaryLink}>

@@ -49,7 +49,8 @@ const NOTICE_RETRY_MS = 7 * 86_400_000;
 
 /**
  * Runs the cycle for every active real-time circle (test-clock circles move with their clock),
- * then re-sends the emails of the last 7 days that failed.
+ * then re-sends the emails of the last 7 days that failed. `runCircle` runs it for one circle,
+ * so a circle that just filled is charged round 1 without waiting for the next tick.
  */
 export function createCircleTick({
   db,
@@ -62,12 +63,11 @@ export function createCircleTick({
   notices: readonly NoticeRetry[];
   now?: () => Date;
 }) {
+  const realTime = and(eq(circles.status, "ACTIVE"), isNull(circles.testClockId));
+
   return {
     async run(): Promise<TickResult> {
-      const active = await db
-        .select({ id: circles.id })
-        .from(circles)
-        .where(and(eq(circles.status, "ACTIVE"), isNull(circles.testClockId)));
+      const active = await db.select({ id: circles.id }).from(circles).where(realTime);
       let failed = 0;
       // One circle's failure never stops the others; the next tick retries it.
       for (const { id } of active) {
@@ -88,7 +88,41 @@ export function createCircleTick({
       }
       return { circles: active.length, failed, noticesResent };
     },
+
+    /** Runs the cycle for one active real-time circle; test-clock circles are left to their clock. */
+    async runCircle(circleId: string): Promise<void> {
+      const [circle] = await db
+        .select({ id: circles.id })
+        .from(circles)
+        .where(and(eq(circles.id, circleId), realTime))
+        .limit(1);
+      if (circle) await cycle.advanceCircle(circle.id, now());
+    },
   };
 }
 
 export type CircleTickService = ReturnType<typeof createCircleTick>;
+
+/**
+ * Runs the tick every `intervalMs` in this process, so real-time circles move without an
+ * external scheduler. A run still going when the next is due is not overlapped. Returns a stop.
+ */
+export function startTickTimer(tick: Pick<CircleTickService, "run">, intervalMs: number): () => void {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    tick
+      .run()
+      .then((r) => {
+        if (r.failed > 0) console.error("Circle tick: circles failed", r.failed, "of", r.circles);
+      })
+      .catch((err: unknown) => console.error("Circle tick failed", err instanceof Error ? err.name : "unknown"))
+      .finally(() => {
+        running = false;
+      });
+  }, intervalMs);
+  // Never keeps the process alive on its own.
+  timer.unref();
+  return () => clearInterval(timer);
+}

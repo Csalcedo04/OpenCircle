@@ -6,19 +6,21 @@ import { createApplicationNotices } from "./services/circles/application-notices
 import { createApplicationService } from "./services/circles/application.service";
 import { createInviteNotices } from "./services/circles/invite-notices";
 import { createInviteService } from "./services/circles/invite.service";
-import { createCircleCycle, createCircleTick } from "./services/circles/circle-cycle";
+import { createCircleCycle, createCircleTick, startTickTimer } from "./services/circles/circle-cycle";
 import { createReminders } from "./services/circles/reminders.service";
 import { createScoring } from "./services/circles/scoring.service";
 import { createResendSender } from "./services/notifications/resend-sender";
 import { createChannelSender, createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
+import { createContributionRetry } from "./services/circles/contribution-retry.service";
 import { createDebtService } from "./services/circles/debt.service";
 import { createPayouts } from "./services/circles/payout.service";
 import { createPoolAccess } from "./services/circles/pool-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
 import { createFriendService } from "./services/friend.service";
+import { createNotificationService } from "./services/notification.service";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./services/open-payments/client";
@@ -30,6 +32,10 @@ import { createUserService } from "./services/user.service";
 import { createWalletConsentService } from "./services/wallet-consent.service";
 import { createWalletService } from "./services/wallet.service";
 import { createAccountService } from "./services/account.service";
+
+// Every step of a run is a compare-and-set, so the timer, the cron endpoint and the start
+// hook may overlap (or run on several replicas) without charging anyone twice.
+const TICK_INTERVAL_MS = 60_000;
 
 async function main(): Promise<void> {
   const db = createDb(env.DATABASE_URL);
@@ -64,8 +70,9 @@ async function main(): Promise<void> {
       : log;
   const notices = createApplicationNotices({ db, sender });
   const inviteNotices = createInviteNotices({ db, sender, frontendUrl: env.FRONTEND_URL });
-  // Periods, then payouts, then scores (ICS), then payment reminders. The scheduler runs it for
-  // real-time circles (POST /api/internal/circles/tick); test clocks run it for theirs.
+  const notifications = createNotificationService({ db, frontendUrl: env.FRONTEND_URL });
+  // Periods, then payouts, then scores (ICS), then payment reminders. The tick runs it for
+  // real-time circles (every minute here, or POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
     engine,
     debts,
@@ -74,13 +81,23 @@ async function main(): Promise<void> {
     reminders: createReminders({ db, sender }),
   });
   const testClocks = env.TEST_CLOCKS_ENABLED ? createTestClockService({ db, engine: cycle }) : null;
+  const circleTick = createCircleTick({ db, cycle, notices: [notices, inviteNotices] });
+  const contributionRetry = createContributionRetry({
+    db,
+    run: (id) => (testClocks ? testClocks.runCircle(id).then(() => circleTick.runCircle(id)) : circleTick.runCircle(id)),
+  });
   const circles = createCircleService({
     db,
     // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
     resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
     testClocksEnabled: testClocks !== null,
     frontendUrl: env.FRONTEND_URL,
-    ...(testClocks ? { onStarted: testClocks.runCircle } : {}),
+    // Round 1 is charged as soon as the last seat fills. Real-time circles in the background, so
+    // joining doesn't wait on Open Payments; test-clock circles at their clock's time.
+    onStarted: async (circleId) => {
+      void circleTick.runCircle(circleId).catch(() => console.error("Circle start run failed", circleId));
+      if (testClocks) await testClocks.runCircle(circleId);
+    },
   });
 
   const app = createApp(
@@ -89,6 +106,7 @@ async function main(): Promise<void> {
       wallets: createWalletService(db),
       account: createAccountService({ db }),
       debts,
+      contributionRetry,
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,
@@ -99,11 +117,12 @@ async function main(): Promise<void> {
       }),
       circles,
       applications: createApplicationService({ db, circles, notices }),
-      invites: createInviteService({ db, circles, notices: inviteNotices, frontendUrl: env.FRONTEND_URL }),
-      friends: createFriendService({ db }),
+      invites: createInviteService({ db, circles, notices: inviteNotices, notifications, frontendUrl: env.FRONTEND_URL }),
+      friends: createFriendService({ db, notifications }),
+      notifications,
       members: createMemberService({ db, circles }),
       testClocks,
-      circleTick: createCircleTick({ db, cycle, notices: [notices, inviteNotices] }),
+      circleTick,
       kyc: createKycService({
         db,
         didit: createDiditClient({ apiKey: env.DIDIT_API_KEY, workflowId: env.DIDIT_WORKFLOW_ID }),
@@ -112,6 +131,8 @@ async function main(): Promise<void> {
     },
     { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET, cronSecret: env.CRON_SECRET, logRequests: true },
   );
+
+  startTickTimer(circleTick, TICK_INTERVAL_MS);
 
   app.listen(env.PORT, () => {
     console.log(`API listening on port ${env.PORT}`);

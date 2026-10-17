@@ -12,6 +12,7 @@ const round = (number: number, patch: Partial<DashboardRound> = {}): DashboardRo
   deadline: `2026-10-${String(10 + number * 7).padStart(2, "0")}T00:00:00.000Z`,
   mine: false,
   verified: 0,
+  myContributionId: null,
   myStatus: null,
   myFailureCode: null,
   ...patch,

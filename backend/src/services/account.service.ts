@@ -48,6 +48,7 @@ export interface DashboardRoundDto {
   /** Contributions COMPLETED (verified against the pool's incoming payment). */
   verified: number;
   /** The user's own contribution; null before the round opens. */
+  myContributionId: string | null;
   myStatus: ContributionStatus | null;
   myFailureCode: string | null;
 }
@@ -200,7 +201,7 @@ export function createAccountService({ db, now = () => new Date() }: { db: Db; n
             .groupBy(contributions.roundId);
     const verifiedOf = new Map(counts.map((c) => [c.roundId, c.verified]));
     const mine = await db
-      .select({ roundId: contributions.roundId, status: contributions.status, failureCode: contributions.failureCode })
+      .select({ id: contributions.id, roundId: contributions.roundId, status: contributions.status, failureCode: contributions.failureCode })
       .from(contributions)
       .where(
         inArray(
@@ -234,6 +235,7 @@ export function createAccountService({ db, now = () => new Date() }: { db: Db; n
             deadline: r.deadline.toISOString(),
             mine: r.beneficiaryMemberId === c.memberId,
             verified: verifiedOf.get(r.id) ?? 0,
+            myContributionId: own?.id ?? null,
             myStatus: own?.status ?? null,
             myFailureCode: own?.failureCode ?? null,
           };
