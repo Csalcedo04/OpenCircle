@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
 import { createCircleService } from "./services/circle.service";
+import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
@@ -34,6 +35,15 @@ async function main(): Promise<void> {
   const engine = createPeriodEngine({ db, payments, memberAccess: createMemberAccess({ db, cipher, payments }) });
   // Real-time circles have no scheduler yet; only test clocks drive the engine.
   const testClocks = env.TEST_CLOCKS_ENABLED ? createTestClockService({ db, engine }) : null;
+  const circles = createCircleService({
+    db,
+    // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
+    resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
+    testClocksEnabled: testClocks !== null,
+    frontendUrl: env.FRONTEND_URL,
+    ...(testClocks ? { onStarted: testClocks.runCircle } : {}),
+  });
+
   const app = createApp(
     {
       users,
@@ -46,14 +56,8 @@ async function main(): Promise<void> {
         users,
         frontendUrl: env.FRONTEND_URL,
       }),
-      circles: createCircleService({
-        db,
-        // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
-        resolvePoolWallet: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
-        testClocksEnabled: testClocks !== null,
-        frontendUrl: env.FRONTEND_URL,
-        ...(testClocks ? { onStarted: testClocks.runCircle } : {}),
-      }),
+      circles,
+      members: createMemberService({ db, circles }),
       testClocks,
       kyc: createKycService({
         db,

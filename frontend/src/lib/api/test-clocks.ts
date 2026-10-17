@@ -38,6 +38,7 @@ export const testClockSchema = z.object({
       cadence: z.enum(CIRCLE_CADENCES),
       size: z.int(),
       seatsTaken: z.int(),
+      inviteCode: z.string(),
       currentPeriod: z
         .object({
           number: z.int(),

@@ -176,10 +176,15 @@ export function createCircle(input: NewCircle): Promise<ApiCircle> {
   return backendFetch("/circles", apiCircleSchema, { method: "POST", body: JSON.stringify(input) })
 }
 
-export function getApiCircle(id: string): Promise<ApiCircle> {
-  return backendFetch(`/circles/${encodeURIComponent(id)}`, apiCircleSchema)
+/** `invite`: the code from a private circle's link. */
+export function getApiCircle(id: string, invite?: string): Promise<ApiCircle> {
+  const query = invite ? `?invite=${encodeURIComponent(invite)}` : ""
+  return backendFetch(`/circles/${encodeURIComponent(id)}${query}`, apiCircleSchema)
 }
 
-export function joinCircle(id: string, payoutRound: number): Promise<ApiCircle> {
-  return backendFetch(`/circles/${encodeURIComponent(id)}/join`, apiCircleSchema, { method: "POST", body: JSON.stringify({ payoutRound }) })
+export function joinCircle(id: string, payoutRound: number, invite?: string): Promise<ApiCircle> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/join`, apiCircleSchema, {
+    method: "POST",
+    body: JSON.stringify(invite ? { payoutRound, invite } : { payoutRound }),
+  })
 }

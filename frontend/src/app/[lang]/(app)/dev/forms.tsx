@@ -102,8 +102,8 @@ export function ClockCircleForm({ locale, t, clockId }: { locale: Locale; t: T; 
   )
 }
 
-export function JoinForm({ locale, t, circleId, rounds }: { locale: Locale; t: T; circleId: string; rounds: number[] }) {
-  const [state, action, pending] = useActionState(joinCircleAction.bind(null, locale, circleId), initial)
+export function JoinForm({ locale, t, circleId, rounds, invite }: { locale: Locale; t: T; circleId: string; rounds: number[]; invite: string | undefined }) {
+  const [state, action, pending] = useActionState(joinCircleAction.bind(null, locale, circleId, invite), initial)
   return (
     <form action={action} className="space-y-4">
       <FormField id="join-round" label={t.pickRound}>

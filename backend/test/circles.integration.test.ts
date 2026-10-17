@@ -6,6 +6,7 @@ import { createDb, type Db } from "../src/db/client";
 import { auditEvents, circleMembers, circles, contributions, reviews, rounds, users, wallets } from "../src/db/schema";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
+import { createMemberService, type MemberDto } from "../src/services/member.service";
 import { periodEnd, periodStart } from "../src/services/circles/period-schedule";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
 import { fakeServices } from "./helpers/fakes";
@@ -54,19 +55,22 @@ async function deleteTestData(): Promise<void> {
 }
 
 // A user with a profile; KYC-approved unless told otherwise (KYC itself is faked here).
-async function member(options: { kyc?: boolean; name?: string } = {}): Promise<{ id: string; token: string }> {
+async function member(
+  options: { kyc?: boolean; name?: string } = {},
+): Promise<{ id: string; token: string; documentNumber: string }> {
   const id = randomUUID();
   createdUserIds.push(id);
+  const documentNumber = String(randomInt(1_000_000_000, 9_999_999_999));
   await db.insert(users).values({
     id,
     email: `${id}@example.test`,
     documentType: "cc",
-    documentNumber: String(randomInt(1_000_000_000, 9_999_999_999)),
+    documentNumber,
     nationality: "CO",
     fullName: `${PREFIX}${options.name ?? "Ana María Gómez"}`,
   });
   if (options.kyc ?? true) approved.add(id);
-  return { id, token: await auth.token(id) };
+  return { id, token: await auth.token(id), documentNumber };
 }
 
 const validCircle = (overrides: Record<string, unknown> = {}) => ({
@@ -117,7 +121,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "COP", assetScale: 2 }),
       frontendUrl: FRONTEND_URL,
     });
-    server = await startServer(fakeServices({ circles: circleService, kyc }));
+    server = await startServer(
+      fakeServices({ circles: circleService, kyc, members: createMemberService({ db, circles: circleService }) }),
+    );
   });
 
   after(async () => {
@@ -162,12 +168,15 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(row?.contributionValue, 2000000n);
     });
 
-    test("never exposes a member's full name or user id", async () => {
-      const { id, token } = await member({ name: "Valentina Restrepo" });
+    test("shows members as 'Ana G.': never their full name, email or document", async () => {
+      const { id, token, documentNumber } = await member({ name: "Valentina Restrepo" });
       const circle = await createCircle(token);
       const res = await server.request(`/api/circles/${circle.id}`);
       assert.ok(!res.text.includes("Valentina Restrepo"), "full name leaked");
-      assert.ok(!res.text.includes(id), "user id leaked");
+      assert.ok(!res.text.includes(`${id}@example.test`), "email leaked");
+      assert.ok(!res.text.includes(documentNumber), "document leaked");
+      // The user id is exposed on purpose: it links a seat to the member's profile (signed-in pages).
+      assert.equal((res.body as CircleDto).seats[0]?.userId, id);
     });
 
     test("invalid fields → 400 VALIDATION_ERROR, nothing stored", async () => {
@@ -362,6 +371,96 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     });
   });
 
+  describe("member records and profiles", () => {
+    // A started circle of 3 whose round-1 contributions end on time, late and failed.
+    async function settledCircle() {
+      const [ana, bob, cam] = [await member({ name: "Ana Gómez" }), await member({ name: "Bob Ruiz" }), await member({ name: "Cam Díaz" })];
+      const circle = await createCircle(ana.token, { size: 3, payoutRound: 1 });
+      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, cam.token, { payoutRound: 3 })).status, 200);
+
+      const [round] = await db.select().from(rounds).where(and(eq(rounds.circleId, circle.id), eq(rounds.number, 1)));
+      assert.ok(round, "round 1 missing");
+      const seats = await db.select().from(circleMembers).where(eq(circleMembers.circleId, circle.id));
+      const seatOf = (userId: string) => seats.find((s) => s.userId === userId)?.id ?? "";
+      const hour = 3_600_000;
+      const settle = (userId: string, values: { status: "COMPLETED" | "FAILED"; completedAt: Date | null }) =>
+        db
+          .update(contributions)
+          .set(values)
+          .where(and(eq(contributions.roundId, round.id), eq(contributions.memberId, seatOf(userId))));
+      await settle(ana.id, { status: "COMPLETED", completedAt: new Date(round.deadline.getTime() - hour) });
+      await settle(bob.id, { status: "COMPLETED", completedAt: new Date(round.deadline.getTime() + hour) });
+      await settle(cam.id, { status: "FAILED", completedAt: null });
+      return { circle, ana, bob, cam };
+    }
+
+    test("records count on time, late and missed payments from real contributions", async () => {
+      const { circle, ana, bob, cam } = await settledCircle();
+      const res = await server.request(`/api/circles/${circle.id}`);
+      const record = (userId: string) => (res.body as CircleDto).seats.find((s) => s.userId === userId)?.record.payments;
+      assert.deepEqual(record(ana.id), { onTime: 1, late: 0, missed: 0 });
+      assert.deepEqual(record(bob.id), { onTime: 0, late: 1, missed: 0 });
+      assert.deepEqual(record(cam.id), { onTime: 0, late: 0, missed: 1 });
+    });
+
+    test("GET /api/members/:id: record, circles completed, member since, reviews received, circles", async () => {
+      const { circle, ana, bob } = await settledCircle();
+      await db.update(circles).set({ status: "COMPLETED" }).where(eq(circles.id, circle.id));
+      await db.insert(reviews).values({ authorId: ana.id, subjectId: bob.id, circleId: circle.id, rating: 4, comment: "Pagó, aunque tarde" });
+
+      const res = await server.request(`/api/members/${bob.id}`, { token: ana.token });
+      assert.equal(res.status, 200, res.text);
+      const profile = res.body as MemberDto;
+      assert.equal(profile.id, bob.id);
+      assert.equal(profile.displayName, "[test-circles] R.");
+      assert.deepEqual(profile.payments, { onTime: 0, late: 1, missed: 0 });
+      assert.equal(profile.circlesCompleted, 1);
+      assert.ok(profile.memberSince && Date.parse(profile.memberSince) <= Date.now());
+      assert.deepEqual(
+        profile.reviews.map((r) => ({ author: r.authorName, circle: r.circleName, rating: r.rating, comment: r.comment })),
+        [{ author: "[test-circles] G.", circle: `${PREFIX}Natillera Laureles`, rating: 4, comment: "Pagó, aunque tarde" }],
+      );
+      assert.ok(profile.circles.some((c) => c.id === circle.id));
+
+      // The circle shows its reviews too.
+      const detail = (await server.request(`/api/circles/${circle.id}`)).body as CircleDto;
+      assert.equal(detail.reviews.length, 1);
+      assert.equal(detail.reviews[0]?.subjectId, bob.id);
+    });
+
+    test("a member who never joined a circle has an empty record", async () => {
+      const lone = await member();
+      const viewer = await member();
+      const res = await server.request(`/api/members/${lone.id}`, { token: viewer.token });
+      assert.equal(res.status, 200);
+      const profile = res.body as MemberDto;
+      assert.deepEqual(profile.payments, { onTime: 0, late: 0, missed: 0 });
+      assert.equal(profile.circlesCompleted, 0);
+      assert.equal(profile.memberSince, null);
+      assert.deepEqual(profile.reviews, []);
+      assert.deepEqual(profile.circles, []);
+    });
+
+    test("profiles need sign-in, never leak identity data, and unknown ids are 404", async () => {
+      const subject = await member({ name: "Valentina Restrepo" });
+      const viewer = await member();
+      assert.equal((await server.request(`/api/members/${subject.id}`)).status, 401);
+
+      const res = await server.request(`/api/members/${subject.id}`, { token: viewer.token });
+      assert.ok(!res.text.includes("Valentina Restrepo"), "full name leaked");
+      assert.ok(!res.text.includes(`${subject.id}@example.test`), "email leaked");
+      assert.ok(!res.text.includes(subject.documentNumber), "document leaked");
+
+      for (const id of [randomUUID(), "not-a-uuid"]) {
+        const missing = await server.request(`/api/members/${id}`, { token: viewer.token });
+        assert.equal(missing.status, 404, id);
+        assert.equal(errorCode(missing.body), "MEMBER_NOT_FOUND");
+      }
+    });
+  });
+
+
   describe("visibility", () => {
     test("circles are private by default; only the creator gets the invite link", async () => {
       const owner = await member();
@@ -431,6 +530,22 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const all = await server.request("/api/circles");
       assert.ok((all.body as { id: string }[]).some((c) => c.id === circle.id));
       assert.equal((await join(circle.id, other.token, { payoutRound: 2 })).status, 200);
+    });
+
+    test("a member's profile hides private circles, and reviews from them, from people outside", async () => {
+      const [owner, bob, stranger] = await Promise.all([member(), member(), member()]);
+      const hidden = await createCircle(owner.token, { visibility: "PRIVATE", size: 3, name: `${PREFIX}Secreta ${randomInt(1e6)}` });
+      assert.equal((await join(hidden.id, bob.token, { payoutRound: 2, invite: inviteOf(hidden) })).status, 200);
+      await db.insert(reviews).values({ authorId: owner.id, subjectId: bob.id, circleId: hidden.id, rating: 5, comment: "Cumplido" });
+
+      const outside = (await server.request(`/api/members/${bob.id}`, { token: stranger.token })).body as MemberDto;
+      assert.ok(!outside.circles.some((c) => c.id === hidden.id), "private circle listed to a stranger");
+      assert.ok(!outside.reviews.some((r) => r.circleId === hidden.id), "review from a private circle shown to a stranger");
+      assert.ok(!JSON.stringify(outside).includes(hidden.name), "private circle name leaked");
+
+      const insider = (await server.request(`/api/members/${bob.id}`, { token: owner.token })).body as MemberDto;
+      assert.ok(insider.circles.some((c) => c.id === hidden.id));
+      assert.ok(insider.reviews.some((r) => r.circleId === hidden.id));
     });
 
     test("visibility can't change once the circle has started", async () => {

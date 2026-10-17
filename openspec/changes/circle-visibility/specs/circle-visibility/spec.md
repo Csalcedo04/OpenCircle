@@ -47,6 +47,17 @@ While a circle is `OPEN`, its creator SHALL be able to change its visibility and
 - **WHEN** the creator rotates the invite code and someone uses the old link
 - **THEN** that request gets 404 `CIRCLE_NOT_FOUND`
 
+### Requirement: Member profiles don't reveal private circles
+`GET /api/members/{id}` SHALL list only the circles the viewer can see: public ones, or ones the viewer is a member of. Reviews received in a circle the viewer can't see SHALL be left out of the profile. Aggregate counts in the payment record don't name circles and SHALL stay as they are.
+
+#### Scenario: Stranger views a member of a private circle
+- **WHEN** a signed-in user who is not in a member's private circle opens that member's profile
+- **THEN** the profile lists neither that circle nor any review from it, and its name appears nowhere in the response
+
+#### Scenario: Fellow member views the profile
+- **WHEN** another member of the same private circle opens the profile
+- **THEN** the circle and its reviews are included
+
 ### Requirement: Existing circles stay visible
 Circles that existed before this change SHALL become `PUBLIC`.
 

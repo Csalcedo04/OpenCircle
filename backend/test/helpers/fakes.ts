@@ -46,7 +46,8 @@ export function fakeServices(overrides: Partial<Services> = {}): Services {
     walletAddresses: { getByUrl: notUsed },
     walletConsent: { start: notUsed, complete: notUsed },
     kyc: { getStatus: notUsed, startSession: notUsed, handleWebhook: notUsed },
-    circles: { get: notUsed, list: notUsed, listForUser: notUsed, create: notUsed, join: notUsed, setVisibility: notUsed, rotateInviteCode: notUsed },
+    members: { get: notUsed },
+    circles: { get: notUsed, list: notUsed, listForUser: notUsed, create: notUsed, join: notUsed, setVisibility: notUsed, rotateInviteCode: notUsed, visibleIds: notUsed },
     testClocks: null,
     ...overrides,
   };

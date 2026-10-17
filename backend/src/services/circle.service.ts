@@ -1,5 +1,5 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
 import {
@@ -11,6 +11,7 @@ import {
   circleMembers,
   circles,
   contributions,
+  reviews,
   rounds,
   testClocks,
   users,
@@ -18,6 +19,10 @@ import {
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
+import { displayName } from "./display-name";
+import { findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
+
+export { displayName };
 import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
 
 export type CircleStatus = (typeof CIRCLE_STATUSES)[number];
@@ -79,8 +84,12 @@ export interface CircleSummaryDto {
 
 export interface SeatDto {
   memberId: string;
-  // Public pages show "Ana G.", never the full legal name.
+  /** The member's user id, for their profile (GET /api/members/:id). Pages are signed-in only. */
+  userId: string;
+  // "Ana G.", never the full legal name.
   displayName: string;
+  /** Payment record across all their circles, for trust. */
+  record: MemberRecord;
   payoutRound: number;
   collateral: AmountDto;
   grantMode: GrantMode | null;
@@ -109,18 +118,12 @@ export interface CircleDto extends CircleSummaryDto {
   currentRound: number | null;
   seats: SeatDto[];
   rounds: RoundDto[];
+  /** Reviews members left each other in this circle, newest first. */
+  reviews: ReviewDto[];
 }
 
 const ACTIVE_ROUND_STATES: readonly RoundState[] = ["COLLECTING", "FUNDED", "RISK_CHECK", "BLOCKED", "PAYING_OUT"];
 
-/** "Ana María Gómez" → "Ana G." */
-export function displayName(fullName: string | null): string {
-  const parts = (fullName ?? "").trim().split(/\s+/).filter(Boolean);
-  const first = parts[0];
-  if (!first) return "—";
-  const last = parts.length > 1 ? parts[parts.length - 1] : undefined;
-  return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
-}
 
 const amount = (value: bigint, assetCode: string, assetScale: number): AmountDto => ({
   value: value.toString(),
@@ -148,6 +151,18 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     url.searchParams.set("invite", code);
     return url.toString();
   };
+
+  // SQL form of canSee without an invite: public, or the viewer has a seat.
+  const visibleTo = (viewerId: string) =>
+    or(
+      eq(circles.visibility, "PUBLIC"),
+      exists(
+        db
+          .select({ id: circleMembers.id })
+          .from(circleMembers)
+          .where(and(eq(circleMembers.circleId, circles.id), eq(circleMembers.userId, viewerId))),
+      ),
+    );
 
   async function isMember(circleId: string, userId: string | undefined): Promise<boolean> {
     if (userId === undefined) return false;
@@ -227,6 +242,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     const seats = await db
       .select({
         memberId: circleMembers.id,
+        userId: circleMembers.userId,
         fullName: users.fullName,
         payoutRound: circleMembers.payoutRound,
         collateralValue: circleMembers.collateralValue,
@@ -251,6 +267,14 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
               ),
             );
 
+    const [records, circleReviews] = await Promise.all([
+      memberRecords(
+        db,
+        seats.map((s) => s.userId),
+      ),
+      findReviews(db, eq(reviews.circleId, id)),
+    ]);
+
     const { assetCode, assetScale } = circle;
     return {
       ...toSummary(circle),
@@ -264,7 +288,9 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
+        userId: s.userId,
         displayName: displayName(s.fullName),
+        record: records.get(s.userId) ?? { payments: { onTime: 0, late: 0, missed: 0 }, circlesCompleted: 0, memberSince: null },
         payoutRound: s.payoutRound,
         collateral: amount(s.collateralValue, assetCode, assetScale),
         grantMode: s.grantMode ?? null,
@@ -279,6 +305,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           .filter((c) => c.roundId === r.id)
           .map((c) => ({ memberId: c.memberId, status: c.status })),
       })),
+      reviews: circleReviews,
     };
   }
 
@@ -397,13 +424,25 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       return rows.map(toSummary);
     },
 
-    async listForUser(userId: string): Promise<CircleSummaryDto[]> {
+    /** The user's circles. Seen by someone else (`viewerId`), only those that viewer can see. */
+    async listForUser(userId: string, viewerId: string = userId): Promise<CircleSummaryDto[]> {
       const rows = await db
         .select(summaryColumns)
         .from(circles)
         .innerJoin(circleMembers, and(eq(circleMembers.circleId, circles.id), eq(circleMembers.userId, userId)))
+        .where(viewerId === userId ? undefined : visibleTo(viewerId))
         .orderBy(desc(circles.createdAt));
       return rows.map(toSummary);
+    },
+
+    /** Of `circleIds`, those `viewerId` may see (public, or they are a member). */
+    async visibleIds(viewerId: string, circleIds: readonly string[]): Promise<Set<string>> {
+      if (circleIds.length === 0) return new Set();
+      const rows = await db
+        .select({ id: circles.id })
+        .from(circles)
+        .where(and(inArray(circles.id, [...new Set(circleIds)]), visibleTo(viewerId)));
+      return new Set(rows.map((r) => r.id));
     },
 
     /** Creates an OPEN circle with its creator in the payout round they chose. */
