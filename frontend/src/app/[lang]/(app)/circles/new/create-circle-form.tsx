@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react"
 import Link from "next/link"
-import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Minus, Plus, Sparkles, TrendingDown, TrendingUp, Users, Zap } from "lucide-react"
+import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Minus, Plus, RefreshCw, Sparkles, Target, TrendingDown, TrendingUp, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { CIRCLE_VISIBILITIES, type CircleVisibility } from "@/lib/flows/circle-invite"
-import { CADENCES, CIRCLE_ASSET_SCALE, MAX_SIZE, MIN_SIZE, PAYOUT_ORDERS } from "@/lib/flows/circles"
+import { CADENCES, CIRCLE_ASSET_SCALE, MAX_ROUNDS_TOTAL, MAX_SIZE, MIN_ROUNDS_TOTAL, MIN_SIZE, PAYOUT_MODES, PAYOUT_ORDERS } from "@/lib/flows/circles"
 import { cn } from "@/lib/utils"
 import { createCircleAction, type CreateState } from "./actions"
 
@@ -34,6 +34,8 @@ const card = (active: boolean) =>
 export function CreateCircleForm({ locale, t, tErr }: Props) {
   const [amountInput, setAmountInput] = useState("20000")
   const [size, setSize] = useState("5")
+  const [payoutMode, setPayoutMode] = useState<(typeof PAYOUT_MODES)[number]>("PER_ROUND")
+  const [roundsTotal, setRoundsTotal] = useState("6")
   const [cadence, setCadence] = useState<(typeof CADENCES)[number]>("WEEKLY")
   const [payoutOrder, setPayoutOrder] = useState<(typeof PAYOUT_ORDERS)[number]>("BEST_SCORE_FIRST")
   const [visibility, setVisibility] = useState<CircleVisibility>("PRIVATE")
@@ -49,11 +51,20 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
     setSize(String(next))
   }
 
+  const roundsNum = Number(roundsTotal)
+  const changeRounds = (delta: number) => {
+    const next = Math.min(MAX_ROUNDS_TOTAL, Math.max(MIN_ROUNDS_TOTAL, roundsNum + delta))
+    setRoundsTotal(String(next))
+  }
+
   const contribution = parseWholeUnits(amountInput, COP.assetScale)
   const members = /^\d{1,2}$/.test(size) ? BigInt(size) : 0n
+  const totalRoundsBig = payoutMode === "END" ? (/^\d{1,2}$/.test(roundsTotal) ? BigInt(roundsTotal) : 0n) : members
   const pot = contribution !== null ? contribution * members : 0n
-  const fee = applyBps(pot, FEE_BPS)
-  const payout = pot - fee
+  const goalTotal = pot * totalRoundsBig
+  const memberSaved = contribution !== null ? contribution * totalRoundsBig : 0n
+  const fee = payoutMode === "END" ? applyBps(memberSaved, FEE_BPS) : applyBps(pot, FEE_BPS)
+  const payout = payoutMode === "END" ? memberSaved - fee : pot - fee
   const money = (v: bigint) => formatAmount(amount(v, COP), locale)
   const cadenceLabels = {
     WEEKLY: [t.weekly, t.cadenceWeekly],
@@ -70,6 +81,8 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
           <input type="hidden" name="cadence" value={cadence} />
           <input type="hidden" name="payoutOrder" value={payoutOrder} />
           <input type="hidden" name="visibility" value={visibility} />
+          <input type="hidden" name="payoutMode" value={payoutMode} />
+          <input type="hidden" name="roundsTotal" value={payoutMode === "END" ? roundsTotal : size} />
 
           <FormField id="name" label={t.name} error={err("name")}>
             <Input
@@ -81,6 +94,25 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
               className="h-11 rounded-xl text-base"
             />
           </FormField>
+
+          <fieldset>
+            <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.payoutMode}</legend>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {PAYOUT_MODES.map((m) => {
+                const isEnd = m === "END"
+                const Icon = isEnd ? Target : RefreshCw
+                return (
+                  <button type="button" key={m} aria-pressed={payoutMode === m} onClick={() => setPayoutMode(m)} className={card(payoutMode === m)}>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                      <Icon className={cn("size-4 shrink-0", payoutMode === m ? "text-brand-violet" : "text-brand-slate")} aria-hidden="true" />
+                      {isEnd ? t.modeEnd : t.modePerRound}
+                    </span>
+                    <span className="text-xs text-brand-slate">{isEnd ? t.modeEndHelp : t.modePerRoundHelp}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
 
           <FormField id="amount" label={t.amount} help={t.amountHelp} error={err("amount")}>
             <div className="relative">
@@ -115,8 +147,8 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
                 aria-live="polite"
                 aria-describedby={describedBy("size", err("size"))}
                 className={cn(
-                  "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl border text-base font-semibold text-brand-navy tabular-nums",
-                  err("size") ? "border-destructive" : "border-input",
+                  "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl border bg-brand-canvas text-base font-semibold text-brand-navy tabular-nums",
+                  err("size") ? "border-destructive" : "border-brand-line",
                 )}
               >
                 {fill(t.sizeOption, { count: size })}
@@ -134,6 +166,44 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
               <input type="hidden" name="size" value={size} />
             </div>
           </FormField>
+
+          {payoutMode === "END" && (
+            <FormField id="roundsTotal" label={t.roundsTotal} help={t.roundsTotalHelp} error={err("roundsTotal")}>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => changeRounds(-1)}
+                  disabled={roundsNum <= MIN_ROUNDS_TOTAL}
+                  aria-label={t.sizeDecrease}
+                  aria-controls="roundsTotal"
+                  className={stepper}
+                >
+                  <Minus className="size-4" aria-hidden="true" />
+                </button>
+                <output
+                  id="roundsTotal"
+                  aria-live="polite"
+                  aria-describedby={describedBy("roundsTotal", err("roundsTotal"))}
+                  className={cn(
+                    "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl border bg-brand-canvas text-base font-semibold text-brand-navy tabular-nums",
+                    err("roundsTotal") ? "border-destructive" : "border-brand-line",
+                  )}
+                >
+                  {roundsTotal}
+                </output>
+                <button
+                  type="button"
+                  onClick={() => changeRounds(1)}
+                  disabled={roundsNum >= MAX_ROUNDS_TOTAL}
+                  aria-label={t.sizeIncrease}
+                  aria-controls="roundsTotal"
+                  className={stepper}
+                >
+                  <Plus className="size-4" aria-hidden="true" />
+                </button>
+              </div>
+            </FormField>
+          )}
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.cadence}</legend>
@@ -163,27 +233,29 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
                 )
               })}
             </div>
-            <p className="mt-1.5 text-sm text-muted-foreground">{visibility === "PRIVATE" ? t.visibilityPrivateHelp : t.visibilityPublicHelp}</p>
+            <p className="mt-1.5 text-sm text-brand-slate">{visibility === "PRIVATE" ? t.visibilityPrivateHelp : t.visibilityPublicHelp}</p>
           </fieldset>
 
-          <fieldset>
-            <legend className="mb-1 block text-sm font-semibold text-brand-navy">{t.payoutOrder}</legend>
-            <p className="mb-2 text-sm text-muted-foreground">{t.payoutOrderHelp}</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {PAYOUT_ORDERS.map((o) => {
-                const [title, help, Icon] = o === "BEST_SCORE_FIRST" ? [t.bestFirst, t.bestFirstHelp, TrendingUp] : [t.bestLast, t.bestLastHelp, TrendingDown]
-                return (
-                  <button type="button" key={o} aria-pressed={payoutOrder === o} onClick={() => setPayoutOrder(o)} className={card(payoutOrder === o)}>
-                    <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                      <Icon className={cn("size-4 shrink-0", payoutOrder === o ? "text-brand-violet" : "text-brand-slate")} aria-hidden="true" />
-                      {title}
-                    </span>
-                    <span className="text-xs text-brand-slate">{help}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </fieldset>
+          {payoutMode === "PER_ROUND" && (
+            <fieldset>
+              <legend className="mb-1 block text-sm font-semibold text-brand-navy">{t.payoutOrder}</legend>
+              <p className="mb-2 text-sm text-brand-slate">{t.payoutOrderHelp}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {PAYOUT_ORDERS.map((o) => {
+                  const [title, help, Icon] = o === "BEST_SCORE_FIRST" ? [t.bestFirst, t.bestFirstHelp, TrendingUp] : [t.bestLast, t.bestLastHelp, TrendingDown]
+                  return (
+                    <button type="button" key={o} aria-pressed={payoutOrder === o} onClick={() => setPayoutOrder(o)} className={card(payoutOrder === o)}>
+                      <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                        <Icon className={cn("size-4 shrink-0", payoutOrder === o ? "text-brand-violet" : "text-brand-slate")} aria-hidden="true" />
+                        {title}
+                      </span>
+                      <span className="text-xs text-brand-slate">{help}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </fieldset>
+          )}
 
           {state.form && (
             <p role="alert" className="oc-fade-in rounded-xl bg-brand-mist p-3 text-sm font-medium text-brand-violet-ink">
@@ -219,19 +291,29 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
       </div>
 
       {/* Live Financial Projection Card (Bento Aside) */}
-      <aside className="rounded-[32px] border border-brand-navy bg-brand-navy p-6 text-brand-white shadow-sm sm:p-8 lg:col-span-5" aria-live="polite">
+      <aside className="relative isolate overflow-hidden rounded-[32px] border border-brand-navy bg-brand-navy p-6 text-brand-white shadow-sm sm:p-8 lg:col-span-5" aria-live="polite">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-16 -right-16 -z-10 size-48 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_42%,transparent),transparent)]"
+        />
         <div className="flex items-center justify-between">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-white/10 px-3 py-1 text-xs font-semibold text-brand-mint">
             <Zap className="size-3 text-brand-mint" aria-hidden="true" />
-            <span>{t.preview}</span>
+            <span>{payoutMode === "END" ? t.modeEnd : t.preview}</span>
           </div>
           <Coins className="size-5 text-brand-mint" aria-hidden="true" />
         </div>
 
         <div className="mt-6">
-          <p className="text-xs font-medium text-brand-on-navy">{t.payoutLine}</p>
-          <p className="mt-1 font-mono text-4xl font-extrabold tracking-tight text-brand-mint tabular-nums">{money(payout)}</p>
-          <p className="mt-1 text-xs text-brand-on-navy">{t.payoutHelp}</p>
+          <p className="text-xs font-medium text-brand-on-navy">
+            {payoutMode === "END" ? t.goalPreviewLabel : t.payoutLine}
+          </p>
+          <p className="mt-1 font-mono text-4xl font-extrabold tracking-tight text-brand-mint tabular-nums">
+            {payoutMode === "END" ? money(goalTotal) : money(payout)}
+          </p>
+          <p className="mt-1 text-xs text-brand-on-navy">
+            {payoutMode === "END" ? `${t.goalPreviewEach}: ${money(payout)}` : t.payoutHelp}
+          </p>
         </div>
 
         <dl className="mt-8 space-y-3 rounded-2xl border border-brand-white/10 bg-brand-white/5 p-4 text-xs">
@@ -251,7 +333,13 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
         {contribution !== null && members > 0n && (
           <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-brand-white/10 bg-brand-white/5 p-3 text-xs leading-relaxed text-brand-on-navy">
             <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-brand-mint" aria-hidden="true" />
-            <p>{fill(t.totalLine, { size: members.toString(), paid: money(pot), received: money(payout) })}</p>
+            <p>
+              {fill(t.totalLine, {
+                size: totalRoundsBig.toString(),
+                paid: money(memberSaved),
+                received: money(payout),
+              })}
+            </p>
           </div>
         )}
       </aside>

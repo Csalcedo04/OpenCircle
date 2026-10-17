@@ -57,6 +57,14 @@ export type Round = {
   contributions: Contribution[]
 }
 
+export type SeatPayout = {
+  expected: Amount
+  saved: Amount
+  payoutAt: string | null
+  status: "SCHEDULED" | "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED"
+  received: Amount | null
+}
+
 export type Seat = {
   memberId: string
   seatId?: string | undefined
@@ -66,6 +74,7 @@ export type Seat = {
   collateralValue: string
   grant: GrantMode | null
   isApprover?: boolean | undefined
+  payout?: SeatPayout | null | undefined
 }
 
 export type Circle = {
@@ -90,6 +99,11 @@ export type Circle = {
   payoutOrder?: "BEST_SCORE_FIRST" | "BEST_SCORE_LAST" | undefined
   /** Who decides applications: the creator and delegates, or a majority of members. */
   approvalMode?: "DELEGATES" | "MAJORITY" | undefined
+  payoutMode?: "PER_ROUND" | "END" | undefined
+  goal?: Amount | null | undefined
+  roundsTotal?: number | null | undefined
+  poolCollected?: Amount | null | undefined
+  payoutPerMember?: Amount | null | undefined
 }
 
 export type Review = {

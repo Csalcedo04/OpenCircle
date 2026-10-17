@@ -67,7 +67,15 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
       </Link>
 
       {/* Header Bento Card */}
-      <header className="mt-4 rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
+      <header className="relative isolate mt-4 overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 shadow-[0_24px_48px_-28px_color-mix(in_srgb,var(--color-brand-navy)_18%,transparent)] sm:p-8">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden opacity-45 select-none">
+          <svg viewBox="0 0 1200 320" fill="none" className="h-full w-full">
+            <circle cx="1040" cy="110" r="180" stroke="var(--color-brand-line)" strokeWidth="1.5" strokeDasharray="5 7" />
+            <circle cx="1040" cy="110" r="275" stroke="color-mix(in srgb, var(--color-brand-violet) 25%, transparent)" strokeWidth="1" />
+            <path d="M 560 290 Q 840 30 1180 180" stroke="color-mix(in srgb, var(--color-brand-mint) 65%, transparent)" strokeWidth="2" strokeDasharray="4 6" />
+          </svg>
+        </div>
+
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
           <TrustDial trust={trust} label={t.member.trustScore} size="lg" />
           <div className="min-w-0">
@@ -79,9 +87,9 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
               {member.name}
             </h1>
             <p className="mt-1 text-xs text-brand-slate">{t.member.scoreHelp}</p>
-            <div className="mt-3 flex items-center gap-2 text-xs text-brand-slate">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-brand-slate">
               <Wallet className="size-3.5 shrink-0 text-brand-violet" />
-              <code className="rounded-md bg-brand-canvas px-2 py-0.5 font-mono text-[11px] text-brand-navy break-all border border-brand-line/60">
+              <code className="rounded-full bg-brand-mist px-3 py-1 font-mono text-[11px] font-medium text-brand-navy break-all">
                 {member.walletAddress ?? "—"}
               </code>
               {member.memberSince && (
@@ -100,16 +108,38 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
           </div>
         </div>
 
-        {/* 4 Performance Metric Cards */}
+        {/* 4 Performance Metric Cards: 3 Mist Wells + 1 Deep Navy Authority Card */}
         <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {stats.map((s) => (
-            <div key={s.label} className="rounded-2xl border border-brand-line/70 bg-brand-canvas p-4 text-center">
-              <dt className="text-xs font-medium text-brand-slate">{s.label}</dt>
-              <dd className={`mt-1 font-mono text-3xl font-extrabold tracking-tight tabular-nums ${s.color}`}>
-                {s.value}
-              </dd>
-            </div>
-          ))}
+          {stats.map((s, idx) => {
+            const isNavy = idx === 3
+            return (
+              <div
+                key={s.label}
+                className={
+                  isNavy
+                    ? "relative isolate overflow-hidden rounded-2xl bg-brand-navy p-4 text-center text-brand-white"
+                    : "rounded-2xl bg-brand-mist p-4 text-center"
+                }
+              >
+                {isNavy && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -top-10 -right-10 -z-10 size-28 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_45%,transparent),transparent)]"
+                  />
+                )}
+                <dt className={isNavy ? "text-xs font-medium text-brand-on-navy" : "text-xs font-medium text-brand-navy/75"}>
+                  {s.label}
+                </dt>
+                <dd
+                  className={`mt-1 font-mono text-3xl font-extrabold tracking-tight tabular-nums ${
+                    isNavy ? "text-brand-mint" : s.color
+                  }`}
+                >
+                  {s.value}
+                </dd>
+              </div>
+            )
+          })}
         </dl>
       </header>
 

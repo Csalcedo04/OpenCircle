@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react"
 import Link from "next/link"
-import { Ban, Check, CircleCheck, CircleDashed, Clock, Copy, Globe, Link2, LoaderCircle, Mail, Send, Users } from "lucide-react"
+import { Ban, Check, CircleCheck, CircleDashed, Clock, Copy, Globe, Link2, LoaderCircle, Mail, RotateCw, Send, Users } from "lucide-react"
 import { ShareDialog } from "@/components/share-dialog"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,14 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import type { FriendDto } from "@/lib/api/friends"
 import type { InviteDto } from "@/lib/api/invites"
-import { createInviteAction, revokeInviteAction, type InviteFormState, type RevokeState } from "@/lib/actions/circle-invites"
+import {
+  createInviteAction,
+  revokeInviteAction,
+  rotateInviteCodeAction,
+  type InviteFormState,
+  type RevokeState,
+  type RotateStandingLinkState,
+} from "@/lib/actions/circle-invites"
 import { localizedInviteUrl } from "@/lib/flows/circle-invite"
 import { CODE_EXPIRIES, DEFAULT_DIRECT_EXPIRY, DIRECT_EXPIRIES, inviteeLabel, type InviteStatus } from "@/lib/flows/invites"
 import { cn } from "@/lib/utils"
@@ -28,6 +35,7 @@ interface Props {
   invites: InviteDto[]
   /** Null when the friends list couldn't be loaded. */
   friends: FriendDto[] | null
+  standingInviteUrl?: string | null | undefined
   t: Dictionary["invites"]
   tShare: Dictionary["share"]
 }
@@ -267,13 +275,92 @@ function InviteRow({ invite, locale, circleId, circleName, t, tShare }: { invite
   )
 }
 
-export function InviteManager({ locale, circleId, circleName, open, invites, friends, t, tShare }: Props) {
+function StandingLinkCard({
+  locale,
+  circleId,
+  circleName,
+  initialUrl,
+  t,
+  tShare,
+}: {
+  locale: Locale
+  circleId: string
+  circleName: string
+  initialUrl: string
+  t: Dictionary["invites"]
+  tShare: Dictionary["share"]
+}) {
+  const [state, action, pending] = useActionState<RotateStandingLinkState, FormData>(
+    rotateInviteCodeAction.bind(null, locale, circleId),
+    { error: null, inviteUrl: initialUrl, rotated: false },
+  )
+  const rawUrl = state.inviteUrl ?? initialUrl
+  const fullUrl = localizedInviteUrl(rawUrl, locale)
+
+  return (
+    <div className="rounded-2xl border border-brand-line/70 bg-brand-canvas p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-brand-navy">{t.standingLinkTitle}</p>
+          <p className="mt-0.5 text-xs text-brand-slate">{t.standingLinkHelp}</p>
+        </div>
+        <form action={action} className="shrink-0">
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={pending}
+            className="h-9 rounded-full border-brand-line bg-brand-white px-3.5 text-xs font-semibold text-brand-navy hover:bg-brand-mist"
+          >
+            {pending ? <LoaderCircle className="size-3.5 motion-safe:animate-spin" aria-hidden="true" /> : <RotateCw className="size-3.5" aria-hidden="true" />}
+            <span>{pending ? t.rotatingLink : t.rotateLink}</span>
+          </Button>
+        </form>
+      </div>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <input
+          readOnly
+          value={fullUrl}
+          onFocus={(e) => e.currentTarget.select()}
+          aria-label={t.standingLinkTitle}
+          className="w-full min-w-0 flex-1 rounded-xl border border-brand-line bg-brand-white px-3 py-2 font-mono text-xs text-brand-navy outline-none"
+        />
+        <div className="flex flex-wrap gap-2">
+          <CopyButton url={fullUrl} t={t} />
+          <ShareDialog url={fullUrl} circleName={circleName} t={tShare} compact />
+        </div>
+      </div>
+      {state.rotated && (
+        <p role="status" className="mt-2.5 text-xs font-semibold text-brand-navy">
+          {t.rotatedNotice}
+        </p>
+      )}
+      {state.error && (
+        <p role="alert" className="mt-2.5 text-xs font-semibold text-brand-violet-ink">
+          {t.errors[state.error]}
+        </p>
+      )}
+    </div>
+  )
+}
+
+export function InviteManager({ locale, circleId, circleName, open, invites, friends, standingInviteUrl, t, tShare }: Props) {
   const [mode, setMode] = useState<Mode>("code")
   const codes = invites.filter((i) => i.kind === "CODE")
   const people = invites.filter((i) => i.kind === "DIRECT")
 
   return (
     <div className="space-y-8">
+      {open && standingInviteUrl && (
+        <StandingLinkCard
+          locale={locale}
+          circleId={circleId}
+          circleName={circleName}
+          initialUrl={standingInviteUrl}
+          t={t}
+          tShare={tShare}
+        />
+      )}
+
       {open ? (
         <div className="space-y-5">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

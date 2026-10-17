@@ -104,7 +104,12 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const seats = [...circle.seats].sort((a, b) => a.payoutRound - b.payoutRound)
   const beneficiarySeat = round && round.beneficiaryId ? seatFor(circle, round.beneficiaryId) : undefined
   const coverage = beneficiarySeat ? evaluateCoverage(circle, beneficiarySeat) : undefined
-  const beneficiaryName = round && round.beneficiaryId ? firstName(nameOf(round.beneficiaryId)) : "—"
+  const beneficiaryName =
+    circle.payoutMode === "END"
+      ? t.circle.goalRoundBeneficiary
+      : round && round.beneficiaryId
+        ? firstName(nameOf(round.beneficiaryId))
+        : "—"
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
   const ownContribution = round && viewerId ? round.contributions.find((c) => c.memberId === viewerId) : undefined
@@ -161,6 +166,11 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                 <Users className="size-3 text-brand-navy/70" aria-hidden="true" />
                 <span>{fill(t.circles.members, { count: circle.size })}</span>
               </span>
+              {circle.payoutMode === "END" && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-navy px-3 py-1 text-xs font-semibold text-brand-mint">
+                  <span>{t.circle.goalBadge}</span>
+                </span>
+              )}
               {access.visibility === "PRIVATE" ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-violet/20 bg-brand-violet/10 px-3 py-1 text-xs font-semibold text-brand-violet-ink">
                   <Lock className="size-3" aria-hidden="true" />
@@ -232,13 +242,52 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             />
             <p className="flex items-center gap-1.5 text-xs font-medium text-brand-on-navy">
               <Coins className="size-3.5 text-brand-mint" />
-              <span>{t.circle.potLabel}</span>
+              <span>{circle.payoutMode === "END" && circle.goal ? t.circle.goalTarget : t.circle.potLabel}</span>
             </p>
             <p className="mt-1.5 text-2xl font-semibold tracking-[-0.02em] text-brand-mint tabular-nums">
-              {money(pot)}
+              {circle.payoutMode === "END" && circle.goal ? formatAmount(circle.goal, locale) : money(pot)}
             </p>
           </div>
         </div>
+
+        {/* Common Goal Progress Bar when circle.payoutMode === "END" */}
+        {circle.payoutMode === "END" && circle.goal && (
+          <div className="mt-4 rounded-2xl border border-brand-line/70 bg-brand-canvas p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-brand-navy">{t.circle.goalProgressTitle}</span>
+              {circle.payoutPerMember && (
+                <span className="font-medium text-brand-slate">
+                  {t.circle.goalPerMember}:{" "}
+                  <strong className="font-mono font-bold text-brand-navy tabular-nums">
+                    {formatAmount(circle.payoutPerMember, locale)}
+                  </strong>
+                </span>
+              )}
+            </div>
+            <div className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-brand-mist">
+              <div
+                className="h-full rounded-full bg-brand-violet transition-[width]"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    percent(BigInt(circle.poolCollected?.value ?? "0"), BigInt(circle.goal.value)),
+                  )}%`,
+                }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-xs text-brand-slate">
+              <span>
+                {t.circle.goalCollected}:{" "}
+                <strong className="font-mono font-semibold text-brand-navy tabular-nums">
+                  {circle.poolCollected ? formatAmount(circle.poolCollected, locale) : money(0n)}
+                </strong>
+              </span>
+              <span className="font-mono font-semibold text-brand-navy tabular-nums">
+                {formatAmount(circle.goal, locale)}
+              </span>
+            </div>
+          </div>
+        )}
       </header>
 
       {reminder && round && (
@@ -261,6 +310,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
               open={circle.status === "OPEN"}
               isCreator={access.isCreator}
               visibility={access.visibility}
+              standingInviteUrl={access.inviteUrl}
               t={t}
             />
           </Suspense>
@@ -596,7 +646,7 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                 return (
                   <li key={m.id} className="flex items-center gap-4 rounded-2xl border border-brand-line/70 bg-brand-canvas p-4">
                     <TrustDial trust={trust} label={t.member.trustScore} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <Link href={`/${locale}/members/${m.id}`} className="text-sm font-semibold text-brand-navy hover:underline">
                         {m.name}
                       </Link>
@@ -604,6 +654,11 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                         {t.member.levels[trust.level]} · {t.circle.grantModes[seat.grant ?? "NONE"]}
                         {BigInt(seat.collateralValue) > 0n ? `, ${t.circle.collateral.toLowerCase()} ${money(BigInt(seat.collateralValue))}` : ""}
                       </p>
+                      {seat.payout && (
+                        <p className="mt-1 font-mono text-[11px] font-medium text-brand-navy/85 tabular-nums">
+                          {formatAmount(seat.payout.saved, locale)} / {formatAmount(seat.payout.expected, locale)}
+                        </p>
+                      )}
                     </div>
                   </li>
                 )

@@ -119,6 +119,48 @@ describe("toCircle", () => {
     expect(c.rounds[0]?.beneficiaryId).toBe("user-a")
     expect(c.rounds[1]?.beneficiaryId).toBe("")
   })
+
+  it("maps END common-goal circles and keeps round beneficiaryId empty instead of falling back to seat #1", () => {
+    const endDto: CircleDto = {
+      ...dto,
+      payoutMode: "END",
+      goal: { value: "8000000", ...COP },
+      roundsTotal: 2,
+      poolCollected: { value: "4000000", ...COP },
+      payoutPerMember: { value: "3920000", ...COP },
+      seats: [
+        {
+          ...dto.seats[0]!,
+          payout: {
+            expected: { value: "3920000", ...COP },
+            saved: { value: "4000000", ...COP },
+            payoutAt: "2026-03-01T00:00:00.000Z",
+            status: "COMPLETED",
+            received: { value: "3920000", ...COP },
+          },
+        },
+        { ...dto.seats[1]! },
+      ],
+      rounds: [
+        {
+          number: 1,
+          state: "COLLECTING",
+          beneficiaryMemberId: null,
+          startsAt: "2026-01-03T00:00:00.000Z",
+          deadline: "2026-02-03T00:00:00.000Z",
+          contributions: [],
+        },
+      ],
+    }
+    const c = toCircle(endDto)
+    expect(c.payoutMode).toBe("END")
+    expect(c.goal).toEqual({ value: "8000000", ...COP })
+    expect(c.poolCollected).toEqual({ value: "4000000", ...COP })
+    expect(c.payoutPerMember).toEqual({ value: "3920000", ...COP })
+    expect(c.rounds[0]?.beneficiaryId).toBe("")
+    expect(c.seats[0]?.payout?.status).toBe("COMPLETED")
+    expect(c.seats[1]?.payout).toBeNull()
+  })
 })
 
 describe("contributionStatus", () => {

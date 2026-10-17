@@ -144,18 +144,25 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
         </form>
       </div>
 
-      {/* Real-time Safe Round Simulator Bento Card */}
-      <aside className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-5" aria-live="polite">
-        <div className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-full bg-brand-violet/10 text-brand-violet-ink">
+      {/* Real-time Safe Round Simulator Bento Card (Deep Navy Authority Card) */}
+      <aside
+        className="relative isolate overflow-hidden rounded-[32px] border border-brand-navy bg-brand-navy p-6 text-brand-white shadow-sm sm:p-8 lg:col-span-5"
+        aria-live="polite"
+      >
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-16 -right-16 -z-10 size-48 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_42%,transparent),transparent)]"
+        />
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-9 items-center justify-center rounded-full bg-brand-white/10 text-brand-mint">
             <ShieldCheck className="size-4.5" />
           </span>
-          <h2 className="text-lg font-bold tracking-tight text-brand-navy">{t.coverageTitle}</h2>
+          <h2 className="text-lg font-bold tracking-tight text-brand-white">{t.coverageTitle}</h2>
         </div>
-        <p className="mt-1 text-xs text-brand-slate">{t.coverageLead}</p>
-        <p className="mt-1 text-xs text-brand-slate">{t.worstCase}</p>
+        <p className="mt-2 text-xs leading-relaxed text-brand-on-navy">{t.coverageLead}</p>
+        <p className="mt-1 text-xs leading-relaxed text-brand-on-navy">{t.worstCase}</p>
 
-        <dl className="mt-6 space-y-2 rounded-2xl bg-brand-canvas p-4 border border-brand-line/60 text-xs">
+        <dl className="mt-6 space-y-2.5 rounded-2xl border border-brand-white/10 bg-brand-white/5 p-4 text-xs">
           {[
             [tc.owes, money(coverage.owes)],
             [tc.collateral, `− ${money(coverage.collateral)}`],
@@ -167,11 +174,11 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
               key={label}
               className={cn(
                 "flex items-baseline justify-between gap-4",
-                i === 3 && "border-t border-brand-line pt-2 font-bold text-brand-navy",
+                i === 3 && "border-t border-brand-white/15 pt-2.5 font-bold text-brand-mint",
               )}
             >
-              <dt className="text-brand-slate">{label}</dt>
-              <dd className="font-mono tabular-nums">{value}</dd>
+              <dt className="text-brand-on-navy">{label}</dt>
+              <dd className="font-mono tabular-nums text-brand-white">{value}</dd>
             </div>
           ))}
         </dl>
@@ -181,7 +188,7 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
             "mt-6 flex items-start gap-2.5 rounded-2xl p-4 text-xs font-semibold leading-relaxed",
             coverage.eligible
               ? "bg-brand-mint text-brand-navy border border-brand-mint"
-              : "bg-brand-navy text-brand-white border border-brand-navy",
+              : "bg-brand-white/10 text-brand-white border border-brand-white/15",
           )}
         >
           {coverage.eligible ? (

@@ -31,6 +31,32 @@ describe("parseCreateForm", () => {
       expect(parseCreateForm({ ...valid, amount }).ok, amount).toBe(false)
     }
   })
+
+  it("builds an END common-goal request with BigInt goalValue and roundsTotal", () => {
+    expect(parseCreateForm({ ...valid, payoutMode: "END", roundsTotal: "10" })).toEqual({
+      ok: true,
+      request: {
+        name: "Natillera Laureles",
+        payoutMode: "END",
+        goalValue: "100000000",
+        roundsTotal: 10,
+        size: 5,
+        cadence: "WEEKLY",
+        visibility: "PRIVATE",
+      },
+    })
+  })
+
+  it("rejects out-of-range roundsTotal in END mode", () => {
+    expect(parseCreateForm({ ...valid, payoutMode: "END", roundsTotal: "1" })).toEqual({
+      ok: false,
+      errors: { roundsTotal: "roundsTotal" },
+    })
+    expect(parseCreateForm({ ...valid, payoutMode: "END", roundsTotal: "53" })).toEqual({
+      ok: false,
+      errors: { roundsTotal: "roundsTotal" },
+    })
+  })
 })
 
 describe("parseJoinForm", () => {
@@ -58,6 +84,8 @@ describe("circleErrorKey", () => {
     expect(circleErrorKey("ALREADY_MEMBER")).toBe("alreadyMember")
     expect(circleErrorKey("CIRCLE_NOT_OPEN")).toBe("notOpen")
     expect(circleErrorKey("KYC_REQUIRED")).toBe("kyc")
+    expect(circleErrorKey("DEBT_OUTSTANDING")).toBe("debtOutstanding")
+    expect(circleErrorKey("GOAL_NOT_DIVISIBLE")).toBe("goalNotDivisible")
     expect(circleErrorKey("NOT_CREATOR")).toBe("notApprover")
     expect(circleErrorKey("BACKEND_UNAVAILABLE")).toBe("unavailable")
     expect(circleErrorKey("NOT_FOUND")).toBe("featureUnavailable")

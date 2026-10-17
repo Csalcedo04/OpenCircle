@@ -197,7 +197,16 @@ export function getApiCircle(id: string, invite?: string): Promise<ApiCircle> {
 const amountSchema = z.object({ value: z.string().regex(/^\d+$/), assetCode: z.string(), assetScale: z.number().int() })
 const cadenceSchema = z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY"])
 const payoutOrderSchema = z.enum(["BEST_SCORE_FIRST", "BEST_SCORE_LAST"])
+const payoutModeSchema = z.enum(["PER_ROUND", "END"])
 const circleStatusSchema = z.enum(["OPEN", "ACTIVE", "COMPLETED"])
+
+const seatPayoutSchema = z.object({
+  expected: amountSchema,
+  saved: amountSchema,
+  payoutAt: z.string().nullable(),
+  status: z.enum(["SCHEDULED", "PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"]),
+  received: amountSchema.nullable(),
+})
 
 const recordSchema = z.object({
   payments: z.object({ onTime: z.number().int(), late: z.number().int(), missed: z.number().int() }),
@@ -236,6 +245,11 @@ export const circleSchema = circleSummarySchema.extend({
   feeBps: z.number().int(),
   threshold: amountSchema,
   grantWeightBps: z.number().int(),
+  payoutMode: payoutModeSchema.nullable().optional(),
+  goal: amountSchema.nullable().optional(),
+  roundsTotal: z.number().int().nullable().optional(),
+  poolCollected: amountSchema.nullable().optional(),
+  payoutPerMember: amountSchema.nullable().optional(),
   poolWalletAddress: z.string(),
   startedAt: z.string().nullable(),
   currentRound: z.number().int().nullable(),
@@ -250,6 +264,7 @@ export const circleSchema = circleSummarySchema.extend({
       record: recordSchema,
       /** Accepts applicants and invites people (the creator always does). */
       isApprover: z.boolean().nullable().optional().transform((v) => v ?? false),
+      payout: seatPayoutSchema.nullable().optional(),
     }),
   ),
   rounds: z.array(
@@ -312,10 +327,12 @@ const memberSchema = recordSchema.extend({
 
 export type CircleSummaryDto = z.infer<typeof circleSummarySchema>
 export type CircleDto = z.infer<typeof circleSchema>
+export type SeatPayoutDto = z.infer<typeof seatPayoutSchema>
 export type MemberDto = z.infer<typeof memberSchema>
 export type ReviewDto = z.infer<typeof reviewSchema>
 export type Cadence = z.infer<typeof cadenceSchema>
 export type PayoutOrder = z.infer<typeof payoutOrderSchema>
+export type PayoutMode = z.infer<typeof payoutModeSchema>
 
 /** `?invite=` for circles shared by link (private circles). */
 const inviteQuery = (invite: string | undefined) => (invite ? `?invite=${encodeURIComponent(invite)}` : "")
@@ -355,8 +372,14 @@ export interface NewCircleRequest extends SeatRequest {
   name: string
   /** Optional; the create form doesn't ask for it (the dev form still does). */
   city?: string
-  /** Minor units, integer string. */
-  contributionValue: string
+  /** Minor units, integer string (required for PER_ROUND; mutually exclusive with roundsTotal for END). */
+  contributionValue?: string | undefined
+  /** PER_ROUND (default) or END (goal circle where the pot is held until the last round). */
+  payoutMode?: PayoutMode | undefined
+  /** Minor units, integer string (required when payoutMode === "END"). */
+  goalValue?: string | undefined
+  /** Number of rounds when payoutMode === "END" (mutually exclusive with contributionValue). */
+  roundsTotal?: number | undefined
   size: number
   cadence: Cadence
   /** Best score first unless set; the API defaults to BEST_SCORE_FIRST. */
@@ -369,6 +392,11 @@ export interface NewCircleRequest extends SeatRequest {
 
 export function createCircle(input: NewCircleRequest): Promise<CircleDto> {
   return backendFetch("/circles", circleSchema, { method: "POST", body: JSON.stringify(input) })
+}
+
+/** Rotates the circle's standing invite link (creator or approver while OPEN). */
+export function rotateCircleInviteCode(id: string): Promise<CircleDto> {
+  return backendFetch(`/circles/${encodeURIComponent(id)}/invite-code`, circleSchema, { method: "POST" })
 }
 
 /** Asks for a seat in a PUBLIC circle; its approvers (or a majority) decide. */
@@ -404,7 +432,47 @@ export function setCircleApprovers(id: string, memberIds: readonly string[]): Pr
   })
 }
 
-// ── The signed-in user's savings and circles ───────────────────────────────
+// ── The signed-in user's savings, debts and circles ────────────────────────
+
+export const debtSchema = z.object({
+  contributionId: z.uuid(),
+  circleId: z.uuid(),
+  circleName: z.string(),
+  roundNumber: z.number().int(),
+  amount: amountSchema,
+  deadline: z.string(),
+  status: z.enum(["OWED", "PAYING"]),
+})
+
+export type DebtDto = z.infer<typeof debtSchema>
+
+const payDebtResultSchema = z.union([
+  z.object({ status: z.literal("PAID") }),
+  debtSchema,
+])
+
+export type PayDebtResult = z.infer<typeof payDebtResultSchema>
+
+/** Defaulted contributions the caller owes their circles; empty if none or if endpoint isn't available. */
+export async function getMyDebts(): Promise<DebtDto[]> {
+  try {
+    return await backendFetch("/users/me/debts", z.array(debtSchema))
+  } catch (err) {
+    if (err instanceof BackendError && (err.code === "PROFILE_NOT_FOUND" || err.status === 404)) return []
+    throw err
+  }
+}
+
+/** Pays an open debt through the caller's Open Payments grant (200 PAID or 202 PAYING). */
+export function payMyDebt(contributionId: string): Promise<PayDebtResult> {
+  return backendFetch(`/users/me/debts/${encodeURIComponent(contributionId)}/pay`, payDebtResultSchema, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export const payDebt = payMyDebt
+
 
 const savingsSchema = z.object({
   walletAddress: z.string(),
@@ -524,20 +592,6 @@ export type RetryContributionResult = z.infer<typeof retryContributionSchema>
 /** Retries a failed contribution while its round is still COLLECTING before the deadline. */
 export function retryContribution(contributionId: string): Promise<RetryContributionResult> {
   return backendFetch(`/users/me/contributions/${encodeURIComponent(contributionId)}/retry`, retryContributionSchema, {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-const payDebtResponseSchema = z.object({
-  status: z.enum(["PAID", "PAYING", "OWED"]),
-})
-
-export type PayDebtResult = z.infer<typeof payDebtResponseSchema>
-
-/** Pays an open defaulted contribution after the round closed. */
-export function payDebt(contributionId: string): Promise<PayDebtResult> {
-  return backendFetch(`/users/me/debts/${encodeURIComponent(contributionId)}/pay`, payDebtResponseSchema, {
     method: "POST",
     body: JSON.stringify({}),
   })

@@ -13,12 +13,12 @@ const navLink =
 export async function SiteHeader() {
   const { locale, t } = await getDictionary()
   return (
-    <header className="relative isolate overflow-hidden bg-brand-navy text-brand-white">
+    <header className="relative isolate overflow-hidden bg-brand-navy text-brand-white max-md:sticky max-md:top-0 max-md:z-30 max-md:bg-brand-navy/95 max-md:backdrop-blur-md">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -top-20 right-1/4 -z-10 h-40 w-96 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_28%,transparent),transparent)] blur-2xl"
       />
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3.5 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-2.5 sm:px-6 sm:py-3.5">
         <Link
           href={`/${locale}`}
           aria-label={t.nav.home}
@@ -39,7 +39,7 @@ export async function SiteHeader() {
           </Link>
           <LocaleToggle locale={locale} label={t.nav.language} switchTo={t.nav.switchTo} />
           <Suspense fallback={null}>
-            <HeaderAccount locale={locale} t={t.nav} linkClass={navLink} />
+            <HeaderAccount locale={locale} t={t.nav} notificationsT={t.notifications} linkClass={navLink} />
           </Suspense>
         </nav>
       </div>

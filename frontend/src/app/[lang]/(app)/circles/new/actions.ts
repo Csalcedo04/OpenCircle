@@ -20,6 +20,8 @@ export async function createCircleAction(locale: string, _prev: CreateState, for
     cadence: text(formData.get("cadence")),
     payoutOrder: text(formData.get("payoutOrder")),
     visibility: text(formData.get("visibility")),
+    payoutMode: text(formData.get("payoutMode")),
+    roundsTotal: text(formData.get("roundsTotal")),
   })
   if (!parsed.ok) return { errors: parsed.errors, form: null }
 
