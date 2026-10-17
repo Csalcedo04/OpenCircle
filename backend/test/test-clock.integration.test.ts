@@ -40,12 +40,33 @@ let payments: FakePayments = fakePayments();
 let realClock = Date.parse("2026-10-16T12:00:00Z");
 const createdUserIds: string[] = [];
 
+// Leftovers from an interrupted run (or one running at the same time) are found by the name prefix
+// and the wallet host, then removed in FK order: contributions → rounds → seats → circles → clocks → users.
 async function deleteTestData(): Promise<void> {
-  const testCircles = await db
-    .select({ id: circles.id })
-    .from(circles)
-    .where(or(like(circles.name, `${PREFIX}%`), createdUserIds.length > 0 ? inArray(circles.createdBy, createdUserIds) : undefined));
-  const circleIds = testCircles.map((c) => c.id);
+  const userIds = [
+    ...new Set([
+      ...createdUserIds,
+      ...(await db.select({ id: users.id }).from(users).where(like(users.fullName, `${PREFIX}%`))).map((u) => u.id),
+    ]),
+  ];
+  const clockIds = (
+    await db
+      .select({ id: testClocks.id })
+      .from(testClocks)
+      .where(or(like(testClocks.name, `${PREFIX}%`), userIds.length > 0 ? inArray(testClocks.ownerUserId, userIds) : undefined))
+  ).map((c) => c.id);
+  const circleIds = (
+    await db
+      .select({ id: circles.id })
+      .from(circles)
+      .where(
+        or(
+          like(circles.name, `${PREFIX}%`),
+          userIds.length > 0 ? inArray(circles.createdBy, userIds) : undefined,
+          clockIds.length > 0 ? inArray(circles.testClockId, clockIds) : undefined,
+        ),
+      )
+  ).map((c) => c.id);
   if (circleIds.length > 0) {
     const roundIds = (await db.select({ id: rounds.id }).from(rounds).where(inArray(rounds.circleId, circleIds))).map((r) => r.id);
     if (roundIds.length > 0) await db.delete(contributions).where(inArray(contributions.roundId, roundIds));
@@ -53,14 +74,14 @@ async function deleteTestData(): Promise<void> {
     await db.delete(circleMembers).where(inArray(circleMembers.circleId, circleIds));
     await db.delete(circles).where(inArray(circles.id, circleIds));
   }
-  await db.delete(testClocks).where(like(testClocks.name, `${PREFIX}%`));
+  if (clockIds.length > 0) await db.delete(testClocks).where(inArray(testClocks.id, clockIds));
   const testWallets = (await db.select({ id: wallets.id }).from(wallets).where(like(wallets.addressUrl, `https://${HOST}/%`))).map((w) => w.id);
   if (testWallets.length > 0) {
     await db.delete(walletGrants).where(inArray(walletGrants.walletId, testWallets));
     await db.delete(auditEvents).where(inArray(auditEvents.walletId, testWallets));
     await db.update(users).set({ opWallet: null }).where(inArray(users.opWallet, testWallets));
   }
-  await db.delete(users).where(or(like(users.fullName, `${PREFIX}%`), createdUserIds.length > 0 ? inArray(users.id, createdUserIds) : undefined));
+  if (userIds.length > 0) await db.delete(users).where(inArray(users.id, userIds));
   if (testWallets.length > 0) await db.delete(wallets).where(inArray(wallets.id, testWallets));
 }
 
@@ -165,10 +186,15 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
     server = await startServer(fakeServices({ circles: circleService, kyc, testClocks: testClocksService }));
   });
 
+  // Always release the connection, even if setup failed, so the run can't hang.
   after(async () => {
-    await deleteTestData();
-    await server.close();
-    await db.$client.end();
+    try {
+      await deleteTestData();
+    } finally {
+      // Unset when setup failed before starting it.
+      if (server as TestServer | undefined) await server.close();
+      await db.$client.end();
+    }
   });
 
   test("a monthly circle of 3 runs its 3 periods; each member pays once per period", async () => {
