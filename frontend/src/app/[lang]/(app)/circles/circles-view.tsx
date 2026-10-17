@@ -116,11 +116,15 @@ export function CirclesView({ allCircles, myCircles, locale, t }: Props) {
                   {/* Top Bar: Location, Cadence & Status */}
                   <div className="flex items-center justify-between gap-3">
                     <div className="inline-flex flex-wrap items-center gap-1.5 text-xs font-medium text-brand-slate">
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="size-3.5 text-brand-slate" aria-hidden="true" />
-                        <span>{circle.city}</span>
-                      </span>
-                      <span className="text-brand-line">•</span>
+                      {circle.city && (
+                        <>
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="size-3.5 text-brand-slate" aria-hidden="true" />
+                            <span>{circle.city}</span>
+                          </span>
+                          <span className="text-brand-line">•</span>
+                        </>
+                      )}
                       <span className="inline-flex items-center gap-1">
                         <Calendar className="size-3.5 text-brand-slate" aria-hidden="true" />
                         <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>

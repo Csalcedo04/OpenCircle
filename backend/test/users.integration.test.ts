@@ -12,6 +12,7 @@ import { createWalletConsentService } from "../src/services/wallet-consent.servi
 import { createWalletAddressService } from "../src/services/open-payments/wallet-address.service";
 import { createUserService } from "../src/services/user.service";
 import { createWalletService, linkWalletInTx, walletInUse } from "../src/services/wallet.service";
+import { createAccountService } from "../src/services/account.service";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
 import { fakeOpenPayments, fakeServices, TEST_WALLET_HOST } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
@@ -112,6 +113,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     server = await startServer({
       users: userService,
       wallets: createWalletService(db),
+      account: createAccountService({ db }),
       walletAddresses: createWalletAddressService(fakeOpenPayments()),
       walletConsent: createWalletConsentService({
         db,

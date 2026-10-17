@@ -1,9 +1,17 @@
-import { ArrowDown, ArrowUpRight, CheckCircle2, Coins, Globe2, ShieldCheck, Store, Zap } from "lucide-react"
+import { ArrowDown, ArrowUpRight, CheckCircle2, Coins, ListOrdered, ShieldCheck, TrendingUp } from "lucide-react"
+import { fill } from "@/i18n/config"
 import type { LandingDictionary } from "@/i18n/dictionaries/landing.es"
-import { SectionHeading } from "./shared"
+import { Avatar, PEOPLE, SectionHeading } from "./shared"
+
+// Sample scores for the payout-order mockup (ICS 0–100; a newcomer has none yet).
+const RANKING = [
+  { person: PEOPLE[0], score: 92 },
+  { person: PEOPLE[2], score: 81 },
+  { person: PEOPLE[1], score: null },
+] as const
 
 export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
-  const [savings, merchant, ilp] = t.cards
+  const [savings, order, safety] = t.cards
 
   return (
     <section aria-labelledby="soluciones-title" className="py-16 sm:py-24 bg-brand-canvas/60">
@@ -56,29 +64,29 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
                     <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.frequencyValue}</p>
                   </div>
                   <div className="rounded-2xl bg-brand-white p-3 shadow-2xs">
-                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.custodyLabel}</p>
-                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.custodyValue}</p>
+                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.orderLabel}</p>
+                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.orderValue}</p>
                   </div>
                   <div className="rounded-2xl bg-brand-white p-3 shadow-2xs">
-                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.guaranteeLabel}</p>
-                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.guaranteeValue}</p>
+                    <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockSavings.approvalLabel}</p>
+                    <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{t.mockSavings.approvalValue}</p>
                   </div>
                 </div>
               </div>
             </article>
           )}
 
-          {/* Card 2: Merchant Payouts (5 cols) */}
-          {merchant && (
+          {/* Card 2: Payout order by reliability score (5 cols) */}
+          {order && (
             <article className="oc-reveal relative flex flex-col justify-between overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs shrink-0 w-[88vw] sm:w-[75vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-5">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-navy/80">
-                    <Store className="size-3.5 text-brand-violet" />
-                    {merchant.tag}
+                    <ListOrdered className="size-3.5 text-brand-violet" />
+                    {order.tag}
                   </span>
                   <h3 className="mt-3 text-xl sm:text-2xl lg:text-3xl font-semibold tracking-[-0.02em] text-brand-navy">
-                    {merchant.title}
+                    {order.title}
                   </h3>
                 </div>
                 <span className="grid size-10 sm:size-11 shrink-0 place-items-center rounded-full border border-brand-line bg-brand-canvas text-brand-navy shadow-xs transition-transform duration-200 hover:scale-105">
@@ -86,84 +94,76 @@ export function UseCases({ t }: { t: LandingDictionary["useCases"] }) {
                 </span>
               </div>
 
-              <p className="mt-4 text-sm sm:text-base leading-relaxed text-brand-slate">{merchant.body}</p>
+              <p className="mt-4 text-sm sm:text-base leading-relaxed text-brand-slate">{order.body}</p>
 
-              {/* Live Payment Handle Pill */}
+              {/* Ranked payout order */}
               <div className="mt-6 sm:mt-8 rounded-[24px] sm:rounded-[28px] border border-brand-line bg-brand-navy p-4 sm:p-5 text-brand-white">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[10px] sm:text-[11px] text-brand-on-navy">Incoming Payment URI</span>
+                  <span className="text-[10px] sm:text-[11px] text-brand-on-navy">{t.mockOrder.heading}</span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-brand-mint px-2 py-0.5 text-[9px] sm:text-[10px] font-bold text-brand-navy">
-                    <Zap className="size-2.5 sm:size-3" />
-                    {merchant.metric}
+                    <TrendingUp className="size-2.5 sm:size-3" />
+                    {order.metric}
                   </span>
                 </div>
-                <p className="mt-2 font-mono text-xs sm:text-sm text-brand-mint break-all">
-                  $ilp.rafiki.money/creador-tienda
-                </p>
+                <ol className="mt-3 space-y-2">
+                  {RANKING.map(({ person, score }, i) => (
+                    <li key={person.name} className="flex items-center gap-3 text-xs sm:text-sm">
+                      <span className="w-14 shrink-0 text-[11px] text-brand-on-navy">{fill(t.mockOrder.round, { n: i + 1 })}</span>
+                      <Avatar name={person.name} tone={person.tone} size="sm" photo />
+                      <span className="flex-1 font-semibold">{person.name}</span>
+                      <span className="font-mono text-brand-mint tabular-nums">{score ?? t.mockOrder.newcomer}</span>
+                    </li>
+                  ))}
+                </ol>
                 <div className="mt-3 flex items-center justify-between border-t border-brand-white/10 pt-2 text-[10px] sm:text-[11px] text-brand-on-navy">
-                  <span>{t.mockMerchant.checkoutNote}</span>
-                  <span className="text-brand-white font-semibold">{t.mockMerchant.noFeeNote}</span>
+                  <span>{t.mockOrder.note}</span>
+                  <span className="text-brand-white font-semibold">{t.mockOrder.agreed}</span>
                 </div>
               </div>
             </article>
           )}
 
-          {/* Card 3: Interledger Cross-Border STREAM (12 cols) */}
-          {ilp && (
+          {/* Card 3: Protected payouts (12 cols) */}
+          {safety && (
             <article className="oc-reveal relative overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-xs shrink-0 w-[88vw] sm:w-[75vw] snap-center md:w-auto md:shrink md:snap-align-none lg:col-span-12">
               <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-center">
                 <div className="lg:col-span-6 space-y-3">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mist px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-navy/80">
-                    <Globe2 className="size-3.5 text-brand-violet" />
-                    {ilp.tag}
+                    <ShieldCheck className="size-3.5 text-brand-violet" />
+                    {safety.tag}
                   </span>
                   <h3 className="text-xl sm:text-2xl lg:text-3xl font-semibold tracking-[-0.02em] text-brand-navy">
-                    {ilp.title}
+                    {safety.title}
                   </h3>
-                  <p className="text-sm sm:text-base leading-relaxed text-brand-slate max-w-xl">{ilp.body}</p>
+                  <p className="text-sm sm:text-base leading-relaxed text-brand-slate max-w-xl">{safety.body}</p>
                   <div className="pt-2 flex flex-col sm:flex-row gap-2 sm:gap-4">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-navy">
-                      <CheckCircle2 className="size-4 text-brand-violet shrink-0" />
-                      {t.mockIlp.packetsLabel}
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-navy">
-                      <CheckCircle2 className="size-4 text-brand-violet shrink-0" />
-                      {t.mockIlp.settlementLabel}
-                    </span>
+                    {t.mockSafety.checks.map((check) => (
+                      <span key={check} className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-navy">
+                        <CheckCircle2 className="size-4 text-brand-violet shrink-0" />
+                        {check}
+                      </span>
+                    ))}
                   </div>
                 </div>
 
-                {/* Interactive Trace Visualization (Responsive mobile vertical, desktop horizontal) */}
+                {/* One round: contributions → coverage check → payout */}
                 <div className="lg:col-span-6 rounded-[24px] sm:rounded-[32px] border border-brand-line bg-brand-mist/60 p-4 sm:p-6">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs font-mono font-medium text-brand-navy/70">
-                    <span>ILP PACKET ROUTING</span>
-                    <span className="text-brand-violet-ink font-semibold">{ilp.metric}</span>
+                    <span className="uppercase">{t.mockSafety.heading}</span>
+                    <span className="text-brand-violet-ink font-semibold">{safety.metric}</span>
                   </div>
 
-                  <div className="mt-4 sm:mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-center">
-                    <div className="rounded-2xl border border-brand-line bg-brand-white p-3 text-center">
-                      <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockIlp.originLabel}</p>
-                      <p className="mt-1 font-mono text-xs sm:text-sm font-bold text-brand-navy">{t.mockIlp.originCurrency}</p>
-                      <p className="text-[10px] sm:text-[11px] text-brand-slate font-mono mt-0.5 break-all">$ilp.co/juan</p>
-                    </div>
-
-                    <div className="flex flex-col items-center justify-center py-1 sm:py-0">
-                      <span className="text-[10px] font-mono font-bold text-brand-violet uppercase">Rafiki Node</span>
-                      <div className="hidden sm:block w-full h-0.5 bg-gradient-to-r from-brand-violet to-brand-mint my-1 relative">
-                        <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-2 rounded-full bg-brand-navy" />
-                      </div>
-                      <div className="sm:hidden flex items-center justify-center my-1 text-brand-violet">
-                        <ArrowDown className="size-4 animate-bounce motion-reduce:animate-none" />
-                      </div>
-                      <span className="text-[10px] font-mono text-brand-slate">~180ms</span>
-                    </div>
-
-                    <div className="rounded-2xl border border-brand-line bg-brand-white p-3 text-center">
-                      <p className="text-[10px] uppercase font-bold text-brand-slate">{t.mockIlp.destinationLabel}</p>
-                      <p className="mt-1 font-mono text-xs sm:text-sm font-bold text-brand-navy">USD / EUR</p>
-                      <p className="text-[10px] sm:text-[11px] text-brand-slate font-mono mt-0.5 break-all">$rafiki.money/maria</p>
-                    </div>
-                  </div>
+                  <ol className="mt-4 sm:mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-stretch">
+                    {t.mockSafety.steps.map((step, i) => (
+                      <li key={step.label} className="relative rounded-2xl border border-brand-line bg-brand-white p-3 text-center">
+                        <p className="text-[10px] uppercase font-bold text-brand-slate">{step.label}</p>
+                        <p className="mt-1 text-xs sm:text-sm font-semibold text-brand-navy">{step.value}</p>
+                        {i < t.mockSafety.steps.length - 1 && (
+                          <ArrowDown className="mx-auto mt-2 size-4 text-brand-violet sm:hidden" aria-hidden="true" />
+                        )}
+                      </li>
+                    ))}
+                  </ol>
                 </div>
               </div>
             </article>

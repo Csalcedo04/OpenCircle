@@ -5,7 +5,7 @@ import { z } from "zod"
 
 const amountSchema = z.object({ value: z.string(), assetCode: z.string(), assetScale: z.int() })
 
-export const CIRCLE_CADENCES = ["WEEKLY", "MONTHLY"] as const
+export const CIRCLE_CADENCES = ["WEEKLY", "BIWEEKLY", "MONTHLY"] as const
 export type CircleCadence = (typeof CIRCLE_CADENCES)[number]
 
 export const apiCircleSchema = z.object({
@@ -65,7 +65,6 @@ export interface NewCircle {
   contributionValue: string
   size: number
   cadence: CircleCadence
-  payoutRound: number
   testClockId?: string | undefined
   visibility?: "PRIVATE" | "PUBLIC" | undefined
 }

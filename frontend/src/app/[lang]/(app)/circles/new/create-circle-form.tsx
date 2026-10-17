@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useActionState, useState } from "react"
-import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Minus, Plus, Sparkles, Users, Zap } from "lucide-react"
+import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Minus, Plus, Sparkles, TrendingDown, TrendingUp, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +10,7 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { CIRCLE_VISIBILITIES, type CircleVisibility } from "@/lib/flows/circle-invite"
-import { CADENCES, CIRCLE_ASSET_SCALE } from "@/lib/flows/circles"
+import { CADENCES, CIRCLE_ASSET_SCALE, MAX_SIZE, MIN_SIZE, PAYOUT_ORDERS } from "@/lib/flows/circles"
 import { cn } from "@/lib/utils"
 import { createCircleAction, type CreateState } from "./actions"
 
@@ -20,11 +20,9 @@ const FEE_BPS = 200
 
 type Props = { locale: Locale; t: Dictionary["create"]; tErr: Dictionary["circleErrors"] }
 
-const chip = (active: boolean) =>
-  cn(
-    "flex h-10 min-w-12 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition-all active:scale-95",
-    active ? "border-brand-violet bg-brand-violet text-brand-white shadow-2xs" : "border-brand-line bg-brand-canvas text-brand-navy hover:border-brand-navy/30",
-  )
+/** Round − / + buttons either side of the member count. */
+const stepper =
+  "grid size-11 shrink-0 place-items-center rounded-full border border-brand-line bg-brand-canvas text-brand-navy outline-none transition-all hover:border-brand-navy/30 focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
 
 /** Larger option cards (cadence, visibility): a title with a short caption. */
 const card = (active: boolean) =>
@@ -37,7 +35,7 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
   const [amountInput, setAmountInput] = useState("20000")
   const [size, setSize] = useState("5")
   const [cadence, setCadence] = useState<(typeof CADENCES)[number]>("WEEKLY")
-  const [payoutRound, setPayoutRound] = useState(1)
+  const [payoutOrder, setPayoutOrder] = useState<(typeof PAYOUT_ORDERS)[number]>("BEST_SCORE_FIRST")
   const [visibility, setVisibility] = useState<CircleVisibility>("PRIVATE")
   const [state, action, pending] = useActionState<CreateState, FormData>(createCircleAction.bind(null, locale), { errors: {}, form: null })
   const err = (field: keyof CreateState["errors"]) => {
@@ -45,10 +43,10 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
     return key ? tErr[key] : undefined
   }
 
-  const updateSize = (newSize: number) => {
-    const bounded = Math.max(3, Math.min(12, newSize))
-    setSize(bounded.toString())
-    if (payoutRound > bounded) setPayoutRound(1)
+  const sizeNum = Number(size)
+  const changeSize = (delta: number) => {
+    const next = Math.min(MAX_SIZE, Math.max(MIN_SIZE, sizeNum + delta))
+    setSize(String(next))
   }
 
   const contribution = parseWholeUnits(amountInput, COP.assetScale)
@@ -57,7 +55,11 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
   const fee = applyBps(pot, FEE_BPS)
   const payout = pot - fee
   const money = (v: bigint) => formatAmount(amount(v, COP), locale)
-  const rounds = Array.from({ length: Number(members) }, (_, i) => i + 1)
+  const cadenceLabels = {
+    WEEKLY: [t.weekly, t.cadenceWeekly],
+    BIWEEKLY: [t.biweekly, t.cadenceBiweekly],
+    MONTHLY: [t.monthly, t.cadenceMonthly],
+  } as const satisfies Record<(typeof CADENCES)[number], readonly [string, string]>
 
   return (
     <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
@@ -65,9 +67,8 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
         <form action={action} noValidate className="space-y-6">
           {/* Chip pickers are buttons; their choice travels in hidden fields. */}
-          <input type="hidden" name="size" value={size} />
           <input type="hidden" name="cadence" value={cadence} />
-          <input type="hidden" name="payoutRound" value={payoutRound} />
+          <input type="hidden" name="payoutOrder" value={payoutOrder} />
           <input type="hidden" name="visibility" value={visibility} />
 
           <FormField id="name" label={t.name} error={err("name")}>
@@ -97,42 +98,50 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
             </div>
           </FormField>
 
-          <fieldset>
-            <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.size}</legend>
+          <FormField id="size" label={t.size} help={t.sizeHelp} error={err("size")}>
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                aria-label={t.decreaseMembers}
-                disabled={Number(size) <= 3}
-                onClick={() => updateSize(Number(size) - 1)}
-                className="flex size-11 items-center justify-center rounded-2xl border border-brand-line bg-brand-canvas text-brand-navy transition-all hover:bg-brand-white hover:border-brand-navy/30 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                onClick={() => changeSize(-1)}
+                disabled={sizeNum <= MIN_SIZE}
+                aria-label={t.sizeDecrease}
+                aria-controls="size"
+                className={stepper}
               >
-                <Minus className="size-4 shrink-0" aria-hidden="true" />
+                <Minus className="size-4" aria-hidden="true" />
               </button>
-              <div className="flex h-11 min-w-[72px] items-center justify-center rounded-2xl border border-brand-line bg-brand-canvas px-4 font-mono text-lg font-bold tabular-nums text-brand-navy shadow-2xs">
-                {size}
-              </div>
+              <output
+                id="size"
+                aria-live="polite"
+                aria-describedby={describedBy("size", err("size"))}
+                className={cn(
+                  "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl border text-base font-semibold text-brand-navy tabular-nums",
+                  err("size") ? "border-destructive" : "border-input",
+                )}
+              >
+                {fill(t.sizeOption, { count: size })}
+              </output>
               <button
                 type="button"
-                aria-label={t.increaseMembers}
-                disabled={Number(size) >= 12}
-                onClick={() => updateSize(Number(size) + 1)}
-                className="flex size-11 items-center justify-center rounded-2xl border border-brand-line bg-brand-canvas text-brand-navy transition-all hover:bg-brand-white hover:border-brand-navy/30 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                onClick={() => changeSize(1)}
+                disabled={sizeNum >= MAX_SIZE}
+                aria-label={t.sizeIncrease}
+                aria-controls="size"
+                className={stepper}
               >
-                <Plus className="size-4 shrink-0" aria-hidden="true" />
+                <Plus className="size-4" aria-hidden="true" />
               </button>
-              <span className="text-xs font-medium text-brand-slate">{t.sizeHelp}</span>
+              <input type="hidden" name="size" value={size} />
             </div>
-            {err("size") && <p className="oc-fade-in mt-1.5 text-sm font-medium text-brand-violet-ink">{err("size")}</p>}
-          </fieldset>
+          </FormField>
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.cadence}</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {CADENCES.map((c) => (
                 <button type="button" key={c} aria-pressed={cadence === c} onClick={() => setCadence(c)} className={card(cadence === c)}>
-                  <span className="text-sm font-semibold text-brand-navy">{c === "WEEKLY" ? t.weekly : t.monthly}</span>
-                  <span className="text-xs text-brand-slate">{c === "WEEKLY" ? t.cadenceWeekly : t.cadenceMonthly}</span>
+                  <span className="text-sm font-semibold text-brand-navy">{cadenceLabels[c][0]}</span>
+                  <span className="text-xs text-brand-slate">{cadenceLabels[c][1]}</span>
                 </button>
               ))}
             </div>
@@ -158,16 +167,22 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
           </fieldset>
 
           <fieldset>
-            <legend className="mb-1 block text-sm font-semibold text-brand-navy">{t.payoutRound}</legend>
-            <p className="mb-2 text-sm text-muted-foreground">{t.payoutRoundHelp}</p>
-            <div className="flex flex-wrap gap-2">
-              {rounds.map((n) => (
-                <button type="button" key={n} aria-pressed={payoutRound === n} onClick={() => setPayoutRound(n)} className={chip(payoutRound === n)}>
-                  {n}
-                </button>
-              ))}
+            <legend className="mb-1 block text-sm font-semibold text-brand-navy">{t.payoutOrder}</legend>
+            <p className="mb-2 text-sm text-muted-foreground">{t.payoutOrderHelp}</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {PAYOUT_ORDERS.map((o) => {
+                const [title, help, Icon] = o === "BEST_SCORE_FIRST" ? [t.bestFirst, t.bestFirstHelp, TrendingUp] : [t.bestLast, t.bestLastHelp, TrendingDown]
+                return (
+                  <button type="button" key={o} aria-pressed={payoutOrder === o} onClick={() => setPayoutOrder(o)} className={card(payoutOrder === o)}>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                      <Icon className={cn("size-4 shrink-0", payoutOrder === o ? "text-brand-violet" : "text-brand-slate")} aria-hidden="true" />
+                      {title}
+                    </span>
+                    <span className="text-xs text-brand-slate">{help}</span>
+                  </button>
+                )
+              })}
             </div>
-            {err("seat") && <p className="oc-fade-in mt-1.5 text-sm font-medium text-brand-violet-ink">{err("seat")}</p>}
           </fieldset>
 
           {state.form && (
@@ -179,7 +194,11 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
           <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-start">
             <Link
               href={`/${locale}/circles`}
-              className="inline-flex h-12 w-full items-center justify-center rounded-full border border-brand-line bg-brand-white px-6 text-sm font-semibold text-brand-navy transition-all hover:border-brand-navy/30 hover:bg-brand-canvas active:scale-95 sm:w-auto"
+              aria-disabled={pending}
+              className={cn(
+                "inline-flex h-12 w-full items-center justify-center rounded-full border border-brand-line bg-brand-white px-6 text-sm font-semibold text-brand-navy outline-none transition-[transform,border-color] hover:-translate-y-0.5 hover:border-brand-navy/30 focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 motion-reduce:hover:translate-y-0 sm:w-auto",
+                pending && "pointer-events-none opacity-50",
+              )}
             >
               {t.cancel}
             </Link>

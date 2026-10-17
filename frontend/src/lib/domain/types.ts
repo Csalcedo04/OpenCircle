@@ -87,7 +87,7 @@ export type CircleApplication = {
 export type Circle = {
   id: string
   name: string
-  city: string
+  city: string | null
   status: CircleStatus
   contribution: Amount
   feeBps: number
@@ -103,7 +103,8 @@ export type Circle = {
   currentRound: number
   visibility?: CircleVisibility | undefined
   approvalMode?: ApprovalMode | undefined
-  cadence?: "WEEKLY" | "MONTHLY" | undefined
+  cadence?: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | undefined
+  payoutOrder?: "BEST_SCORE_FIRST" | "BEST_SCORE_LAST" | undefined
 }
 
 export type Review = {

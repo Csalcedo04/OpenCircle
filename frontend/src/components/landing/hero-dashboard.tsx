@@ -135,7 +135,8 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
                       name={p.name}
                       tone={p.tone}
                       size="md"
-                      className={cn(!paid && "border-2 border-dashed border-brand-slate bg-brand-white ring-0")}
+                      photo
+                      className={cn(!paid && "border-2 border-dashed border-brand-slate bg-brand-white ring-0 opacity-60 grayscale")}
                     />
                     {paid && (
                       <span className="absolute -right-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-brand-mint ring-2 ring-brand-white">
@@ -164,7 +165,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
           <ul className="mt-2 divide-y divide-brand-line">
             {activity.map((p, i) => (
               <li key={p.name} className={cn("flex items-center gap-2.5 sm:gap-3 py-2 sm:py-2.5", i > 2 && "hidden")}>
-                <Avatar name={p.name} tone={p.tone} size="sm" />
+                <Avatar name={p.name} tone={p.tone} size="sm" photo />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs sm:text-[13px] font-semibold text-brand-navy truncate">{p.name}</p>
                   <p className="flex items-center gap-1 text-[10px] sm:text-[11px] text-brand-slate">
@@ -180,7 +181,8 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
                 name="Juan"
                 tone="line"
                 size="sm"
-                className={cn(!completedJuan && "border border-dashed border-brand-slate ring-0")}
+                photo
+                className={cn(!completedJuan && "border border-dashed border-brand-slate ring-0 opacity-60 grayscale")}
               />
               <div className="min-w-0 flex-1">
                 <p className="text-xs sm:text-[13px] font-semibold text-brand-navy truncate">Juan</p>
@@ -225,7 +227,7 @@ export function HeroDashboard({ t, locale }: { t: LandingDictionary["hero"]["das
       </div>
       <div className="hidden sm:flex oc-pop absolute right-3 -bottom-10 sm:-right-6 sm:-bottom-12 [animation-delay:1400ms]">
         <div className="oc-bob flex items-center gap-2.5 rounded-full bg-brand-navy py-2 pr-4 pl-2.5 text-brand-white shadow-[0_16px_40px_-18px_color-mix(in_srgb,var(--color-brand-navy)_60%,transparent)] [animation-delay:-3s]">
-          <Avatar name="Carlos" tone="mint" size="sm" />
+          <Avatar name="Carlos" tone="mint" size="sm" photo />
           <p className="text-xs font-semibold">{t.notifyNext}</p>
         </div>
       </div>

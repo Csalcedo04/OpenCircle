@@ -71,6 +71,7 @@ test("consent and KYC routes require a token → 401", async () => {
     ["POST", "/api/users/me/wallet/consent", { walletAddress: "$ilp.interledger-test.dev/alice" }],
     ["POST", "/api/users/me/wallet/consent/complete", { state: "x".repeat(43), interactRef: "ref", hash: "hash" }],
     ["GET", "/api/users/me/kyc", undefined],
+    ["GET", "/api/users/me/dashboard", undefined],
     ["POST", "/api/users/me/kyc/session", { locale: "es", returnPath: "/es/circles" }],
   ] as const) {
     const res = await server.request(path, { method, body });

@@ -90,7 +90,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/[lang]/log
             <div className="mt-8 pt-6 border-t border-brand-line/70 flex items-center gap-3">
               <div className="flex -space-x-2" aria-hidden="true">
                 {PEOPLE.slice(0, 3).map((p) => (
-                  <Avatar key={p.name} name={p.name} tone={p.tone} size="sm" />
+                  <Avatar key={p.name} name={p.name} tone={p.tone} size="sm" photo />
                 ))}
               </div>
               <p className="text-xs text-brand-slate">

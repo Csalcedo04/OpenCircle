@@ -128,7 +128,7 @@ async function startedCircle(clock: TestClockDto, owner: Member, others: Member[
   const created = await server.request("/api/circles", {
     method: "POST",
     token: owner.token,
-    body: { name: `${PREFIX}Natillera`, city: "Medellín", contributionValue: "5000", size: others.length + 1, cadence, payoutRound: 1, testClockId: clock.id },
+    body: { name: `${PREFIX}Natillera`, city: "Medellín", contributionValue: "5000", size: others.length + 1, cadence, testClockId: clock.id },
   });
   assert.equal(created.status, 201, created.text);
   const circle = created.body as CircleDto;
@@ -136,7 +136,7 @@ async function startedCircle(clock: TestClockDto, owner: Member, others: Member[
   const invite = new URL(circle.inviteUrl ?? "http://x").searchParams.get("invite") ?? "";
   let last = circle;
   for (const [i, m] of others.entries()) {
-    const res = await server.request(`/api/circles/${circle.id}/join`, { method: "POST", token: m.token, body: { payoutRound: i + 2, invite } });
+    const res = await server.request(`/api/circles/${circle.id}/join`, { method: "POST", token: m.token, body: { invite } });
     assert.equal(res.status, 200, res.text);
     last = res.body as CircleDto;
   }
@@ -327,7 +327,7 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
     const borrowed = await server.request("/api/circles", {
       method: "POST",
       token: stranger.token,
-      body: { name: `${PREFIX}x`, city: "Cali", contributionValue: "100", size: 2, cadence: "WEEKLY", payoutRound: 1, testClockId: clock.id },
+      body: { name: `${PREFIX}x`, city: "Cali", contributionValue: "100", size: 2, cadence: "WEEKLY", testClockId: clock.id },
     });
     assert.equal(borrowed.status, 404);
     assert.equal(errorCode(borrowed.body), "TEST_CLOCK_NOT_FOUND");
@@ -348,7 +348,6 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
         contributionValue: 100n,
         size: 2,
         cadence: "WEEKLY",
-        payoutRound: 1,
         collateralValue: 0n,
         grantMode: null,
         testClockId: clock.id,

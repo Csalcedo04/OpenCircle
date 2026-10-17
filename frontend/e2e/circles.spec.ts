@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Page } from "@playwright/test"
 import { expect, test } from "./fixtures"
-import { E2E_PREFIX, inviteCodeOf, seedCircle, seedProfile, signIn, type TestUser } from "./helpers/users"
+import { E2E_PREFIX, inviteCodeOf, seatMember, seedCircle, seedProfile, signIn, type TestUser } from "./helpers/users"
 
 // Real circles end to end: the create form, joining through an invite link, the last seat
 // starting the circle, the public list and member profiles. Every user here is KYC-approved.
@@ -20,9 +20,8 @@ test.describe("circles on real data", () => {
     await approved(user, page)
     await page.goto("/es/circles/new")
     await page.getByLabel("Nombre del círculo").fill(`${E2E_PREFIX}Natillera del parque`)
-    await page.getByLabel("Ciudad").fill("Medellín")
     await page.getByLabel("Aporte por ronda (COP)").fill("50000")
-    await page.getByRole("group", { name: "Número de miembros" }).getByRole("button", { name: "3", exact: true }).click()
+    await page.getByLabel("Número de miembros").selectOption("3")
     await page.getByRole("button", { name: "Mensual" }).click()
     await page.getByRole("group", { name: "Tu turno de entrega" }).getByRole("button", { name: "2", exact: true }).click()
     await page.getByRole("button", { name: "Crear círculo" }).click()
@@ -31,8 +30,8 @@ test.describe("circles on real data", () => {
     await expect(page.getByRole("heading", { name: `${E2E_PREFIX}Natillera del parque` })).toBeVisible()
 
     const id = circleIdFrom(page.url())
-    const { data: circle } = await db().from("circles").select("status, size, cadence, contribution_value, asset_code, created_by").eq("id", id).single()
-    expect(circle).toMatchObject({ status: "OPEN", size: 3, cadence: "MONTHLY", contribution_value: 5000000, asset_code: "COP", created_by: user.id })
+    const { data: circle } = await db().from("circles").select("status, size, cadence, contribution_value, asset_code, created_by, city").eq("id", id).single()
+    expect(circle).toMatchObject({ status: "OPEN", size: 3, cadence: "MONTHLY", contribution_value: 5000000, asset_code: "COP", created_by: user.id, city: null })
     const { data: seats } = await db().from("circle_members").select("user_id, payout_round").eq("circle_id", id)
     expect(seats).toEqual([{ user_id: user.id, payout_round: 2 }])
   })
@@ -44,7 +43,6 @@ test.describe("circles on real data", () => {
     await page.getByLabel("Aporte por ronda (COP)").fill("500")
     await page.getByRole("button", { name: "Crear círculo" }).click()
     await expect(page.getByText("Usa entre 3 y 60 caracteres.")).toBeVisible()
-    await expect(page.getByText("Escribe la ciudad (2 a 80 caracteres).")).toBeVisible()
     await expect(page.getByText("Ingresa un monto entero entre 1.000 y 10.000.000 COP.")).toBeVisible()
     const { count } = await db().from("circles").select("id", { count: "exact", head: true }).eq("created_by", user.id)
     expect(count).toBe(0)
@@ -85,7 +83,7 @@ test.describe("circles on real data", () => {
     await context.close()
   })
 
-  test("public circles are listed; a member's profile shows their record", async ({ page, user, newUser }) => {
+  test("public circles are listed; profiles are for members of a shared circle", async ({ page, user, newUser }) => {
     const owner = await newUser()
     await seedProfile(owner, { wallet: true, kyc: "Approved" })
     const circle = await seedCircle(owner, { name: `${E2E_PREFIX}Natillera pública` })
@@ -94,11 +92,15 @@ test.describe("circles on real data", () => {
     await page.goto("/es/circles")
     await expect(page.getByText(`${E2E_PREFIX}Natillera pública`)).toBeVisible()
 
+    // Strangers don't see each other's profiles.
     await page.goto(`/es/members/${owner.id}`)
-    // Members appear as "First L." — the seeded name is "[e2e] Ana Gómez".
+    await expect(page.getByText("Aquí no hay nada")).toBeVisible()
+
+    // Once they share a circle they do. Members appear as "First L.": the seeded name is "[e2e] Ana Gómez".
+    await seatMember(circle.id, user, 2)
+    await page.goto(`/es/members/${owner.id}`)
     await expect(page.getByRole("heading", { name: `${E2E_PREFIX.trim()} G.` })).toBeVisible()
     await expect(page.getByText(`${E2E_PREFIX}Natillera pública`)).toBeVisible()
-    expect(circle.id).toBeTruthy()
   })
 
   // Pages stream, so a missing circle or member shows the not-found page (the status stays 200).

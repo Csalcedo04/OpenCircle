@@ -30,6 +30,7 @@ const dto: CircleDto = {
   size: 2,
   seatsTaken: 2,
   cadence: "MONTHLY",
+  payoutOrder: "BEST_SCORE_FIRST",
   createdAt: "2026-01-01T00:00:00.000Z",
   feeBps: 200,
   threshold: { value: "2000000", ...COP },

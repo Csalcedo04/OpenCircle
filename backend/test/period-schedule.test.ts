@@ -12,6 +12,12 @@ describe("period schedule", () => {
     assert.equal(iso(periodEnd(start, "WEEKLY", 2)), "2026-03-16T15:00:00.000Z");
   });
 
+  test("biweekly periods are 14 days", () => {
+    const start = new Date("2026-03-02T15:00:00Z");
+    assert.equal(iso(periodEnd(start, "BIWEEKLY", 1)), "2026-03-16T15:00:00.000Z");
+    assert.equal(iso(periodStart(start, "BIWEEKLY", 3)), "2026-03-30T15:00:00.000Z");
+  });
+
   test("monthly from a month end clamps to each month's last day without drifting", () => {
     const start = new Date("2026-01-31T12:00:00Z");
     assert.deepEqual(
