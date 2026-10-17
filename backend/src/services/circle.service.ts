@@ -5,6 +5,7 @@ import {
   APPROVAL_MODES,
   CIRCLE_STATUSES,
   CIRCLE_VISIBILITIES,
+  FUNDING_SOURCES,
   GRANT_MODES,
   ROUND_STATES,
   auditEvents,
@@ -26,7 +27,9 @@ import { addressedTo, consumeInvite, insertStandingCode, inviteUrl as inviteUrlO
 import { payoutSequence, type PayoutOrder } from "./circles/payout-order";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
+import { userAccountInTx } from "./ledger/internal-account.service";
 import { emptyRecord, findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
+import { sameAsset, type Asset } from "./money";
 
 export { displayName };
 import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
@@ -47,10 +50,15 @@ export interface CircleViewer {
   invite?: string | undefined;
 }
 
+export type FundingSource = (typeof FUNDING_SOURCES)[number];
+
 // No payout round: it comes from the circle's payout order when the circle starts.
 export interface SeatInput {
   collateralValue: bigint;
+  /** Only meaningful for EXTERNAL_WALLET seats. */
   grantMode: GrantMode | null;
+  /** Which balance pays the contributions. Unset: the user's OpenCircle account if they have one, else their wallet. */
+  fundingSource?: FundingSource | undefined;
 }
 
 export interface CreateCircleInput extends SeatInput {
@@ -95,6 +103,7 @@ export interface SeatDto {
   payoutRound: number;
   collateral: AmountDto;
   grantMode: GrantMode | null;
+  fundingSource: FundingSource;
   // Accepts or rejects applicants when the circle uses DELEGATES.
   isApprover: boolean;
 }
@@ -263,6 +272,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         payoutRound: circleMembers.payoutRound,
         collateralValue: circleMembers.collateralValue,
         grantMode: circleMembers.grantMode,
+        fundingSource: circleMembers.fundingSource,
         isApprover: circleMembers.isApprover,
       })
       .from(circleMembers)
@@ -320,6 +330,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         payoutRound: s.payoutRound,
         collateral: amount(s.collateralValue, assetCode, assetScale),
         grantMode: s.grantMode ?? null,
+        fundingSource: s.fundingSource,
         isApprover: s.isApprover,
       })),
       rounds: roundRows.map((r) => ({
@@ -459,6 +470,25 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
   }
 
   /**
+   * Which balance pays a seat's contributions. The user's OpenCircle account when they have one
+   * in the circle's asset (unless they ask for their wallet); otherwise their own wallet. Asking
+   * for the account without one, or in another currency, is refused rather than silently changed.
+   */
+  async function seatFunding(tx: Tx, userId: string, asset: Asset, requested: FundingSource | undefined): Promise<FundingSource> {
+    if (requested === "EXTERNAL_WALLET") return "EXTERNAL_WALLET";
+    const account = await userAccountInTx(tx, userId);
+    if (!account) {
+      if (requested === "INTERNAL_ACCOUNT") throw new AppError(409, "INTERNAL_ACCOUNT_REQUIRED", "Open an OpenCircle account to pay from it");
+      return "EXTERNAL_WALLET";
+    }
+    if (!sameAsset(account, asset)) {
+      if (requested === "INTERNAL_ACCOUNT") throw new AppError(422, "ASSET_MISMATCH", "Your OpenCircle account is not in this circle's currency");
+      return "EXTERNAL_WALLET";
+    }
+    return "INTERNAL_ACCOUNT";
+  }
+
+  /**
    * Seats a user in an OPEN circle the caller has locked (FOR UPDATE), so seats are counted
    * one at a time. The seat gets the lowest free round until the circle starts. Filling the last
    * seat starts the circle; returns whether it did, so the caller runs afterStarted once committed.
@@ -470,6 +500,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     ).map((m) => m.payoutRound);
     const payoutRound = Array.from({ length: circle.size }, (_, i) => i + 1).find((n) => !taken.includes(n));
     if (payoutRound === undefined) throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+    const fundingSource = await seatFunding(tx, userId, circle, seat.fundingSource);
 
     try {
       await tx.insert(circleMembers).values({
@@ -477,7 +508,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         userId,
         payoutRound,
         collateralValue: seat.collateralValue,
-        grantMode: seat.grantMode,
+        grantMode: fundingSource === "EXTERNAL_WALLET" ? seat.grantMode : null,
+        fundingSource,
       });
     } catch (err) {
       throw seatConflict(err) ?? err;
@@ -572,12 +604,14 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         // external ones are mirrored into it when they complete (see period-engine).
         await tx.insert(ledgerAccounts).values({ kind: "CIRCLE_POOL", circleId: circle.id, assetCode: pool.assetCode, assetScale: pool.assetScale });
         // The creator always approves applicants.
+        const fundingSource = await seatFunding(tx, userId, pool, input.fundingSource);
         await tx.insert(circleMembers).values({
           circleId: circle.id,
           userId,
           payoutRound: 1,
           collateralValue: input.collateralValue,
-          grantMode: input.grantMode,
+          grantMode: fundingSource === "EXTERNAL_WALLET" ? input.grantMode : null,
+          fundingSource,
           isApprover: true,
         });
         await insertStandingCode(tx, circle.id, userId);

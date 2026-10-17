@@ -18,7 +18,7 @@ export async function joinCircleAction(
 ): Promise<JoinState> {
   if (!hasLocale(locale)) return { errors: {}, form: "generic" }
   const parsed = parseJoinForm(
-    { collateral: text(formData.get("collateral")), grantMode: text(formData.get("grantMode")) },
+    { collateral: text(formData.get("collateral")), grantMode: text(formData.get("grantMode")), fundingSource: text(formData.get("fundingSource")) },
     circle,
   )
   if (!parsed.ok) return { errors: parsed.errors, form: null }
@@ -41,7 +41,10 @@ export async function applyCircleAction(
   formData: FormData,
 ): Promise<JoinState> {
   if (!hasLocale(locale)) return { errors: {}, form: "generic" }
-  const parsed = parseJoinForm({ collateral: text(formData.get("collateral")), grantMode: text(formData.get("grantMode")) }, circle)
+  const parsed = parseJoinForm(
+    { collateral: text(formData.get("collateral")), grantMode: text(formData.get("grantMode")), fundingSource: text(formData.get("fundingSource")) },
+    circle,
+  )
   if (!parsed.ok) return { errors: parsed.errors, form: null }
 
   try {

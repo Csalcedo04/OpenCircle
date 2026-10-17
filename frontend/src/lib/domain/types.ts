@@ -56,6 +56,8 @@ export type Round = {
   contributions: Contribution[]
 }
 
+export type FundingSource = "INTERNAL_ACCOUNT" | "EXTERNAL_WALLET"
+
 export type Seat = {
   memberId: string
   seatId?: string | undefined
@@ -63,7 +65,10 @@ export type Seat = {
   payoutRound: number
   /** Collateral held in the pool, minor units of the circle's asset. */
   collateralValue: string
+  /** Wallet authorization; only meaningful for EXTERNAL_WALLET seats. */
   grant: GrantMode | null
+  /** Where the member's contributions come from; demo data and older seats default to the wallet. */
+  fundingSource?: FundingSource | undefined
   isApprover?: boolean | undefined
 }
 

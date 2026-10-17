@@ -1,7 +1,8 @@
 "use client"
 
 import { useActionState, useState } from "react"
-import { CheckCircle2, ListOrdered, LoaderCircle, Lock, ShieldCheck, Wallet } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Coins, ListOrdered, LoaderCircle, Lock, ShieldCheck, Wallet } from "lucide-react"
+import Link from "next/link"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,7 +10,8 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { evaluateCoverage } from "@/lib/domain/rounds"
-import type { Circle, GrantMode } from "@/lib/domain/types"
+import type { Amount, Circle, FundingSource, GrantMode } from "@/lib/domain/types"
+import { defaultFundingSource, grantModeFor, isBelowContribution } from "@/lib/flows/join-funding"
 import { cn } from "@/lib/utils"
 import { applyCircleAction, joinCircleAction, type JoinState } from "./actions"
 
@@ -20,12 +22,17 @@ type Props = {
   mode: "join" | "apply"
   /** From a private circle's link; sent with the join. */
   invite?: string | undefined
+  /** How the user can pay: their OpenCircle account, their wallet, or both (from their profile). */
+  funding: readonly FundingSource[]
+  /** The OpenCircle account's balance, for the low-balance hint; null without an account. */
+  accountBalance: Amount | null
   t: Dictionary["join"]
   tErr: Dictionary["circleErrors"]
   tc: Pick<Dictionary["circle"], "owes" | "collateral" | "grant" | "uncovered" | "threshold" | "eligible">
   notCovered: string
 }
-export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notCovered }: Props) {
+export function JoinCircleForm({ locale, circle, mode, invite, funding, accountBalance, t, tErr, tc, notCovered }: Props) {
+  const [source, setSource] = useState<FundingSource>(defaultFundingSource(funding) ?? "EXTERNAL_WALLET")
   const [grant, setGrant] = useState<GrantMode>("RECURRING")
   const [collateral, setCollateral] = useState("")
   const seat = { id: circle.id, assetScale: circle.contribution.assetScale }
@@ -37,11 +44,14 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
     collateral: state.errors.collateral ? tErr[state.errors.collateral] : undefined,
   }
 
+  const fromWallet = source === "EXTERNAL_WALLET"
+  const lowBalance = source === "INTERNAL_ACCOUNT" && isBelowContribution(accountBalance, circle.contribution)
   const collateralValue = collateral.trim() === "" ? 0n : (parseWholeUnits(collateral, circle.contribution.assetScale) ?? 0n)
   // The round is only known once the circle fills, so show the worst case: paid in round 1, owing the rest.
-  const coverage = evaluateCoverage(circle, { payoutRound: 1, collateralValue: collateralValue.toString(), grant })
+  const coverage = evaluateCoverage(circle, { payoutRound: 1, collateralValue: collateralValue.toString(), grant: grantModeFor(source, grant) })
   const money = (v: bigint) => formatAmount(amount(v, circle.contribution), locale)
   const weight = `${Math.floor(circle.grantWeightBps / 100)}%`
+  const balanceText = accountBalance ? formatAmount(accountBalance, locale) : ""
 
   if (circle.seats.length >= circle.size) {
     return (
@@ -56,7 +66,8 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
       {/* Configuration Form Bento Card */}
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
         <form action={action} noValidate className="space-y-6">
-          {/* The approval picker is buttons; the choice travels in a hidden field. */}
+          {/* The pickers are buttons; the choices travel in hidden fields. */}
+          <input type="hidden" name="fundingSource" value={source} />
           <input type="hidden" name="grantMode" value={grant} />
           <div className="flex items-start gap-3 rounded-2xl border border-brand-line bg-brand-canvas p-4">
             <ListOrdered className="mt-0.5 size-4 shrink-0 text-brand-violet" aria-hidden="true" />
@@ -67,8 +78,49 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
             </div>
           </div>
 
-          {/* Grant Mode Options */}
-          <div>
+          {/* Funding source: a choice only when the user has both an account and a wallet. */}
+          <fieldset>
+            <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.fundingTitle}</legend>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["INTERNAL_ACCOUNT", Coins, t.fundingAccount, fill(t.fundingAccountHelp, { balance: balanceText })],
+                  ["EXTERNAL_WALLET", Wallet, t.fundingWallet, t.fundingWalletHelp],
+                ] as const
+              )
+                .filter(([value]) => funding.includes(value))
+                .map(([value, Icon, title, help]) => (
+                  <label
+                    key={value}
+                    className={cn(
+                      "cursor-pointer rounded-2xl border p-4 transition-all has-focus-visible:ring-3 has-focus-visible:ring-ring/50 active:scale-[0.99]",
+                      source === value ? "border-brand-violet bg-brand-violet/5 shadow-2xs" : "border-brand-line bg-brand-canvas hover:border-brand-navy/30",
+                    )}
+                  >
+                    <input type="radio" name="fundingChoice" value={value} checked={source === value} onChange={() => setSource(value)} className="sr-only" />
+                    <span className="flex items-center gap-2 text-xs font-semibold text-brand-navy">
+                      <Icon className="size-4 text-brand-violet-ink" aria-hidden="true" />
+                      {title}
+                    </span>
+                    <span className="mt-2 block text-xs leading-relaxed text-brand-slate">{help}</span>
+                  </label>
+                ))}
+            </div>
+            {lowBalance && (
+              <p role="status" className="mt-3 flex items-start gap-2 rounded-xl bg-brand-mist p-3 text-xs font-medium text-brand-navy">
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-brand-violet-ink" aria-hidden="true" />
+                <span>
+                  {t.lowBalance}{" "}
+                  <Link href={`/${locale}/account`} className="font-semibold underline underline-offset-2">
+                    {t.goAccount}
+                  </Link>
+                </span>
+              </p>
+            )}
+          </fieldset>
+
+          {/* Grant Mode Options: only the wallet needs an authorization. */}
+          <div hidden={!fromWallet}>
             <label className="text-sm font-semibold text-brand-navy block mb-2">{t.approval}</label>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(
@@ -138,7 +190,7 @@ export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notC
             ) : (
               <Wallet className="size-4 shrink-0" aria-hidden="true" />
             )}
-            <span>{mode === "apply" ? (pending ? t.applying : t.applySubmit) : pending ? t.joining : t.submit}</span>
+            <span>{mode === "apply" ? (pending ? t.applying : t.applySubmit) : pending ? t.joining : fromWallet ? t.submit : t.submitAccount}</span>
           </Button>
 
         </form>

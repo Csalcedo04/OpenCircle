@@ -74,7 +74,7 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
             <div className="mt-3 flex items-center gap-2 text-xs text-brand-slate">
               <Wallet className="size-3.5 shrink-0 text-brand-violet" />
               <code className="rounded-md bg-brand-canvas px-2 py-0.5 font-mono text-[11px] text-brand-navy break-all border border-brand-line/60">
-                {member.walletAddress ?? "—"}
+                {member.walletAddress ?? t.member.accountOnly}
               </code>
               {member.memberSince && (
                 <span>· {fill(t.member.memberSince, { date: formatDate(member.memberSince, locale) })}</span>

@@ -6,7 +6,9 @@ import { ArrowLeft } from "lucide-react"
 import { KycGate } from "@/components/kyc-gate"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { getMyProfile, isBackendUnavailable } from "@/lib/api/backend"
 import { getCircleView } from "@/lib/data"
+import { fundingSources } from "@/lib/flows/onboarding"
 import { withInvite } from "@/lib/return-path"
 import { JoinCircleForm } from "./join-circle-form"
 
@@ -27,6 +29,13 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
   const { circle, access } = view
   // A public circle without an invite link takes applications; a link, or a private circle, seats directly.
   const mode = access.visibility === "PUBLIC" && !inviteCode && !access.isMember ? "apply" : "join"
+  // How this user can pay. Signed-out or unreachable: the gate below explains; the form never shows.
+  const profile = await getMyProfile().catch((err: unknown) => {
+    if (isBackendUnavailable(err)) return null
+    throw err
+  })
+  const funding = fundingSources(profile)
+  const accountBalance = profile?.internalAccount?.balance ?? null
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -44,6 +53,8 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
               circle={circle}
               mode={mode}
               invite={inviteCode}
+              funding={funding}
+              accountBalance={accountBalance}
               t={t.join}
               tErr={t.circleErrors}
               tc={{

@@ -599,7 +599,8 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                         {m.name}
                       </Link>
                       <p className="mt-0.5 text-xs text-brand-slate">
-                        {t.member.levels[trust.level]} · {t.circle.grantModes[seat.grant ?? "NONE"]}
+                        {t.member.levels[trust.level]} ·{" "}
+                        {seat.fundingSource === "INTERNAL_ACCOUNT" ? t.circle.funding.INTERNAL_ACCOUNT : t.circle.grantModes[seat.grant ?? "NONE"]}
                         {BigInt(seat.collateralValue) > 0n ? `, ${t.circle.collateral.toLowerCase()} ${money(BigInt(seat.collateralValue))}` : ""}
                       </p>
                     </div>

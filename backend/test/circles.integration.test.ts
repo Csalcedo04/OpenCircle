@@ -13,6 +13,8 @@ import {
   contributions,
   creditProfiles,
   friendships,
+  ledgerAccounts,
+  ledgerTransfers,
   reviews,
   rounds,
   testClocks,
@@ -73,6 +75,25 @@ async function deleteTestData(): Promise<void> {
     .from(circles)
     .where(or(like(circles.name, `${PREFIX}%`), userFilter));
   const circleIds = testCircles.map((c) => c.id);
+
+  // Ledger rows reference circles (pots) and users (accounts), so they go before both.
+  const accountIds = (
+    await db
+      .select({ id: ledgerAccounts.id })
+      .from(ledgerAccounts)
+      .where(
+        or(
+          circleIds.length > 0 ? inArray(ledgerAccounts.circleId, circleIds) : undefined,
+          testUserIds.length > 0 ? inArray(ledgerAccounts.ownerUserId, testUserIds) : undefined,
+        ),
+      )
+  ).map((a) => a.id);
+  if (accountIds.length > 0) {
+    const touching = or(inArray(ledgerTransfers.fromAccountId, accountIds), inArray(ledgerTransfers.toAccountId, accountIds));
+    await db.delete(auditEvents).where(inArray(auditEvents.accountId, accountIds));
+    await db.delete(ledgerTransfers).where(touching);
+    await db.delete(ledgerAccounts).where(inArray(ledgerAccounts.id, accountIds));
+  }
 
   // FK order: votes → applications → invites → contributions → rounds → seats → reviews → circles; nothing cascades.
   if (circleIds.length > 0) {
@@ -421,6 +442,35 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const res = await join(circle.id, token, {});
       assert.equal(res.status, 403);
       assert.equal(errorCode(res.body), "KYC_REQUIRED");
+    });
+
+    test("a member with an OpenCircle account pays from it by default; asking for it without one is refused", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      assert.equal(circle.seats[0]?.fundingSource, "EXTERNAL_WALLET");
+
+      const saver = await member({ wallet: false });
+      await db.insert(ledgerAccounts).values({ kind: "USER", ownerUserId: saver.id, assetCode: "COP", assetScale: 2 });
+      const byDefault = await join(circle.id, saver.token, { grantMode: "RECURRING" });
+      assert.equal(byDefault.status, 200, byDefault.text);
+      const seat = (byDefault.body as CircleDto).seats.find((s) => s.userId === saver.id);
+      assert.equal(seat?.fundingSource, "INTERNAL_ACCOUNT");
+      // A grant mode means nothing for an account-funded seat.
+      assert.equal(seat?.grantMode, null);
+
+      const walletOnly = await member();
+      const refused = await join(circle.id, walletOnly.token, { fundingSource: "INTERNAL_ACCOUNT" });
+      assert.equal(refused.status, 409);
+      assert.equal(errorCode(refused.body), "INTERNAL_ACCOUNT_REQUIRED");
+
+      const other = await member({ wallet: false });
+      await db.insert(ledgerAccounts).values({ kind: "USER", ownerUserId: other.id, assetCode: "USD", assetScale: 2 });
+      const mismatch = await join(circle.id, other.token, { fundingSource: "INTERNAL_ACCOUNT" });
+      assert.equal(mismatch.status, 422);
+      assert.equal(errorCode(mismatch.body), "ASSET_MISMATCH");
+      const fallback = await join(circle.id, other.token, {});
+      assert.equal(fallback.status, 200, fallback.text);
+      assert.equal((fallback.body as CircleDto).seats.find((s) => s.userId === other.id)?.fundingSource, "EXTERNAL_WALLET");
     });
 
     test("an unknown circle → 404 CIRCLE_NOT_FOUND", async () => {

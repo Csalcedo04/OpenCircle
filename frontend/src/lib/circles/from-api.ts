@@ -47,6 +47,7 @@ export function toCircle(dto: CircleDto): Circle {
       payoutRound: s.payoutRound ?? idx + 1,
       collateralValue: s.collateral.value,
       grant: s.grantMode,
+      fundingSource: s.fundingSource,
       isApprover: s.isApprover,
     })),
     rounds: dto.rounds.map((r) => {

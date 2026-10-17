@@ -39,8 +39,8 @@ const dto: CircleDto = {
   startedAt: "2026-01-03T00:00:00.000Z",
   currentRound: 1,
   seats: [
-    { memberId: "seat-a", userId: "user-a", displayName: "Ana G.", payoutRound: 1, collateral: { value: "0", ...COP }, grantMode: "RECURRING", record: record(3), isApprover: true },
-    { memberId: "seat-b", userId: "user-b", displayName: "Bob R.", payoutRound: 2, collateral: { value: "500000", ...COP }, grantMode: null, record: record(1), isApprover: false },
+    { memberId: "seat-a", userId: "user-a", displayName: "Ana G.", payoutRound: 1, collateral: { value: "0", ...COP }, grantMode: "RECURRING", fundingSource: "EXTERNAL_WALLET", record: record(3), isApprover: true },
+    { memberId: "seat-b", userId: "user-b", displayName: "Bob R.", payoutRound: 2, collateral: { value: "500000", ...COP }, grantMode: null, fundingSource: "INTERNAL_ACCOUNT", record: record(1), isApprover: false },
   ],
   rounds: [
     {
@@ -79,6 +79,8 @@ describe("toCircle", () => {
     expect(c.thresholdValue).toBe("2000000")
     expect(c.seats[1]?.collateralValue).toBe("500000")
     expect(c.seats[1]?.grant).toBeNull()
+    expect(c.seats[0]?.fundingSource).toBe("EXTERNAL_WALLET")
+    expect(c.seats[1]?.fundingSource).toBe("INTERNAL_ACCOUNT")
     expect(c.roundLengthDays).toBe(CADENCE_DAYS.MONTHLY)
     expect(c.currentRound).toBe(1)
     expect(toCircle({ ...dto, currentRound: null }).currentRound).toBe(0)

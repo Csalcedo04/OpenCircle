@@ -253,6 +253,12 @@ export const circleSchema = circleSummarySchema.extend({
       payoutRound: z.number().int().nullable(),
       collateral: amountSchema,
       grantMode: z.enum(["RECURRING", "PER_ROUND"]).nullable(),
+      // Absent on API deploys that predate internal accounts: every seat was paid from a wallet.
+      fundingSource: z
+        .enum(["INTERNAL_ACCOUNT", "EXTERNAL_WALLET"])
+        .nullable()
+        .optional()
+        .transform((v) => v ?? "EXTERNAL_WALLET"),
       record: recordSchema,
       /** Accepts applicants and invites people (the creator always does). */
       isApprover: z.boolean().nullable().optional().transform((v) => v ?? false),
@@ -353,6 +359,8 @@ export interface SeatRequest {
   /** Minor units, integer string. */
   collateralValue?: string
   grantMode?: "RECURRING" | "PER_ROUND" | null
+  /** Which balance pays the contributions; unset lets the API pick (account if any, else wallet). */
+  fundingSource?: "INTERNAL_ACCOUNT" | "EXTERNAL_WALLET"
 }
 
 export interface NewCircleRequest extends SeatRequest {

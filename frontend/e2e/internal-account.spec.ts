@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { seedProfile, signIn, storedInternalAccount } from "./helpers/users"
+import { inviteCodeOf, seedCircle, seedProfile, signIn, storedInternalAccount } from "./helpers/users"
 
 // Onboarding with an OpenCircle account needs no external wallet, so this suite runs anywhere
 // the backend runs. The balance shown depends on the backend's DEMO_SEED_VALUE.
@@ -36,6 +36,24 @@ test.describe("OpenCircle internal account", () => {
     await expect(page).toHaveURL(/\/es\/account$/)
     await expect(page.locator("#internal-account").getByText("Saldo disponible")).toBeVisible()
     expect(await storedInternalAccount(user)).not.toBeNull()
+  })
+
+  test("joining a circle from the account needs no wallet authorization", async ({ page, user, newUser }) => {
+    const owner = await newUser()
+    await seedProfile(owner, { wallet: true, kyc: "Approved" })
+    const circle = await seedCircle(owner)
+    const invite = await inviteCodeOf(circle.id)
+    await seedProfile(user, { internalAccount: { balance: "9000000" }, kyc: "Approved" })
+    await signIn(page, user, { lands: "circles" })
+
+    await page.goto(`/es/circles/${circle.id}/join?invite=${invite}`)
+    await expect(page.getByText("Desde mi cuenta OpenCircle")).toBeVisible()
+    // Only one way to pay: no wallet option and no approval picker.
+    await expect(page.getByText("Desde mi billetera")).toHaveCount(0)
+    await expect(page.getByText("Aprobar una vez para todas las rondas")).toBeHidden()
+    await page.getByRole("button", { name: "Tomar mi cupo" }).click()
+    await expect(page).toHaveURL(new RegExp(`/es/circles/${circle.id}$`))
+    await expect(page.getByText("Paga desde su cuenta OpenCircle").first()).toBeVisible()
   })
 
   test("opening the account returns to where sign-in started", async ({ page, user }) => {

@@ -1,7 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { and, asc, eq, inArray, isNotNull, isNull, lt, lte, or } from "drizzle-orm";
 import type { Db } from "../../db/client";
-import { auditEvents, circleMembers, circles, contributions, rounds } from "../../db/schema";
+import { auditEvents, circleMembers, circles, contributions, rounds, type FUNDING_SOURCES } from "../../db/schema";
+import { poolAccountInTx, userAccountInTx } from "../ledger/internal-account.service";
+import { InsufficientFundsError, systemAccountInTx, transferInTx } from "../ledger/ledger.service";
 import { PaymentRefusedError, type ContributionPayments } from "../open-payments/payments";
 import { NoGrantError, type MemberAccessService } from "./member-access";
 
@@ -28,8 +30,12 @@ interface Collectable {
   contribution: ContributionRow;
   userId: string;
   deadline: Date;
+  circleId: string;
   poolWalletId: string;
+  fundingSource: (typeof FUNDING_SOURCES)[number];
 }
+
+const contributionAmount = (c: ContributionRow) => ({ value: c.value, assetCode: c.assetCode, assetScale: c.assetScale });
 
 /**
  * Moves a circle's periods forward to `now` (real or test-clock time). Every step is a
@@ -99,7 +105,14 @@ export function createPeriodEngine({
   // Contributions of this circle's collecting rounds, with what a payment needs.
   async function collectable(circleId: string, where: ReturnType<typeof and>): Promise<Collectable[]> {
     const rows = await db
-      .select({ contribution: contributions, userId: circleMembers.userId, deadline: rounds.deadline, poolWalletId: circles.poolWalletId })
+      .select({
+        contribution: contributions,
+        userId: circleMembers.userId,
+        deadline: rounds.deadline,
+        circleId: rounds.circleId,
+        poolWalletId: circles.poolWalletId,
+        fundingSource: circleMembers.fundingSource,
+      })
       .from(contributions)
       .innerJoin(rounds, eq(contributions.roundId, rounds.id))
       .innerJoin(circles, eq(rounds.circleId, circles.id))
@@ -140,7 +153,48 @@ export function createPeriodEngine({
     }
   }
 
-  async function request(circleId: string): Promise<void> {
+  /**
+   * A contribution paid from the member's OpenCircle account: one ledger transfer to the circle's
+   * pot, completed in the same transaction (the transfer is the proof). Without enough balance it
+   * goes back to PENDING and is retried on every run until the deadline marks it missed.
+   */
+  async function payInternal({ contribution: c, userId, circleId, poolWalletId }: Collectable, now: Date): Promise<void> {
+    try {
+      await db.transaction(async (tx) => {
+        const [done] = await tx
+          .update(contributions)
+          .set({ status: "COMPLETED", completedAt: now })
+          .where(and(eq(contributions.id, c.id), eq(contributions.status, "PROCESSING")))
+          .returning({ id: contributions.id });
+        if (!done) return;
+        const from = await userAccountInTx(tx, userId);
+        if (!from) throw new NoGrantError();
+        const pool = await poolAccountInTx(tx, circleId);
+        await transferInTx(tx, { key: c.idempotencyKey, kind: "CONTRIBUTION", fromAccountId: from.id, toAccountId: pool.id, amount: contributionAmount(c) });
+        await tx
+          .insert(auditEvents)
+          .values({ walletId: poolWalletId, eventType: "contribution.completed", externalId: `contribution.completed:${c.id}`, amount: c.value })
+          .onConflictDoNothing({ target: auditEvents.externalId });
+      });
+    } catch (err) {
+      if (err instanceof InsufficientFundsError) {
+        await db
+          .update(contributions)
+          .set({ status: "PENDING", requestedAt: null })
+          .where(and(eq(contributions.id, c.id), eq(contributions.status, "PROCESSING")));
+        await audit(poolWalletId, "contribution.insufficient_funds", c.id);
+        return;
+      }
+      // The seat says internal but the account is gone: nothing can pay it.
+      if (err instanceof NoGrantError) return fail(c, poolWalletId, "NO_GRANT");
+      console.error("Internal contribution failed", c.id, err instanceof Error ? err.name : "unknown");
+    }
+  }
+
+  const settle = (item: Collectable, recovering: boolean, now: Date) =>
+    item.fundingSource === "INTERNAL_ACCOUNT" ? payInternal(item, now) : pay(item, recovering);
+
+  async function request(circleId: string, now: Date): Promise<void> {
     const pending = await collectable(circleId, eq(contributions.status, "PENDING"));
     for (const item of pending) {
       // Claim it: only one run moves a contribution out of PENDING.
@@ -151,7 +205,7 @@ export function createPeriodEngine({
         .returning();
       if (!claimed) continue;
       await audit(item.poolWalletId, "contribution.processing", claimed.id);
-      await pay({ ...item, contribution: claimed }, false);
+      await settle({ ...item, contribution: claimed }, false, now);
     }
 
     const stale = await collectable(
@@ -169,7 +223,7 @@ export function createPeriodEngine({
         .set({ requestedAt: realNow() })
         .where(and(eq(contributions.id, item.contribution.id), eq(contributions.requestedAt, item.contribution.requestedAt ?? new Date(0))))
         .returning();
-      if (leased) await pay({ ...item, contribution: leased }, true);
+      if (leased) await settle({ ...item, contribution: leased }, true, now);
     }
   }
 
@@ -177,7 +231,7 @@ export function createPeriodEngine({
   async function sync(circleId: string, now: Date): Promise<number> {
     const inFlight = await collectable(circleId, and(eq(contributions.status, "PROCESSING"), isNotNull(contributions.incomingPaymentUrl)));
     let waiting = 0;
-    for (const { contribution: c, poolWalletId } of inFlight) {
+    for (const { contribution: c, poolWalletId, circleId } of inFlight) {
       let received: bigint;
       try {
         ({ received } = await payments.readIncomingPayment(c.incomingPaymentUrl ?? ""));
@@ -190,11 +244,20 @@ export function createPeriodEngine({
         waiting++;
         continue;
       }
-      const [done] = await db
-        .update(contributions)
-        .set({ status: "COMPLETED", completedAt: now })
-        .where(and(eq(contributions.id, c.id), eq(contributions.status, "PROCESSING")))
-        .returning({ id: contributions.id });
+      // Money really reached OpenCircle's wallet: complete, and mirror it into the circle's pot
+      // on the ledger (from the OP_WALLET counterpart) so pool balances are true for both sources.
+      const done = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .update(contributions)
+          .set({ status: "COMPLETED", completedAt: now })
+          .where(and(eq(contributions.id, c.id), eq(contributions.status, "PROCESSING")))
+          .returning({ id: contributions.id });
+        if (!row) return false;
+        const pool = await poolAccountInTx(tx, circleId);
+        const opWallet = await systemAccountInTx(tx, "OP_WALLET", contributionAmount(c));
+        await transferInTx(tx, { key: c.idempotencyKey, kind: "CONTRIBUTION", fromAccountId: opWallet.id, toAccountId: pool.id, amount: contributionAmount(c) });
+        return true;
+      });
       if (done) await audit(poolWalletId, "contribution.completed", c.id, c.value);
     }
     return waiting;
@@ -239,7 +302,7 @@ export function createPeriodEngine({
       const [circle] = await db.select().from(circles).where(eq(circles.id, circleId)).limit(1);
       if (!circle || circle.status !== "ACTIVE") return;
       await open(circle, now);
-      await request(circle.id);
+      await request(circle.id, now);
       await sync(circle.id, now);
       await close(circle, now);
     },

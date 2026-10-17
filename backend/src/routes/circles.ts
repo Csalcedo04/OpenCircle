@@ -7,6 +7,7 @@ import {
   CIRCLE_CADENCES,
   CIRCLE_STATUSES,
   CIRCLE_VISIBILITIES,
+  FUNDING_SOURCES,
   GRANT_MODES,
   PAYOUT_ORDERS,
   VOTE_DECISIONS,
@@ -24,6 +25,8 @@ import { currentUserId, emailSchema, pathId } from "./shared";
 const seatFields = {
   collateralValue: minorUnits("zero").default(0n),
   grantMode: z.enum(GRANT_MODES).nullable().default(null),
+  // Unset: the API picks the user's OpenCircle account when they have one, else their wallet.
+  fundingSource: z.enum(FUNDING_SOURCES).optional(),
 };
 
 // Strict objects: unknown keys (status, feeBps, poolWallet...) are rejected, never silently stored.

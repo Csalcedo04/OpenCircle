@@ -31,6 +31,8 @@ export type CircleErrorKey =
   | "applicationDecided"
   | "notApprover"
   | "kyc"
+  | "insufficientFunds"
+  | "fundingUnavailable"
   | "unavailable"
   | "featureUnavailable"
   | "generic"
@@ -86,6 +88,8 @@ export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircle
 export interface JoinFields {
   collateral: string
   grantMode: string
+  /** "INTERNAL_ACCOUNT" | "EXTERNAL_WALLET"; anything else lets the API pick. */
+  fundingSource?: string
 }
 
 export function parseJoinForm(
@@ -96,8 +100,10 @@ export function parseJoinForm(
   const collateral = f.collateral.trim() === "" ? 0n : parseWholeUnits(f.collateral.trim(), circle.assetScale)
   if (collateral === null) errors.collateral = "collateral"
   if (Object.keys(errors).length > 0 || collateral === null) return { ok: false, errors }
-  const grantMode = f.grantMode === "RECURRING" || f.grantMode === "PER_ROUND" ? f.grantMode : null
-  return { ok: true, seat: { collateralValue: collateral.toString(), grantMode } }
+  const fundingSource = f.fundingSource === "INTERNAL_ACCOUNT" || f.fundingSource === "EXTERNAL_WALLET" ? f.fundingSource : undefined
+  // A grant mode only means something when the wallet pays.
+  const grantMode = fundingSource !== "INTERNAL_ACCOUNT" && (f.grantMode === "RECURRING" || f.grantMode === "PER_ROUND") ? f.grantMode : null
+  return { ok: true, seat: { collateralValue: collateral.toString(), grantMode, ...(fundingSource ? { fundingSource } : {}) } }
 }
 
 const apiErrors: Record<string, CircleErrorKey> = {
@@ -112,6 +118,9 @@ const apiErrors: Record<string, CircleErrorKey> = {
   NOT_APPROVER: "notApprover",
   NOT_CREATOR: "notApprover",
   KYC_REQUIRED: "kyc",
+  INSUFFICIENT_FUNDS: "insufficientFunds",
+  INTERNAL_ACCOUNT_REQUIRED: "fundingUnavailable",
+  ASSET_MISMATCH: "fundingUnavailable",
   BACKEND_UNAVAILABLE: "unavailable",
   NOT_FOUND: "featureUnavailable",
 }

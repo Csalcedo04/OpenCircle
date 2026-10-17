@@ -9,6 +9,8 @@ import {
   circleMembers,
   circles,
   contributions,
+  ledgerAccounts,
+  ledgerTransfers,
   rounds,
   testClocks,
   users,
@@ -68,6 +70,28 @@ async function deleteTestData(): Promise<void> {
         ),
       )
   ).map((c) => c.id);
+  // Ledger rows reference circles (pots) and users (accounts), so they go before both.
+  const accountIds = (
+    await db
+      .select({ id: ledgerAccounts.id })
+      .from(ledgerAccounts)
+      .where(
+        or(
+          circleIds.length > 0 ? inArray(ledgerAccounts.circleId, circleIds) : undefined,
+          userIds.length > 0 ? inArray(ledgerAccounts.ownerUserId, userIds) : undefined,
+        ),
+      )
+  ).map((a) => a.id);
+  if (accountIds.length > 0) {
+    const touching = or(inArray(ledgerTransfers.fromAccountId, accountIds), inArray(ledgerTransfers.toAccountId, accountIds));
+    const keys = (await db.select({ key: ledgerTransfers.idempotencyKey }).from(ledgerTransfers).where(touching)).map((r) => r.key);
+    if (keys.length > 0) {
+      await db.delete(auditEvents).where(inArray(auditEvents.externalId, keys.flatMap((k) => [`ledger.debit:${k}`, `ledger.credit:${k}`])));
+    }
+    await db.delete(auditEvents).where(inArray(auditEvents.accountId, accountIds));
+    await db.delete(ledgerTransfers).where(touching);
+    await db.delete(ledgerAccounts).where(inArray(ledgerAccounts.id, accountIds));
+  }
   if (circleIds.length > 0) {
     const roundIds = (await db.select({ id: rounds.id }).from(rounds).where(inArray(rounds.circleId, circleIds))).map((r) => r.id);
     if (roundIds.length > 0) await db.delete(contributions).where(inArray(contributions.roundId, roundIds));
@@ -88,7 +112,8 @@ async function deleteTestData(): Promise<void> {
 }
 
 // A KYC-approved user with a linked wallet and, unless told otherwise, a standing grant.
-async function member(options: { grant?: "active" | "expired" | "none"; name?: string } = {}) {
+// `account` also opens an OpenCircle account (USD, like the pool) with that balance.
+async function member(options: { grant?: "active" | "expired" | "none"; name?: string; account?: bigint } = {}) {
   const id = randomUUID();
   createdUserIds.push(id);
   const walletUrl = `https://${HOST}/${id}`;
@@ -114,10 +139,24 @@ async function member(options: { grant?: "active" | "expired" | "none"; name?: s
       tokenExpiresAt: grant === "expired" ? new Date(realClock - 1000) : null,
     });
   }
-  return { id, walletUrl, token: await auth.token(id) };
+  if (options.account !== undefined) {
+    // Balance set directly: this suite tests the engine, the ledger suite tests the ledger.
+    await db.insert(ledgerAccounts).values({ kind: "USER", ownerUserId: id, assetCode: "USD", assetScale: 2, balance: options.account });
+  }
+  return { id, walletUrl, token: await auth.token(id), internal: options.account !== undefined };
 }
 
 type Member = Awaited<ReturnType<typeof member>>;
+
+async function accountBalance(userId: string): Promise<bigint> {
+  const [row] = await db.select({ balance: ledgerAccounts.balance }).from(ledgerAccounts).where(eq(ledgerAccounts.ownerUserId, userId));
+  return row?.balance ?? -1n;
+}
+
+async function poolBalance(circleId: string): Promise<bigint> {
+  const [row] = await db.select({ balance: ledgerAccounts.balance }).from(ledgerAccounts).where(eq(ledgerAccounts.circleId, circleId));
+  return row?.balance ?? -1n;
+}
 
 async function createClock(owner: Member, frozenTime: string): Promise<TestClockDto> {
   const res = await server.request("/api/test-clocks", { method: "POST", token: owner.token, body: { name: `${PREFIX}clock`, frozenTime } });
@@ -127,10 +166,12 @@ async function createClock(owner: Member, frozenTime: string): Promise<TestClock
 
 // Creates a circle on the clock and fills it: the owner takes payout round 1, the rest in order.
 async function startedCircle(clock: TestClockDto, owner: Member, others: Member[], cadence: "WEEKLY" | "MONTHLY"): Promise<CircleDto> {
+  // Members with an OpenCircle account pay from it (the API would pick that by default too).
+  const funding = (m: Member) => (m.internal ? { fundingSource: "INTERNAL_ACCOUNT" } : {});
   const created = await server.request("/api/circles", {
     method: "POST",
     token: owner.token,
-    body: { name: `${PREFIX}Natillera`, city: "Medellín", contributionValue: "5000", size: others.length + 1, cadence, testClockId: clock.id },
+    body: { name: `${PREFIX}Natillera`, city: "Medellín", contributionValue: "5000", size: others.length + 1, cadence, testClockId: clock.id, ...funding(owner) },
   });
   assert.equal(created.status, 201, created.text);
   const circle = created.body as CircleDto;
@@ -138,7 +179,7 @@ async function startedCircle(clock: TestClockDto, owner: Member, others: Member[
   const invite = new URL(circle.inviteUrl ?? "http://x").searchParams.get("invite") ?? "";
   let last = circle;
   for (const [i, m] of others.entries()) {
-    const res = await server.request(`/api/circles/${circle.id}/join`, { method: "POST", token: m.token, body: { invite } });
+    const res = await server.request(`/api/circles/${circle.id}/join`, { method: "POST", token: m.token, body: { invite, ...funding(m) } });
     assert.equal(res.status, 200, res.text);
     last = res.body as CircleDto;
   }
@@ -251,6 +292,69 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
     // Running again at the same time changes nothing and pays nobody twice.
     assert.equal((await advance(clock, owner, view.frozenTime)).status, 200);
     assert.equal(payments.outgoing.length, 9);
+
+    // Every wallet payment that reached the pool is mirrored into the circle's pot on the ledger.
+    assert.equal(await poolBalance(started.id), 45_000n);
+  });
+
+  test("members with OpenCircle accounts pay from the ledger: no wallet payments, pot credited, accounts debited", async () => {
+    payments = fakePayments();
+    const [owner, bob, carol] = await Promise.all([
+      member({ account: 20_000n, grant: "none" }),
+      member({ name: "Bob Ruiz", account: 5_000n, grant: "none" }),
+      member({ name: "Carol Díaz" }),
+    ]);
+    const clock = await createClock(owner, "2026-01-31T12:00:00Z");
+    const started = await startedCircle(clock, owner, [bob, carol], "MONTHLY");
+
+    const funding = Object.fromEntries(started.seats.map((s) => [s.userId, s.fundingSource]));
+    assert.deepEqual(funding, { [owner.id]: "INTERNAL_ACCOUNT", [bob.id]: "INTERNAL_ACCOUNT", [carol.id]: "EXTERNAL_WALLET" });
+
+    // Period 1: two ledger transfers and one wallet payment, all complete, pot holds all three.
+    assert.deepEqual(await roundStates(started.id), ["FUNDED", "UPCOMING", "UPCOMING"]);
+    assert.equal(payments.outgoing.length, 1);
+    assert.equal(await accountBalance(owner.id), 15_000n);
+    assert.equal(await accountBalance(bob.id), 0n);
+    assert.equal(await poolBalance(started.id), 15_000n);
+    const rows = await contributionRows(started.id, 1);
+    assert.ok(rows.every((c) => c.status === "COMPLETED" && c.completedAt?.toISOString() === "2026-01-31T12:00:00.000Z"));
+    assert.equal(rows.filter((c) => c.incomingPaymentUrl === null).length, 2);
+
+    // Advancing again moves nothing: the transfers are keyed by contribution.
+    assert.equal((await advance(clock, owner, "2026-01-31T12:00:00Z")).status, 200);
+    assert.equal(await accountBalance(owner.id), 15_000n);
+    assert.equal(await poolBalance(started.id), 15_000n);
+  });
+
+  test("an account without enough balance stays PENDING, is retried, and misses the deadline", async () => {
+    payments = fakePayments();
+    const [owner, broke] = await Promise.all([member(), member({ name: "Bob Ruiz", account: 4_999n, grant: "none" })]);
+    const clock = await createClock(owner, "2026-03-02T15:00:00Z");
+    const started = await startedCircle(clock, owner, [broke], "WEEKLY");
+
+    const seatOf = (u: Member) => started.seats.find((s) => s.userId === u.id)?.memberId ?? "";
+    let rows = await contributionRows(started.id, 1);
+    assert.equal(rows.find((c) => c.memberId === seatOf(broke))?.status, "PENDING");
+    assert.equal(rows.find((c) => c.memberId === seatOf(owner))?.status, "COMPLETED");
+    assert.equal(await accountBalance(broke.id), 4_999n);
+
+    // A retry before the deadline tries again (still short) and records why, once.
+    assert.equal((await advance(clock, owner, "2026-03-05T15:00:00Z")).status, 200);
+    rows = await contributionRows(started.id, 1);
+    const short = rows.find((c) => c.memberId === seatOf(broke));
+    assert.equal(short?.status, "PENDING");
+    const why = await db
+      .select({ id: auditEvents.id })
+      .from(auditEvents)
+      .where(eq(auditEvents.externalId, `contribution.insufficient_funds:${short?.id ?? ""}`));
+    assert.equal(why.length, 1);
+
+    // Past the deadline the period closes BLOCKED and the contribution is missed.
+    assert.equal((await advance(clock, owner, "2026-03-09T15:00:00Z")).status, 200);
+    assert.deepEqual(await roundStates(started.id), ["BLOCKED", "COLLECTING"]);
+    const missed = (await contributionRows(started.id, 1)).find((c) => c.memberId === seatOf(broke));
+    assert.deepEqual([missed?.status, missed?.failureCode], ["FAILED", "DEADLINE_MISSED"]);
+    assert.equal(await accountBalance(broke.id), 4_999n);
   });
 
   test("deadline: unpaid contributions fail, the period is BLOCKED, and the next one still opens", async () => {
