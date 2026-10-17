@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react"
 import Link from "next/link"
-import { Check, LoaderCircle, UserMinus, X } from "lucide-react"
+import { Check, LoaderCircle, X } from "lucide-react"
+import { RemoveFriendButton } from "@/components/remove-friend-button"
 import { initials } from "@/components/trust"
 import { Button } from "@/components/ui/button"
 import { fill, type Locale } from "@/i18n/config"
@@ -10,7 +11,7 @@ import type { Dictionary } from "@/i18n/dictionaries/en"
 import type { FriendDto, FriendRequestDto } from "@/lib/api/friends"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/view"
-import { removeFriendAction, respondFriendRequestAction, type FriendRowState } from "./actions"
+import { respondFriendRequestAction, type FriendRowState } from "./actions"
 
 type Tab = "friends" | "incoming" | "outgoing"
 
@@ -88,36 +89,12 @@ function RequestRow({ locale, request, direction, t }: { locale: Locale; request
   )
 }
 
-/** A friend, with a two-step removal (no browser confirm dialogs). */
+/** A friend; removing them revalidates the list, which drops the row. */
 function FriendRow({ locale, friend, t }: { locale: Locale; friend: FriendDto; t: Dictionary["friends"] }) {
-  const [confirming, setConfirming] = useState(false)
-  const [state, remove, pending] = useActionState<FriendRowState, FormData>(removeFriendAction.bind(null, locale, friend.userId), { error: null, done: false })
-  if (state.done) return null
-
   return (
     <li className={rowClass}>
       <Person locale={locale} userId={friend.userId} name={friend.displayName} meta={fill(t.since, { date: formatDate(friend.since, locale) })} />
-      <div className="flex flex-wrap items-center gap-2">
-        {confirming ? (
-          <>
-            <form action={remove}>
-              <Button type="submit" disabled={pending} className={cn(smallButton, "bg-brand-navy text-brand-white hover:bg-brand-navy/90")}>
-                {pending ? <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" /> : <UserMinus aria-hidden="true" />}
-                {t.confirmRemove}
-              </Button>
-            </form>
-            <Button type="button" variant="ghost" onClick={() => setConfirming(false)} className={cn(smallButton, "text-brand-navy hover:bg-brand-line/50")}>
-              {t.keep}
-            </Button>
-          </>
-        ) : (
-          <Button type="button" variant="outline" onClick={() => setConfirming(true)} className={cn(smallButton, "border-brand-line bg-brand-white text-brand-navy hover:bg-brand-canvas")}>
-            <UserMinus aria-hidden="true" />
-            {t.remove}
-          </Button>
-        )}
-        <RowError error={state.error} t={t} />
-      </div>
+      <RemoveFriendButton locale={locale} userId={friend.userId} t={t} />
     </li>
   )
 }
