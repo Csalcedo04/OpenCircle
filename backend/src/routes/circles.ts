@@ -9,6 +9,7 @@ import {
   CIRCLE_VISIBILITIES,
   GRANT_MODES,
   PAYOUT_MODES,
+  PAYOUT_ORDERS,
   VOTE_DECISIONS,
 } from "../db/schema";
 import { requireKyc } from "../middleware/require-kyc";
@@ -25,8 +26,8 @@ const minorUnits = (min: "zero" | "positive") =>
     .regex(min === "zero" ? /^(0|[1-9]\d{0,17})$/ : /^[1-9]\d{0,17}$/, "Must be an integer amount in minor units")
     .transform((v) => BigInt(v));
 
+// No payout round: the circle's payout order assigns rounds by score when it starts.
 const seatFields = {
-  payoutRound: z.int().min(1),
   collateralValue: minorUnits("zero").default(0n),
   grantMode: z.enum(GRANT_MODES).nullable().default(null),
 };
@@ -35,7 +36,7 @@ const seatFields = {
 export const createCircleSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(80),
-    city: z.string().trim().min(1).max(80),
+    city: z.string().trim().min(1).max(80).optional(),
     // PER_ROUND: each round's pot to its beneficiary. END: the pot is held until the goal.
     payoutMode: z.enum(PAYOUT_MODES).default("PER_ROUND"),
     // PER_ROUND: required. END: give it or `roundsTotal`, and the other is derived from the goal.
@@ -44,7 +45,7 @@ export const createCircleSchema = z
     goalValue: minorUnits("positive").optional(),
     roundsTotal: z.int().min(1).max(MAX_ROUNDS).optional(),
     size: z.int().min(2).max(50),
-    // One period per member; each period is a calendar week or month.
+    // One period per member; each period is one or two calendar weeks, or a calendar month.
     cadence: z.enum(CIRCLE_CADENCES),
     // Dev only: rejected with 404 unless test clocks are enabled and the user owns the clock.
     testClockId: z.uuid().optional(),
@@ -52,9 +53,10 @@ export const createCircleSchema = z
     visibility: z.enum(CIRCLE_VISIBILITIES).default("PRIVATE"),
     // Who accepts applicants to a public circle.
     approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
+    // Who receives the pot first, by reliability score; members agree to it by joining. PER_ROUND only.
+    payoutOrder: z.enum(PAYOUT_ORDERS).default("BEST_SCORE_FIRST"),
     ...seatFields,
   })
-  .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" })
   .transform(({ payoutMode, contributionValue, goalValue, roundsTotal, ...settings }, ctx): CreateCircleInput => {
     const fail = (path: string, message: string) => {
       ctx.addIssue({ code: "custom", path: [path], message });
@@ -83,8 +85,8 @@ export const getCircleQuerySchema = z.object({ invite: inviteCode.optional() });
 
 export const visibilitySchema = z.strictObject({ visibility: z.enum(CIRCLE_VISIBILITIES) });
 
-// Seat preferences; without a payout round the applicant gets the next free one when accepted.
-export const applySchema = z.strictObject({ ...seatFields, payoutRound: seatFields.payoutRound.nullable().default(null) });
+// Seat preferences, copied to the seat when the application is accepted.
+export const applySchema = z.strictObject(seatFields);
 
 export const voteSchema = z.strictObject({ decision: z.enum(VOTE_DECISIONS) });
 

@@ -15,7 +15,7 @@ export function freePayoutRounds(size: number, taken: readonly { payoutRound: nu
   return Array.from({ length: size }, (_, i) => i + 1).filter((n) => !used.has(n))
 }
 
-export type ClockCircleField = "name" | "city" | "contributionValue" | "size" | "cadence" | "payoutRound"
+export type ClockCircleField = "name" | "city" | "contributionValue" | "size" | "cadence"
 
 /** The create-circle form's text fields → API input, or the fields that are wrong. */
 export function parseClockCircleForm(
@@ -33,12 +33,10 @@ export function parseClockCircleForm(
   if (!Number.isInteger(size) || size < 2 || size > 50) errors.push("size")
   const cadence = CIRCLE_CADENCES.find((c) => c === fields.cadence)
   if (!cadence) errors.push("cadence")
-  const payoutRound = Number(fields.payoutRound)
-  if (!Number.isInteger(payoutRound) || payoutRound < 1 || (Number.isInteger(size) && payoutRound > size)) errors.push("payoutRound")
   if (errors.length > 0 || !cadence) return { ok: false, errors }
   return {
     ok: true,
-    circle: { name, city, contributionValue: fields.contributionValue.trim(), size, cadence: cadence satisfies CircleCadence, payoutRound, testClockId },
+    circle: { name, city, contributionValue: fields.contributionValue.trim(), size, cadence: cadence satisfies CircleCadence, testClockId },
   }
 }
 

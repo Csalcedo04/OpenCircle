@@ -77,7 +77,7 @@ describe("roundsTotal and circleGoal", () => {
 });
 
 describe("createCircleSchema payout terms", () => {
-  const base = { name: "Natillera", city: "Medellín", size: 5, cadence: "MONTHLY", payoutRound: 1 };
+  const base = { name: "Natillera", city: "Medellín", size: 5, cadence: "MONTHLY" };
   const parse = (body: Record<string, unknown>) => createCircleSchema.safeParse({ ...base, ...body });
 
   test("PER_ROUND is the default and needs only the contribution", () => {

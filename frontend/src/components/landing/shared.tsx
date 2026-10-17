@@ -1,3 +1,4 @@
+import Image from "next/image"
 import type { ReactNode } from "react"
 import type { Locale } from "@/i18n/config"
 import { amount, formatAmount } from "@/lib/domain/money"
@@ -13,14 +14,19 @@ export function pesosLabel(value: bigint | number, locale: Locale): string {
   return locale === "es" ? `${pesos(value, locale)} COP` : pesos(value, locale)
 }
 
-/** Sample members used across the product mockups. Not real people. */
+/**
+ * Sample members used across the product mockups. Not real people: the photos are Pexels
+ * stock portraits (free licence, credits in public/people/CREDITS.md).
+ */
 export const PEOPLE = [
-  { name: "María", tone: "violet" },
-  { name: "Andrés", tone: "navy" },
-  { name: "Lucía", tone: "mint" },
-  { name: "Carlos", tone: "mist" },
-  { name: "Juan", tone: "line" },
+  { name: "María", tone: "violet", photo: "/people/maria.jpg" },
+  { name: "Andrés", tone: "navy", photo: "/people/andres.jpg" },
+  { name: "Lucía", tone: "mint", photo: "/people/lucia.jpg" },
+  { name: "Carlos", tone: "mist", photo: "/people/carlos.jpg" },
+  { name: "Juan", tone: "line", photo: "/people/juan.jpg" },
 ] as const
+
+const photoOf = (name: string) => PEOPLE.find((p) => p.name === name)?.photo
 
 const tones = {
   violet: "bg-brand-violet text-brand-white",
@@ -30,17 +36,24 @@ const tones = {
   line: "bg-brand-white text-brand-navy ring-1 ring-inset ring-brand-line",
 } as const
 
+/**
+ * A member's avatar. `photo` shows a sample person's stock portrait: only for the mockups,
+ * never for real members (they get the neutral silhouette).
+ */
 export function Avatar({
   name,
   tone,
   size = "md",
+  photo = false,
   className,
 }: {
   name: string
   tone: keyof typeof tones
   size?: "sm" | "md" | "lg"
+  photo?: boolean
   className?: string
 }) {
+  const src = photo ? photoOf(name) : undefined
   return (
     <span
       aria-hidden="true"
@@ -53,7 +66,7 @@ export function Avatar({
         className,
       )}
     >
-      <PersonSilhouette name={name} />
+      {src ? <Image src={src} alt="" width={80} height={80} className="size-full object-cover" /> : <PersonSilhouette name={name} />}
     </span>
   )
 }

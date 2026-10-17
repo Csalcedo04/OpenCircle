@@ -22,6 +22,7 @@ import { createTestClockService } from "./services/test-clock.service";
 import { createUserService } from "./services/user.service";
 import { createWalletConsentService } from "./services/wallet-consent.service";
 import { createWalletService } from "./services/wallet.service";
+import { createAccountService } from "./services/account.service";
 
 async function main(): Promise<void> {
   const db = createDb(env.DATABASE_URL);
@@ -63,6 +64,7 @@ async function main(): Promise<void> {
     {
       users,
       wallets: createWalletService(db),
+      account: createAccountService({ db }),
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,

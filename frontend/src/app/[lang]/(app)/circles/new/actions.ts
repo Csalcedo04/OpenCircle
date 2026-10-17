@@ -9,16 +9,15 @@ export type CreateState = { errors: FieldErrors; form: CircleErrorKey | null }
 
 const text = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "")
 
-/** Creates the circle through the API (the creator takes the chosen seat), then shows it. */
+/** Creates the circle through the API (the creator takes the first seat), then shows it. */
 export async function createCircleAction(locale: string, _prev: CreateState, formData: FormData): Promise<CreateState> {
   if (!hasLocale(locale)) return { errors: {}, form: "generic" }
   const parsed = parseCreateForm({
     name: text(formData.get("name")),
-    city: text(formData.get("city")),
     amount: text(formData.get("amount")),
     size: text(formData.get("size")),
     cadence: text(formData.get("cadence")),
-    payoutRound: text(formData.get("payoutRound")),
+    payoutOrder: text(formData.get("payoutOrder")),
     visibility: text(formData.get("visibility")),
   })
   if (!parsed.ok) return { errors: parsed.errors, form: null }

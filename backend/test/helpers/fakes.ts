@@ -43,6 +43,7 @@ export function fakeServices(overrides: Partial<Services> = {}): Services {
   return {
     users: { getProfile: notUsed, getPublicProfile: notUsed, createProfile: notUsed, updateProfile: notUsed },
     wallets: { getSavings: notUsed },
+    account: { getDashboard: notUsed },
     walletAddresses: { getByUrl: notUsed },
     walletConsent: { start: notUsed, complete: notUsed },
     kyc: { getStatus: notUsed, startSession: notUsed, handleWebhook: notUsed },

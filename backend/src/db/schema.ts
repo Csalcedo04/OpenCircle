@@ -205,8 +205,10 @@ export const kycVerifications = pgTable(
 
 export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
-// A period is one calendar week or one calendar month; a circle has one period per member.
-export const CIRCLE_CADENCES = ["WEEKLY", "MONTHLY"] as const;
+// A period is one or two calendar weeks, or one calendar month; a circle has one period per member.
+export const CIRCLE_CADENCES = ["WEEKLY", "BIWEEKLY", "MONTHLY"] as const;
+// Who receives the pot first, by reliability score (ICS). Set by the creator; joining means agreeing.
+export const PAYOUT_ORDERS = ["BEST_SCORE_FIRST", "BEST_SCORE_LAST"] as const;
 // PRIVATE: only members and holders of the invite link can see or join. PUBLIC: listed for everyone.
 export const CIRCLE_VISIBILITIES = ["PRIVATE", "PUBLIC"] as const;
 // UPCOMING: scheduled but not open yet. The rest follow the round engine.
@@ -265,7 +267,8 @@ export const circles = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
-    city: text("city").notNull(),
+    // Optional: the create form no longer asks for it; older circles keep theirs.
+    city: text("city"),
     status: text("status").$type<(typeof CIRCLE_STATUSES)[number]>().notNull().default("OPEN"),
     // What each member pays per round.
     contributionValue: bigint("contribution_value", { mode: "bigint" }).notNull(),
@@ -281,6 +284,8 @@ export const circles = pgTable(
     roundLengthDays: integer("round_length_days").notNull(),
     cadence: text("cadence").$type<(typeof CIRCLE_CADENCES)[number]>().notNull().default("MONTHLY"),
     visibility: text("visibility").$type<(typeof CIRCLE_VISIBILITIES)[number]>().notNull().default("PRIVATE"),
+    // Seats are reordered by score when the circle fills; until then a seat's round is provisional.
+    payoutOrder: text("payout_order").$type<(typeof PAYOUT_ORDERS)[number]>().notNull().default("BEST_SCORE_FIRST"),
     // Secret for the invite link (32 random bytes, base64url). Rotating it revokes old links.
     inviteCode: text("invite_code").notNull().unique(),
     // Number of seats; also of rounds when payout_mode is PER_ROUND.
@@ -321,6 +326,7 @@ export const circles = pgTable(
     check("circles_size_range", sql`${t.size} between 2 and 50`),
     check("circles_cadence", sql`${t.cadence} in (${inList(CIRCLE_CADENCES)})`),
     check("circles_visibility", sql`${t.visibility} in (${inList(CIRCLE_VISIBILITIES)})`),
+    check("circles_payout_order", sql`${t.payoutOrder} in (${inList(PAYOUT_ORDERS)})`),
     check("circles_approval_mode", sql`${t.approvalMode} in (${inList(APPROVAL_MODES)})`),
     check("circles_payout_mode", sql`${t.payoutMode} in (${inList(PAYOUT_MODES)})`),
     check("circles_goal_only_end", sql`(${t.payoutMode} = 'END') = (${t.goalValue} is not null)`),
@@ -345,6 +351,7 @@ export const circleMembers = pgTable(
       .notNull()
       .references(() => users.id),
     // 1-based; at most the circle's size (checked by the service, the DB can't see circles.size here).
+    // Provisional (join order) while the circle is OPEN; set from the payout order when it starts.
     // In END circles nobody is paid per round: it is only the seat's order.
     payoutRound: integer("payout_round").notNull(),
     // Held in the pot as coverage for debt after the member's own payout.

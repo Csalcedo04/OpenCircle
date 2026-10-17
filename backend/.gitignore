@@ -24,3 +24,5 @@ pnpm-workspace.yaml
 .direnv/
 graphify-out/
 .DS_Store
+.agents/
+/.agents/

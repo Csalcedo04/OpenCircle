@@ -17,7 +17,7 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
     <div key="invite" className="space-y-3">
       <div className="flex -space-x-2">
         {PEOPLE.map((p) => (
-          <Avatar key={p.name} name={p.name} tone={p.tone} size="sm" className="ring-2 ring-brand-white" />
+          <Avatar key={p.name} name={p.name} tone={p.tone} size="sm" photo className="ring-2 ring-brand-white" />
         ))}
       </div>
       <p className="flex items-center gap-2 rounded-xl bg-brand-white px-3 py-2 text-xs font-medium">

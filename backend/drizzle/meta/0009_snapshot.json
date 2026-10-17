@@ -1,5 +1,5 @@
 {
-  "id": "296e02c0-e8a3-46e0-af24-c184490ce07c",
+  "id": "79a58e9d-a60c-4650-9be0-e14da3d684ce",
   "prevId": "f2972de9-9713-4b78-9f8c-d4b253baef58",
   "version": "7",
   "dialect": "postgresql",
@@ -493,7 +493,7 @@
           "name": "city",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "status": {
           "name": "status",
@@ -572,19 +572,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
-        },
-        "payout_mode": {
-          "name": "payout_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'PER_ROUND'"
-        },
-        "goal_value": {
-          "name": "goal_value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
         },
         "pool_wallet_id": {
           "name": "pool_wallet_id",
@@ -779,18 +766,6 @@
         "circles_approval_mode": {
           "name": "circles_approval_mode",
           "value": "\"circles\".\"approval_mode\" in ('DELEGATES', 'MAJORITY')"
-        },
-        "circles_payout_mode": {
-          "name": "circles_payout_mode",
-          "value": "\"circles\".\"payout_mode\" in ('PER_ROUND', 'END')"
-        },
-        "circles_goal_only_end": {
-          "name": "circles_goal_only_end",
-          "value": "(\"circles\".\"payout_mode\" = 'END') = (\"circles\".\"goal_value\" is not null)"
-        },
-        "circles_goal_divisible": {
-          "name": "circles_goal_divisible",
-          "value": "\"circles\".\"goal_value\" is null or (\"circles\".\"goal_value\" > 0 and \"circles\".\"goal_value\" % (\"circles\".\"contribution_value\" * \"circles\".\"size\") = 0)"
         }
       },
       "isRLSEnabled": true
@@ -1273,257 +1248,6 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
-    "public.payouts": {
-      "name": "payouts",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "circle_id": {
-          "name": "circle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "round_id": {
-          "name": "round_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "member_id": {
-          "name": "member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "value": {
-          "name": "value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_code": {
-          "name": "asset_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "asset_scale": {
-          "name": "asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "receive_value": {
-          "name": "receive_value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "receive_asset_code": {
-          "name": "receive_asset_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "receive_asset_scale": {
-          "name": "receive_asset_scale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'PENDING'"
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "incoming_payment_url": {
-          "name": "incoming_payment_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "quote_url": {
-          "name": "quote_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "outgoing_payment_url": {
-          "name": "outgoing_payment_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "requested_at": {
-          "name": "requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "failure_code": {
-          "name": "failure_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "payouts_circle_id_idx": {
-          "name": "payouts_circle_id_idx",
-          "columns": [
-            {
-              "expression": "circle_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "payouts_member_id_idx": {
-          "name": "payouts_member_id_idx",
-          "columns": [
-            {
-              "expression": "member_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "payouts_circle_id_circles_id_fk": {
-          "name": "payouts_circle_id_circles_id_fk",
-          "tableFrom": "payouts",
-          "tableTo": "circles",
-          "columnsFrom": [
-            "circle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "payouts_round_id_rounds_id_fk": {
-          "name": "payouts_round_id_rounds_id_fk",
-          "tableFrom": "payouts",
-          "tableTo": "rounds",
-          "columnsFrom": [
-            "round_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "payouts_member_id_circle_members_id_fk": {
-          "name": "payouts_member_id_circle_members_id_fk",
-          "tableFrom": "payouts",
-          "tableTo": "circle_members",
-          "columnsFrom": [
-            "member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "payouts_idempotency_key_unique": {
-          "name": "payouts_idempotency_key_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "idempotency_key"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "payouts_kind": {
-          "name": "payouts_kind",
-          "value": "\"payouts\".\"kind\" in ('ROUND', 'FINAL', 'COMPENSATION')"
-        },
-        "payouts_round_only_final_null": {
-          "name": "payouts_round_only_final_null",
-          "value": "(\"payouts\".\"kind\" = 'FINAL') = (\"payouts\".\"round_id\" is null)"
-        },
-        "payouts_value_positive": {
-          "name": "payouts_value_positive",
-          "value": "\"payouts\".\"value\" > 0"
-        },
-        "payouts_asset_scale_range": {
-          "name": "payouts_asset_scale_range",
-          "value": "\"payouts\".\"asset_scale\" between 0 and 255"
-        },
-        "payouts_receive_amount": {
-          "name": "payouts_receive_amount",
-          "value": "(\"payouts\".\"receive_value\" is null) = (\"payouts\".\"receive_asset_code\" is null) and (\"payouts\".\"receive_value\" is null) = (\"payouts\".\"receive_asset_scale\" is null)"
-        },
-        "payouts_status": {
-          "name": "payouts_status",
-          "value": "\"payouts\".\"status\" in ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED')"
-        },
-        "payouts_completed_at": {
-          "name": "payouts_completed_at",
-          "value": "(\"payouts\".\"status\" = 'COMPLETED') = (\"payouts\".\"completed_at\" is not null)"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "public.reviews": {
       "name": "reviews",
       "schema": "",
@@ -1687,7 +1411,7 @@
           "name": "beneficiary_member_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "state": {
           "name": "state",

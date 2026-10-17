@@ -5,7 +5,7 @@ export type Cadence = (typeof CIRCLE_CADENCES)[number];
 const DAY_MS = 86_400_000;
 
 /** Legacy `round_length_days` stored next to the cadence (the DB still requires it). */
-export const cadenceDays: Record<Cadence, number> = { WEEKLY: 7, MONTHLY: 30 };
+export const cadenceDays: Record<Cadence, number> = { WEEKLY: 7, BIWEEKLY: 14, MONTHLY: 30 };
 
 /**
  * `start` plus `units` cadence units, in UTC. Months are counted from `start` each
@@ -13,7 +13,7 @@ export const cadenceDays: Record<Cadence, number> = { WEEKLY: 7, MONTHLY: 30 };
  * target month's last day and the time of day is kept.
  */
 export function addCadence(start: Date, cadence: Cadence, units: number): Date {
-  if (cadence === "WEEKLY") return new Date(start.getTime() + units * 7 * DAY_MS);
+  if (cadence !== "MONTHLY") return new Date(start.getTime() + units * cadenceDays[cadence] * DAY_MS);
 
   const year = start.getUTCFullYear();
   const month = start.getUTCMonth() + units;
