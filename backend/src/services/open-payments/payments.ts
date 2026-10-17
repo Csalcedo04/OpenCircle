@@ -55,6 +55,33 @@ export interface ContributionPayments {
   rotateToken(args: { manageUri: string; accessToken: string }): Promise<{ accessToken: string; manageUri: string; expiresIn: number | null }>;
 }
 
+/** What a payout's outgoing payment from the pool says it delivers (in the member's asset). */
+export interface SentPayout {
+  quoteUrl: string | null;
+  outgoingPaymentUrl: string;
+  receiveAmount: Amount;
+}
+
+/**
+ * What payouts need from Open Payments: money from the pool wallet to a member's wallet.
+ * Fixed debit: exactly the payout leaves the pool, and the member's wallet receives it in
+ * its own asset. Server-only: it holds OpenCircle's signed client and the pool's token.
+ */
+export interface PayoutPayments {
+  /** An incoming payment with no fixed amount on the member's wallet, tagged with the payout key. */
+  createMemberIncomingPayment(walletAddressUrl: string, args: { key: string; expiresAt: Date }): Promise<{ url: string }>;
+  /** What the member's wallet received on it: the proof a payout arrived. */
+  readMemberIncomingPayment(walletAddressUrl: string, url: string): Promise<{ received: Amount }>;
+  /** Closes it once paid; a fixed-debit payment doesn't complete it by itself. */
+  completeMemberIncomingPayment(walletAddressUrl: string, url: string): Promise<void>;
+  /** Fixed-debit quote and outgoing payment on the pool wallet, paying the member's incoming payment. */
+  payFromPool(access: MemberAccess, args: { incomingPaymentUrl: string; key: string; debitAmount: Amount }): Promise<SentPayout>;
+  /** The pool's outgoing payment carrying this payout key, if one was created before. */
+  findPoolPayment(access: MemberAccess, key: string): Promise<SentPayout | null>;
+  /** Whether the pool's outgoing payment gave up: then the payout will never arrive. */
+  readPoolPayment(access: MemberAccess, url: string): Promise<{ failed: boolean }>;
+}
+
 export type ContributionPaymentsClient = Pick<AuthenticatedClient, "walletAddress" | "grant" | "token" | "incomingPayment" | "quote" | "outgoingPayment">;
 
 // Rafiki lists a wallet's outgoing payments in pages; a test wallet has few, so a bounded scan is enough.
@@ -77,7 +104,118 @@ async function classify<T>(step: "quote" | "outgoing-payment", call: () => Promi
   }
 }
 
-const contributionKey = (p: Pick<OutgoingPayment, "metadata">) => p.metadata?.["contributionKey"];
+type MetadataField = "contributionKey" | "payoutKey";
+
+async function resolveWallet(client: Pick<ContributionPaymentsClient, "walletAddress">, url: string) {
+  if (!isAllowedOpenPaymentsUrl(url)) throw new Error("Wallet outside the Interledger test network");
+  const w = await client.walletAddress.get({ url });
+  if (!isAllowedOpenPaymentsUrl(w.authServer) || !isAllowedOpenPaymentsUrl(w.resourceServer)) {
+    throw new Error("Wallet servers outside the Interledger test network");
+  }
+  return w;
+}
+
+// The wallet's outgoing payment tagged `field: key`, scanning a bounded number of pages.
+async function findOutgoingPayment(
+  client: ContributionPaymentsClient,
+  { walletAddressUrl, accessToken }: MemberAccess,
+  field: MetadataField,
+  key: string,
+): Promise<OutgoingPayment | null> {
+  const owner = await resolveWallet(client, walletAddressUrl);
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const result = await classify("outgoing-payment", () =>
+      client.outgoingPayment.list(
+        { url: owner.resourceServer, walletAddress: owner.id, accessToken },
+        cursor === undefined ? { "wallet-address": owner.id, first: PAGE_SIZE } : { "wallet-address": owner.id, first: PAGE_SIZE, cursor },
+      ),
+    );
+    const match = result.result.find((p) => p.metadata?.[field] === key);
+    if (match) return match;
+    if (!result.pagination.hasNextPage || !result.pagination.endCursor) return null;
+    cursor = result.pagination.endCursor;
+  }
+  return null;
+}
+
+const sentPayout = (p: OutgoingPayment): SentPayout => ({ quoteUrl: p.quoteId ?? null, outgoingPaymentUrl: p.id, receiveAmount: p.receiveAmount });
+
+export function createPayoutPayments({ client, now = () => Date.now() }: { client: ContributionPaymentsClient; now?: () => number }): PayoutPayments {
+  // Non-interactive incoming-payment tokens, one per member authorization server; memory only.
+  const tokens = new Map<string, { value: string; expiresAt: number }>();
+
+  async function memberAccess(walletAddressUrl: string) {
+    const member = await resolveWallet(client, walletAddressUrl);
+    const cached = tokens.get(member.authServer);
+    if (cached && cached.expiresAt > now()) return { member, accessToken: cached.value };
+    const grant = await client.grant.request(
+      { url: member.authServer },
+      { access_token: { access: [{ type: "incoming-payment", actions: ["create", "read", "complete"] }] } },
+    );
+    if (!isFinalizedGrantWithAccessToken(grant)) throw new Error("Member wallet did not issue an incoming-payment token");
+    const ttlMs = (grant.access_token.expires_in ?? 600) * 1000;
+    tokens.set(member.authServer, { value: grant.access_token.value, expiresAt: now() + ttlMs - TOKEN_MARGIN_MS });
+    return { member, accessToken: grant.access_token.value };
+  }
+
+  function checkUrl(url: string): void {
+    if (!isAllowedOpenPaymentsUrl(url)) throw new Error("Payment outside the Interledger test network");
+  }
+
+  return {
+    async createMemberIncomingPayment(walletAddressUrl, { key, expiresAt }) {
+      const { member, accessToken } = await memberAccess(walletAddressUrl);
+      const incoming = await client.incomingPayment.create(
+        { url: member.resourceServer, accessToken },
+        { walletAddress: member.id, expiresAt: expiresAt.toISOString(), metadata: { payoutKey: key } },
+      );
+      return { url: incoming.id };
+    },
+
+    async readMemberIncomingPayment(walletAddressUrl, url) {
+      checkUrl(url);
+      const { accessToken } = await memberAccess(walletAddressUrl);
+      const incoming = await client.incomingPayment.get({ url, accessToken });
+      return { received: incoming.receivedAmount };
+    },
+
+    async completeMemberIncomingPayment(walletAddressUrl, url) {
+      checkUrl(url);
+      const { accessToken } = await memberAccess(walletAddressUrl);
+      await client.incomingPayment.complete({ url, accessToken });
+    },
+
+    async payFromPool({ walletAddressUrl, accessToken }, { incomingPaymentUrl, key, debitAmount }) {
+      checkUrl(incomingPaymentUrl);
+      const pool = await resolveWallet(client, walletAddressUrl);
+      const quote = await classify("quote", () =>
+        client.quote.create(
+          { url: pool.resourceServer, accessToken },
+          { method: "ilp", walletAddress: pool.id, receiver: incomingPaymentUrl, debitAmount },
+        ),
+      );
+      const outgoing = await classify("outgoing-payment", () =>
+        client.outgoingPayment.create(
+          { url: pool.resourceServer, accessToken },
+          { walletAddress: pool.id, quoteId: quote.id, metadata: { payoutKey: key } },
+        ),
+      );
+      return { ...sentPayout(outgoing), quoteUrl: quote.id };
+    },
+
+    async findPoolPayment(access, key) {
+      const found = await findOutgoingPayment(client, access, "payoutKey", key);
+      return found && sentPayout(found);
+    },
+
+    async readPoolPayment({ accessToken }, url) {
+      checkUrl(url);
+      const outgoing = await classify("outgoing-payment", () => client.outgoingPayment.get({ url, accessToken }));
+      return { failed: outgoing.failed ?? false };
+    },
+  };
+}
 
 export function createContributionPayments({
   client,
@@ -89,15 +227,7 @@ export function createContributionPayments({
   now?: () => number;
 }): ContributionPayments {
   let poolToken: { value: string; expiresAt: number } | null = null;
-
-  async function wallet(url: string) {
-    if (!isAllowedOpenPaymentsUrl(url)) throw new Error("Wallet outside the Interledger test network");
-    const w = await client.walletAddress.get({ url });
-    if (!isAllowedOpenPaymentsUrl(w.authServer) || !isAllowedOpenPaymentsUrl(w.resourceServer)) {
-      throw new Error("Wallet servers outside the Interledger test network");
-    }
-    return w;
-  }
+  const wallet = (url: string) => resolveWallet(client, url);
 
   // Non-interactive grant on OpenCircle's own wallet; kept in memory only, never stored.
   async function poolAccess() {
@@ -145,24 +275,9 @@ export function createContributionPayments({
       return { quoteUrl: quote.id, outgoingPaymentUrl: outgoing.id };
     },
 
-    async findMemberPayment({ walletAddressUrl, accessToken }, key) {
-      const member = await wallet(walletAddressUrl);
-      let cursor: string | undefined;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const result = await classify("outgoing-payment", () =>
-          client.outgoingPayment.list(
-            { url: member.resourceServer, walletAddress: member.id, accessToken },
-            cursor === undefined
-              ? { "wallet-address": member.id, first: PAGE_SIZE }
-              : { "wallet-address": member.id, first: PAGE_SIZE, cursor },
-          ),
-        );
-        const match = result.result.find((p) => contributionKey(p) === key);
-        if (match) return { outgoingPaymentUrl: match.id };
-        if (!result.pagination.hasNextPage || !result.pagination.endCursor) return null;
-        cursor = result.pagination.endCursor;
-      }
-      return null;
+    async findMemberPayment(access, key) {
+      const found = await findOutgoingPayment(client, access, "contributionKey", key);
+      return found && { outgoingPaymentUrl: found.id };
     },
 
     async rotateToken({ manageUri, accessToken }) {
