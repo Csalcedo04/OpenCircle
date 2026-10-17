@@ -78,7 +78,7 @@ function PaymentMock({ t, locale }: { t: T["mock"]; locale: Locale }) {
         <div className="mt-4 flex items-center justify-between border-t border-dashed border-brand-line pt-3 text-xs text-brand-slate">
           <span>{t.payFrom}</span>
           <span className="flex items-center gap-1.5 font-medium text-brand-navy">
-            <Avatar name="María" tone="violet" size="sm" className="size-5 text-[10px]" />
+            <Avatar name="María" tone="violet" size="sm" photo className="size-5 text-[10px]" />
             María
           </span>
         </div>
@@ -103,7 +103,7 @@ function TurnsMock({ t }: { t: T["mock"] }) {
             )}
           >
             <span className={cn("w-14 text-[11px] font-medium", now ? "text-brand-on-navy" : "text-brand-slate")}>{fill(t.round, { n: i + 1 })}</span>
-            <Avatar name={p.name} tone={p.tone} size="sm" />
+            <Avatar name={p.name} tone={p.tone} size="sm" photo />
             <span className="flex-1 text-sm font-semibold">{you ? `${p.name} (${t.you})` : p.name}</span>
             {done && <CircleCheck className="size-4 text-brand-violet-ink" />}
             {now && <span className="rounded-full bg-brand-mint px-2 py-0.5 text-[10px] font-semibold text-brand-navy">{t.now}</span>}
@@ -127,7 +127,7 @@ function FeedMock({ t, locale }: { t: T["mock"]; locale: Locale }) {
       <ul className="space-y-1">
         {rows.map(({ p, time }, i) => (
           <li key={p.name} className={cn("oc-reveal flex items-center gap-2.5 rounded-xl px-1.5 py-1.5", i === 0 && "bg-brand-mist")}>
-            <Avatar name={p.name} tone={p.tone} size="sm" />
+            <Avatar name={p.name} tone={p.tone} size="sm" photo />
             <p className="min-w-0 flex-1 truncate text-[13px]">
               <span className="font-semibold">{p.name}</span> {t.feedPaid}
             </p>
