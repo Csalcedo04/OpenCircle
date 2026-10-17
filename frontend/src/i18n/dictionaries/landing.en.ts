@@ -12,7 +12,7 @@ const landing: LandingDictionary = {
     benefits: "Benefits",
     safety: "Safety",
     faq: "FAQ",
-    cta: "Explore demo",
+    cta: "Join now",
     label: "Main navigation",
     menu: "Open menu",
     close: "Close menu",
@@ -28,7 +28,7 @@ const landing: LandingDictionary = {
     titleStart: "Save with your group and get paid globally, ",
     titleHighlight: "without banks in between.",
     lead: "Run savings circles with friends or receive international payouts directly to your wallet. You authorize each transfer with your Wallet Address, and funds settle instantly over Interledger and Rafiki.",
-    primary: "Explore demo",
+    primary: "Join now",
     secondary: "See how it works",
     micro: "Open Payments Standard · Interledger Protocol · Verified Settlement",
     dashboard: {
@@ -333,7 +333,7 @@ const landing: LandingDictionary = {
   finalCta: {
     title: "Start your next savings circle",
     lead: "Connect your wallet, invite your group, and manage contributions with transparent settlement.",
-    primary: "Explore demo",
+    primary: "Join now",
     secondary: "Create a test circle",
     note: "Built on Open Payments, Interledger Protocol, and Rafiki.",
   },

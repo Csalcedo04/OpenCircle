@@ -10,7 +10,7 @@ const landing = {
     benefits: "Beneficios",
     safety: "Seguridad",
     faq: "Preguntas frecuentes",
-    cta: "Explorar demo",
+    cta: "Únete ahora",
     label: "Navegación principal",
     menu: "Abrir menú",
     close: "Cerrar menú",
@@ -26,7 +26,7 @@ const landing = {
     titleStart: "Ahorra en grupo y cobra en cualquier moneda, ",
     titleHighlight: "sin bancos en el medio.",
     lead: "Arma círculos de ahorro con amigos o recibe pagos internacionales directo en tu billetera. Autorizas cada movimiento con tu Wallet Address y el dinero se liquida al instante por Interledger y Rafiki.",
-    primary: "Explorar demo",
+    primary: "Únete ahora",
     secondary: "Descubre cómo funciona",
     micro: "Estándar Open Payments · Protocolo Interledger · Liquidación verificada",
     dashboard: {
@@ -331,7 +331,7 @@ const landing = {
   finalCta: {
     title: "Empieza tu próximo círculo de ahorro",
     lead: "Conecta tu billetera, invita a tu grupo y gestiona aportes con liquidación transparente.",
-    primary: "Explorar demo",
+    primary: "Únete ahora",
     secondary: "Crear un círculo de prueba",
     note: "Construido sobre Open Payments, Interledger Protocol y Rafiki.",
   },
