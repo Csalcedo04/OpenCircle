@@ -13,6 +13,7 @@ import {
   contributions,
   creditProfiles,
   friendships,
+  notifications,
   reviews,
   rounds,
   testClocks,
@@ -28,6 +29,7 @@ import { createApplicationNotices } from "../src/services/circles/application-no
 import { createInviteNotices, type InviteNotices } from "../src/services/circles/invite-notices";
 import { createInviteService, type CodeInviteDto, type DirectInviteDto, type InviteDto, type MyInvitationDto } from "../src/services/circles/invite.service";
 import { createFriendService } from "../src/services/friend.service";
+import { createNotificationService, type NotificationList } from "../src/services/notification.service";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
 import { createApplicationService, type ApplicationDto } from "../src/services/circles/application.service";
@@ -252,12 +254,14 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     };
     notices = createApplicationNotices({ db, sender });
     inviteNotices = createInviteNotices({ db, sender, frontendUrl: FRONTEND_URL });
+    const notifications = createNotificationService({ db, frontendUrl: FRONTEND_URL });
     server = await startServer(
       fakeServices({
         circles: circleService,
         applications: createApplicationService({ db, circles: circleService, notices }),
-        invites: createInviteService({ db, circles: circleService, notices: inviteNotices, frontendUrl: FRONTEND_URL }),
-        friends: createFriendService({ db }),
+        invites: createInviteService({ db, circles: circleService, notices: inviteNotices, notifications, frontendUrl: FRONTEND_URL }),
+        friends: createFriendService({ db, notifications }),
+        notifications,
         users: createUserService(db),
         kyc,
         members: createMemberService({ db, circles: circleService }),
@@ -1972,6 +1976,21 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const unknown = made.find((i) => i.invitee.email === nobody);
       assert.deepEqual(unknown?.invitee, { userId: null, displayName: null, email: nobody });
       assert.ok(!res.text.includes("invite="), "a direct token leaked to the manager");
+
+      // Bob and Carol have accounts, so they also get a notification in the app; the unknown email can't.
+      for (const who of [bob, carol]) {
+        const list = (await server.request("/api/notifications?unread=true", { token: who.token })).body as NotificationList;
+        assert.equal(list.unread, 1, `${who.id} unread`);
+        const [n] = list.items;
+        assert.ok(n && n.kind === "CIRCLE_INVITE" && n.invite);
+        assert.equal(n.actor?.displayName, displayName(`${PREFIX}Olga Pérez`));
+        assert.equal(n.invite.circleId, circle.id);
+        assert.equal(n.invite.circleName, circle.name);
+        assert.equal(n.invite.status, "ACTIVE");
+        assert.ok(n.invite.inviteUrl.startsWith(`${FRONTEND_URL}/es/circles/${circle.id}?invite=`));
+        assert.equal(n.friendRequestId, null);
+      }
+      assert.equal((await db.select({ id: notifications.id }).from(notifications).where(inArray(notifications.inviteId, made.map((i) => i.id)))).length, 2);
 
       const sent = sentInvites().slice(before);
       assert.deepEqual(sent.map((n) => n.to).sort(), [emailOf(bob), emailOf(carol), nobody].sort());

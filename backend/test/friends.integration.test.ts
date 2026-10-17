@@ -6,6 +6,7 @@ import { createDb, type Db } from "../src/db/client";
 import { circleMembers, circles, friendships, users, wallets } from "../src/db/schema";
 import type { FriendDto, FriendRequestDto } from "../src/services/friend.service";
 import { createFriendService } from "../src/services/friend.service";
+import { createNotificationService, type NotificationDto, type NotificationList } from "../src/services/notification.service";
 import { createUserService } from "../src/services/user.service";
 import { displayName } from "../src/services/display-name";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
@@ -100,7 +101,8 @@ describe("friends API against Supabase", { skip: databaseUrl ? false : "DATABASE
     auth = await setupTestAuth();
     db = createDb(databaseUrl ?? "");
     await deleteTestData();
-    server = await startServer(fakeServices({ users: createUserService(db), friends: createFriendService({ db }) }));
+    const notifications = createNotificationService({ db, frontendUrl: "http://localhost:3001" });
+    server = await startServer(fakeServices({ users: createUserService(db), friends: createFriendService({ db, notifications }), notifications }));
   });
 
   after(async () => {
@@ -210,6 +212,49 @@ describe("friends API against Supabase", { skip: databaseUrl ? false : "DATABASE
     const limited = await request(ana, { email: others[0]?.email });
     assert.equal(limited.status, 429);
     assert.equal(errorCode(limited.body), "RATE_LIMITED");
+  });
+
+  test("a request notifies the addressee once; answering or withdrawing it takes the notification away", async () => {
+    const [ana, bob] = await Promise.all([person("Ana Gómez"), person("Bob Ruiz")]);
+    const notificationsOf = async (p: Person, query = "") => (await server.request(`/api/notifications${query}`, { token: p.token })).body as NotificationList;
+
+    const sent = (await request(ana, { email: bob.email })).body as FriendRequestDto;
+    const bobs = await notificationsOf(bob, "?unread=true");
+    assert.equal(bobs.unread, 1);
+    const [n] = bobs.items;
+    assert.ok(n);
+    assert.equal(n.kind, "FRIEND_REQUEST");
+    assert.equal(n.friendRequestId, sent.id);
+    assert.deepEqual(n.actor, { userId: ana.id, displayName: displayName(`${PREFIX}Ana Gómez`) });
+    assert.equal(n.invite, null);
+    assert.equal(n.readAt, null);
+    assert.deepEqual(await notificationsOf(ana), { unread: 0, items: [] }, "the requester isn't told about their own request");
+
+    // Read once, stays read; someone else's notification doesn't exist.
+    const read = await server.request(`/api/notifications/${n.id}/read`, { method: "POST", token: bob.token });
+    assert.equal(read.status, 200, read.text);
+    assert.ok((read.body as NotificationDto).readAt);
+    assert.equal((await notificationsOf(bob, "?unread=true")).unread, 0);
+    assert.equal((await notificationsOf(bob)).items.length, 1);
+    const foreign = await server.request(`/api/notifications/${n.id}/read`, { method: "POST", token: ana.token });
+    assert.equal(foreign.status, 404);
+    assert.equal(errorCode(foreign.body), "NOTIFICATION_NOT_FOUND");
+
+    assert.equal((await cancel(bob, sent.id)).status, 204);
+    assert.deepEqual(await notificationsOf(bob), { unread: 0, items: [] }, "withdrawn or rejected: nothing left to answer");
+  });
+
+  test("read-all clears every unread notification", async () => {
+    const [ana, bob, carol] = await Promise.all([person(), person(), person()]);
+    for (const from of [ana, bob]) assert.equal((await request(from, { email: carol.email })).status, 201);
+    const before = (await server.request("/api/notifications", { token: carol.token })).body as NotificationList;
+    assert.equal(before.unread, 2);
+    const res = await server.request("/api/notifications/read-all", { method: "POST", token: carol.token });
+    assert.deepEqual(res.body, { read: 2 });
+    const after = (await server.request("/api/notifications", { token: carol.token })).body as NotificationList;
+    assert.equal(after.unread, 0);
+    assert.ok(after.items.every((n) => n.readAt !== null));
+    assert.deepEqual((await server.request("/api/notifications/read-all", { method: "POST", token: carol.token })).body, { read: 0 });
   });
 
   test("deleting a user removes their friendships", async () => {
