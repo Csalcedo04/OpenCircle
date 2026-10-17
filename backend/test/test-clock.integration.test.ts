@@ -15,14 +15,14 @@ import {
   wallets,
 } from "../src/db/schema";
 import type { Services } from "../src/routes";
-import { createCircleService, type CircleDto } from "../src/services/circle.service";
+import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
 import { createMemberAccess } from "../src/services/circles/member-access";
 import { createPeriodEngine } from "../src/services/circles/period-engine";
 import type { ContributionPayments } from "../src/services/open-payments/payments";
 import { createTokenCipher } from "../src/services/open-payments/token-cipher";
 import { createTestClockService, type TestClockDto } from "../src/services/test-clock.service";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
-import { fakePayments, fakeServices, type FakePayments } from "./helpers/fakes";
+import { fakePayments, fakeServices, TEST_WALLET_HOST, type FakePayments } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
 
 // Runs against DATABASE_URL like the other integration suites. Rows use the "[test-clock] " name
@@ -203,7 +203,7 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
 
     const period3 = view.circles[0]?.currentPeriod;
     assert.equal(period3?.number, 3);
-    assert.equal(period3?.beneficiary.displayName, "Carol D.");
+    assert.equal(period3?.beneficiary.displayName, displayName(`${PREFIX}Carol Díaz`));
     assert.ok(period3?.contributions.every((c) => c.status === "COMPLETED"));
 
     // Completed contributions carry circle time, and the pool's audit log has the money in.
@@ -278,7 +278,7 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
 
     const [grant] = await db.select().from(walletGrants).where(eq(walletGrants.userId, bob.id));
     assert.equal(cipher.decrypt(grant?.accessTokenCiphertext ?? ""), "rotated");
-    assert.equal(grant?.manageUri, `https://auth.${HOST}/token/rotated`);
+    assert.equal(grant?.manageUri, `https://auth.${TEST_WALLET_HOST}/token/rotated`);
     assert.ok((grant?.tokenExpiresAt?.getTime() ?? 0) > realClock);
     assert.ok(!(grant?.accessTokenCiphertext ?? "").includes("rotated"), "token stored in plain text");
   });
