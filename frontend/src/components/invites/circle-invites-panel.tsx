@@ -1,7 +1,8 @@
+import { FeatureUnavailable } from "@/components/feature-unavailable"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import type { Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
-import { isBackendUnavailable } from "@/lib/api/backend"
+import { isBackendUnavailable, isFeatureUnavailable } from "@/lib/api/backend"
 import { getFriends } from "@/lib/api/friends"
 import { getCircleInvites } from "@/lib/api/invites"
 import type { CircleVisibility } from "@/lib/flows/circle-invite"
@@ -25,6 +26,7 @@ export async function CircleInvitesPanel({ locale, circleId, circleName, open, i
     ;[invites, friends] = await Promise.all([getCircleInvites(circleId), getFriends().catch(() => null)])
   } catch (err) {
     if (isBackendUnavailable(err)) return <ServiceUnavailable t={t.common} retryHref={`/${locale}/circles/${circleId}`} />
+    if (isFeatureUnavailable(err)) return <FeatureUnavailable t={t.common} compact />
     throw err
   }
 

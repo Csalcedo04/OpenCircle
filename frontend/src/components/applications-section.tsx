@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button"
 import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { castVoteAction, type VoteState } from "@/lib/actions/circle-applications"
+import { ApproversModal } from "@/components/approvers-modal"
 import type { ApplicationDto, ApplicationStatus } from "@/lib/api/backend"
+import type { Seat } from "@/lib/domain/types"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/view"
 
@@ -19,6 +21,9 @@ interface Props {
   /** DELEGATES: creator and approvers; MAJORITY: every member (from `access.canVote`). */
   canVote: boolean
   approvalMode: "DELEGATES" | "MAJORITY"
+  isCreator?: boolean | undefined
+  creatorUserId?: string | undefined
+  seats?: Seat[] | undefined
   t: Dictionary["circle"]
   tErr: Dictionary["circleErrors"]
 }
@@ -90,7 +95,18 @@ function VoteButton({
   )
 }
 
-export function ApplicationsSection({ locale, circleId, applications, canVote, approvalMode, t, tErr }: Props) {
+export function ApplicationsSection({
+  locale,
+  circleId,
+  applications,
+  canVote,
+  approvalMode,
+  isCreator,
+  creatorUserId,
+  seats,
+  t,
+  tErr,
+}: Props) {
   const router = useRouter()
   // Local copy so a vote's answer shows at once; the page revalidates behind it.
   const [items, setItems] = useState(applications)
@@ -116,13 +132,25 @@ export function ApplicationsSection({ locale, circleId, applications, canVote, a
           <UserPlus className="size-6 text-brand-violet" aria-hidden="true" />
         </span>
         <p className="mt-4 text-sm text-brand-slate">{t.noApplications}</p>
+        {isCreator && approvalMode === "DELEGATES" && seats && (
+          <div className="mt-5 flex justify-center">
+            <ApproversModal locale={locale} circleId={circleId} seats={seats} creatorUserId={creatorUserId} t={t} tErr={tErr} />
+          </div>
+        )}
       </div>
     )
   }
 
   return (
     <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
-      <p className="text-sm text-brand-slate">{approvalMode === "MAJORITY" ? t.applicationsHelpMajority : t.applicationsHelpDelegates}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-brand-slate">
+          {approvalMode === "MAJORITY" ? t.applicationsHelpMajority : t.applicationsHelpDelegates}
+        </p>
+        {isCreator && approvalMode === "DELEGATES" && seats && (
+          <ApproversModal locale={locale} circleId={circleId} seats={seats} creatorUserId={creatorUserId} t={t} tErr={tErr} />
+        )}
+      </div>
       <ul className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {items.map((app) => {
           const name = app.applicant.fullName ?? app.applicant.walletAddress

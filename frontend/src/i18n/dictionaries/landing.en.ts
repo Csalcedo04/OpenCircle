@@ -20,6 +20,8 @@ const landing: LandingDictionary = {
     language: "Language",
     switchTo: "Español",
     circleMobile: "Circle",
+    howMobile: "Steps",
+    safetyMobile: "Safety",
     quickNavAria: "Quick mobile navigation",
     demoMobile: "Demo",
   },

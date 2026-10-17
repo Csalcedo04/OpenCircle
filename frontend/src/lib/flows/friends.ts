@@ -3,7 +3,18 @@ import { z } from "zod"
 // The friends page's forms: pure, so they're unit-tested.
 
 /** Message keys (dictionary section `friends.errors`). */
-export const FRIEND_ERROR_KEYS = ["email", "userNotFound", "alreadyFriends", "requestPending", "self", "notFound", "rateLimited", "unavailable", "generic"] as const
+export const FRIEND_ERROR_KEYS = [
+  "email",
+  "userNotFound",
+  "alreadyFriends",
+  "requestPending",
+  "self",
+  "notFound",
+  "rateLimited",
+  "unavailable",
+  "featureUnavailable",
+  "generic",
+] as const
 export type FriendErrorKey = (typeof FRIEND_ERROR_KEYS)[number]
 
 export function parseFriendRequestForm(f: { email: string }): { ok: true; email: string } | { ok: false; error: FriendErrorKey } {
@@ -21,6 +32,7 @@ const apiErrors: Record<string, FriendErrorKey> = {
   FRIEND_NOT_FOUND: "notFound",
   RATE_LIMITED: "rateLimited",
   BACKEND_UNAVAILABLE: "unavailable",
+  NOT_FOUND: "featureUnavailable",
 }
 
 /** API error code from the friends routes → message key. */

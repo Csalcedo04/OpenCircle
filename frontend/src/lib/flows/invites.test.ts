@@ -57,6 +57,7 @@ describe("inviteErrorKey and labels", () => {
     expect(inviteErrorKey("PROFILE_NOT_FOUND")).toBe("userNotFound")
     expect(inviteErrorKey("INVITE_NOT_ACTIVE")).toBe("notActive")
     expect(inviteErrorKey("BACKEND_UNAVAILABLE")).toBe("unavailable")
+    expect(inviteErrorKey("NOT_FOUND")).toBe("featureUnavailable")
     expect(inviteErrorKey("SOMETHING_ELSE")).toBe("generic")
   })
 

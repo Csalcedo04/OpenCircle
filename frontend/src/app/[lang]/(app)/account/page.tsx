@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { MyInvitesCard } from "@/components/invites/my-invites-card"
-import { getMyDashboard, getMyKyc, getMyProfile, isBackendUnavailable } from "@/lib/api/backend"
+import { getMyDashboard, getMyKyc, getMyProfile, isBackendUnavailable, isFeatureUnavailable } from "@/lib/api/backend"
 import { getMyInvitations } from "@/lib/api/invites"
 import { nextAction } from "@/lib/flows/account-dashboard"
 import { createClient } from "@/lib/supabase/server"
@@ -35,7 +35,15 @@ export default async function AccountPage() {
   let loaded
   try {
     // Every figure comes from the backend's records; this page never changes a payment.
-    loaded = await Promise.all([getMyProfile(), getMyKyc().catch(() => null), getMyDashboard(), getMyInvitations().catch(() => [])])
+    loaded = await Promise.all([
+      getMyProfile(),
+      getMyKyc().catch(() => null),
+      getMyDashboard(),
+      getMyInvitations().catch((err: unknown) => {
+        if (isFeatureUnavailable(err) || isBackendUnavailable(err)) return []
+        throw err
+      }),
+    ])
   } catch (err) {
     if (!isBackendUnavailable(err)) throw err
     return (

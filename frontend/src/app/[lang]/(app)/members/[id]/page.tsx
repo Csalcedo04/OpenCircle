@@ -4,9 +4,11 @@ import { notFound } from "next/navigation"
 import { ArrowLeft, CheckCircle2, Shield, Wallet } from "lucide-react"
 import { AddFriendButton } from "@/components/add-friend-button"
 import { RoundStatusBadge } from "@/components/round-status"
+import { ServiceUnavailable } from "@/components/service-unavailable"
 import { Stars, TrustDial, formatTenths } from "@/components/trust"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { isBackendUnavailable } from "@/lib/api/backend"
 import { getMemberView } from "@/lib/data"
 import { createClient } from "@/lib/supabase/server"
 import { currentRound } from "@/lib/domain/rounds"
@@ -14,14 +16,26 @@ import { trustFor } from "@/lib/domain/trust"
 import { formatDate } from "@/lib/view"
 
 export async function generateMetadata({ params }: PageProps<"/[lang]/members/[id]">): Promise<Metadata> {
-  const view = await getMemberView((await params).id)
+  const view = await getMemberView((await params).id).catch(() => undefined)
   return { title: view?.member.name ?? "OpenCircle" }
 }
 
 export default async function MemberPage({ params }: PageProps<"/[lang]/members/[id]">) {
   const { id } = await params
   const { locale, t } = await getDictionary()
-  const [view, { data: claims }] = await Promise.all([getMemberView(id), (await createClient()).auth.getClaims()])
+  let view, claims
+  try {
+    ;[view, { data: claims }] = await Promise.all([getMemberView(id), (await createClient()).auth.getClaims()])
+  } catch (err) {
+    if (isBackendUnavailable(err)) {
+      return (
+        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+          <ServiceUnavailable t={t.common} retryHref={`/${locale}/members/${id}`} />
+        </div>
+      )
+    }
+    throw err
+  }
   if (!view) notFound()
   const { member, reviews: received } = view
   const isMe = claims?.claims.sub === member.id

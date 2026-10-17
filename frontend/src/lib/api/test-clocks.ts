@@ -11,7 +11,7 @@ export type CircleCadence = (typeof CIRCLE_CADENCES)[number]
 export const apiCircleSchema = z.object({
   id: z.uuid(),
   name: z.string(),
-  city: z.string(),
+  city: z.string().nullable(),
   status: z.string(),
   contribution: amountSchema,
   size: z.int(),
@@ -21,7 +21,13 @@ export const apiCircleSchema = z.object({
   testClockId: z.uuid().nullable().optional(),
   inviteUrl: z.string().nullable().optional(),
   visibility: z.enum(["PRIVATE", "PUBLIC"]).optional(),
-  seats: z.array(z.object({ memberId: z.uuid(), displayName: z.string(), payoutRound: z.int() })),
+  seats: z.array(
+    z.object({
+      memberId: z.uuid(),
+      displayName: z.string(),
+      payoutRound: z.int().nullable().transform((v) => v ?? 0),
+    }),
+  ),
 })
 
 export type ApiCircle = z.infer<typeof apiCircleSchema>
@@ -40,14 +46,21 @@ export const testClockSchema = z.object({
       cadence: z.enum(CIRCLE_CADENCES),
       size: z.int(),
       seatsTaken: z.int(),
-      inviteCode: z.string(),
+      inviteCode: z.string().nullable().optional().transform((v) => v ?? ""),
       currentPeriod: z
         .object({
           number: z.int(),
           state: z.string(),
-          startsAt: z.string(),
+          startsAt: z.string().nullable().optional().transform((v) => v ?? ""),
           deadline: z.string(),
-          beneficiary: z.object({ memberId: z.uuid(), displayName: z.string() }),
+          beneficiary: z
+            .object({
+              memberId: z.uuid().nullable(),
+              displayName: z.string().nullable().optional().transform((v) => v ?? "—"),
+            })
+            .nullable()
+            .optional()
+            .transform((v) => v ?? { memberId: null, displayName: "—" }),
           contributions: z.array(clockMemberSchema),
         })
         .nullable(),

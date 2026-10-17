@@ -26,7 +26,10 @@ export const PEOPLE = [
   { name: "Juan", tone: "line", photo: "/people/juan.jpg" },
 ] as const
 
-const photoOf = (name: string) => PEOPLE.find((p) => p.name === name)?.photo
+const photoOf = (name: string) => {
+  const normalized = name.normalize("NFC")
+  return PEOPLE.find((p) => p.name.normalize("NFC") === normalized)?.photo
+}
 
 const tones = {
   violet: "bg-brand-violet text-brand-white",
@@ -66,7 +69,7 @@ export function Avatar({
         className,
       )}
     >
-      {src ? <Image src={src} alt="" width={80} height={80} className="size-full object-cover" /> : <PersonSilhouette name={name} />}
+      {src ? <Image src={src} alt="" width={80} height={80} unoptimized className="size-full object-cover" /> : <PersonSilhouette name={name} />}
     </span>
   )
 }

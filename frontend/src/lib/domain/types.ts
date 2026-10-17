@@ -58,11 +58,13 @@ export type Round = {
 
 export type Seat = {
   memberId: string
+  seatId?: string | undefined
   displayName?: string | undefined
   payoutRound: number
   /** Collateral held in the pool, minor units of the circle's asset. */
   collateralValue: string
   grant: GrantMode | null
+  isApprover?: boolean | undefined
 }
 
 export type Circle = {

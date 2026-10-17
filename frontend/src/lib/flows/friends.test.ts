@@ -23,6 +23,7 @@ describe("friendErrorKey", () => {
     expect(friendErrorKey("FRIEND_NOT_FOUND")).toBe("notFound")
     expect(friendErrorKey("RATE_LIMITED")).toBe("rateLimited")
     expect(friendErrorKey("BACKEND_UNAVAILABLE")).toBe("unavailable")
+    expect(friendErrorKey("NOT_FOUND")).toBe("featureUnavailable")
     expect(friendErrorKey("WHATEVER")).toBe("generic")
   })
 })

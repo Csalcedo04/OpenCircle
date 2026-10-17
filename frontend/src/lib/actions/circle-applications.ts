@@ -1,9 +1,12 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { z } from "zod"
 import { hasLocale } from "@/i18n/config"
-import { BackendError, voteOnApplication, type ApplicationDto, type VoteDecision } from "@/lib/api/backend"
+import { BackendError, setCircleApprovers, voteOnApplication, type ApplicationDto, type VoteDecision } from "@/lib/api/backend"
 import { circleErrorKey, type CircleErrorKey } from "@/lib/flows/circles"
+
+const memberIdsSchema = z.array(z.uuid()).max(50)
 
 export type VoteState = {
   error: CircleErrorKey | null
@@ -24,3 +27,28 @@ export async function castVoteAction(locale: string, circleId: string, applicati
     return { error: circleErrorKey(code), application: null }
   }
 }
+
+export type ApproversState = {
+  error: CircleErrorKey | null
+  saved: boolean
+}
+
+export async function setCircleApproversAction(
+  locale: string,
+  circleId: string,
+  memberIds: readonly string[],
+): Promise<ApproversState> {
+  if (!hasLocale(locale)) return { error: "generic", saved: false }
+  const parsed = memberIdsSchema.safeParse(memberIds)
+  if (!parsed.success) return { error: "generic", saved: false }
+  try {
+    await setCircleApprovers(circleId, parsed.data)
+    revalidatePath(`/${locale}/circles/${circleId}`)
+    return { error: null, saved: true }
+  } catch (err) {
+    const code = err instanceof BackendError ? err.code : "unknown"
+    console.error("Set approvers failed", code)
+    return { error: circleErrorKey(code), saved: false }
+  }
+}
+

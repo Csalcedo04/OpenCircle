@@ -1,6 +1,15 @@
 import "server-only"
 
-import { BackendError, fetchCircle, fetchCircleApplications, fetchCircles, fetchMember, getMyCircles, type ApplicationDto } from "@/lib/api/backend"
+import {
+  BackendError,
+  fetchCircle,
+  fetchCircleApplications,
+  fetchCircles,
+  fetchMember,
+  getMyCircles,
+  isFeatureUnavailable,
+  type ApplicationDto,
+} from "@/lib/api/backend"
 import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
 import type { Circle, Member, Review } from "@/lib/domain/types"
 import type { CircleVisibility } from "@/lib/flows/circle-invite"
@@ -45,7 +54,12 @@ export async function getCircleApplications(id: string): Promise<ApplicationDto[
   try {
     return await fetchCircleApplications(id)
   } catch (err) {
-    if (err instanceof BackendError && err.code === "CIRCLE_NOT_FOUND") return null
+    if (
+      (err instanceof BackendError && (err.code === "CIRCLE_NOT_FOUND" || err.status === 403 || err.status === 404)) ||
+      isFeatureUnavailable(err)
+    ) {
+      return null
+    }
     throw err
   }
 }
@@ -57,7 +71,12 @@ export async function listCircleViews(): Promise<CircleView[]> {
 
 /** The circles the signed-in user has a seat in, private ones included. */
 export async function listMyCircleViews(): Promise<CircleView[]> {
-  return detailed((await getMyCircles()).map((c) => c.id))
+  try {
+    return await detailed((await getMyCircles()).map((c) => c.id))
+  } catch (err) {
+    if (isFeatureUnavailable(err)) return []
+    throw err
+  }
 }
 
 export async function getMemberView(id: string): Promise<MemberView | undefined> {
@@ -69,6 +88,13 @@ export async function getMemberView(id: string): Promise<MemberView | undefined>
 // The list endpoints return summaries; pages need seats and rounds too. Fine at demo scale
 // (the API lists at most 100 circles); a circles-with-details endpoint would replace this.
 async function detailed(ids: readonly string[]): Promise<CircleView[]> {
-  const views = await Promise.all(ids.map((id) => getCircleView(id)))
-  return views.filter((v) => v !== undefined)
+  const views = await Promise.all(
+    ids.map((id) =>
+      getCircleView(id).catch((err: unknown) => {
+        if (err instanceof BackendError && (err.status === 403 || err.status === 404)) return undefined
+        throw err
+      }),
+    ),
+  )
+  return views.filter((v): v is CircleView => v !== undefined)
 }

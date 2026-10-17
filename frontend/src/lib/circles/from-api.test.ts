@@ -83,6 +83,42 @@ describe("toCircle", () => {
     expect(c.currentRound).toBe(1)
     expect(toCircle({ ...dto, currentRound: null }).currentRound).toBe(0)
   })
+
+  it("handles null beneficiaryMemberId and null seat payoutRound on OPEN circles", () => {
+    const openDto: CircleDto = {
+      ...dto,
+      status: "OPEN",
+      currentRound: null,
+      seats: [
+        { ...dto.seats[0]!, payoutRound: 1 },
+        { ...dto.seats[1]!, payoutRound: null },
+      ],
+      rounds: [
+        {
+          number: 1,
+          state: "UPCOMING",
+          beneficiaryMemberId: null,
+          startsAt: null,
+          deadline: "2026-02-03T00:00:00.000Z",
+          contributions: [],
+        },
+        {
+          number: 2,
+          state: "UPCOMING",
+          beneficiaryMemberId: null,
+          startsAt: null,
+          deadline: "2026-03-03T00:00:00.000Z",
+          contributions: [],
+        },
+      ],
+    }
+    const c = toCircle(openDto)
+    expect(c.seats[0]?.payoutRound).toBe(1)
+    expect(c.seats[1]?.payoutRound).toBe(2)
+    // Round 1 falls back to seat with payoutRound === 1 ("user-a"), Round 2 has no assigned seat yet ("")
+    expect(c.rounds[0]?.beneficiaryId).toBe("user-a")
+    expect(c.rounds[1]?.beneficiaryId).toBe("")
+  })
 })
 
 describe("contributionStatus", () => {

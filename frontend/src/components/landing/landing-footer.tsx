@@ -10,7 +10,7 @@ const link = "rounded text-[15px] text-brand-navy/80 outline-none transition-col
 export function LandingFooter({ t, nav, locale }: { t: LandingDictionary["footer"]; nav: LandingDictionary["nav"]; locale: Locale }) {
   const home = `/${locale}`
   return (
-    <footer className="mt-auto">
+    <footer className="mt-auto pb-24 md:pb-0">
       <div className="mx-auto grid max-w-7xl grid-cols-1 gap-12 px-4 py-16 sm:px-6 md:grid-cols-[1.4fr_1fr_1fr] lg:px-8">
         <div>
           <Link href={home} aria-label={nav.home} className="inline-block rounded-lg text-[1.6rem] outline-none focus-visible:ring-4 focus-visible:ring-brand-violet/30">

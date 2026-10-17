@@ -22,6 +22,7 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react"
+import { CreditPassportModal } from "@/components/credit-passport-modal"
 import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import type { Activity, Dashboard, DashboardCircle, PaymentStatus, Profile } from "@/lib/api/backend"
@@ -61,13 +62,21 @@ function SectionLabel({ icon: Icon, children }: { icon: LucideIcon; children: Re
   )
 }
 
-const shortDate = (iso: string, locale: Locale) =>
-  new Intl.DateTimeFormat(locale === "es" ? "es-CO" : "en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(iso))
+const shortDate = (iso: string, locale: Locale) => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return new Intl.DateTimeFormat(locale === "es" ? "es-CO" : "en-US", { day: "numeric", month: "short", timeZone: "UTC" }).format(d)
+}
 
-const dateTime = (iso: string, locale: Locale) =>
-  new Intl.DateTimeFormat(locale === "es" ? "es-CO" : "en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(
-    new Date(iso),
-  ) + " UTC"
+const dateTime = (iso: string, locale: Locale) => {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return (
+    new Intl.DateTimeFormat(locale === "es" ? "es-CO" : "en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(
+      d,
+    ) + " UTC"
+  )
+}
 
 /** Brand palette only: state reads from the icon and the label, colour just groups it. */
 const payStyle: Record<PaymentStatus, { icon: LucideIcon; tone: string; spin?: boolean }> = {
@@ -100,19 +109,32 @@ export function PaymentBadge({ status, t }: { status: PaymentStatus | null; t: T
 
 export function AccountHeader({ t, locale }: { t: T; locale: Locale }) {
   return (
-    <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
-        <span className={cn(chip, "border border-brand-violet/25 bg-brand-violet/10 text-brand-violet-ink")}>
-          <FlaskConical className="size-3.5" aria-hidden="true" />
-          {t.demoBadge}
-        </span>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-brand-navy sm:text-4xl">{t.title}</h1>
-        <p className="mt-2 max-w-xl text-base text-brand-slate">{t.lead}</p>
+    <header className="relative isolate overflow-hidden rounded-[32px] sm:rounded-[40px] border border-brand-line bg-brand-white p-6 sm:p-9 shadow-[0_24px_48px_-28px_color-mix(in_srgb,var(--color-brand-navy)_22%,transparent)]">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden opacity-45 select-none"
+      >
+        <svg viewBox="0 0 1200 320" fill="none" className="h-full w-full">
+          <circle cx="1040" cy="110" r="180" stroke="var(--color-brand-line)" strokeWidth="1.5" strokeDasharray="5 7" />
+          <circle cx="1040" cy="110" r="280" stroke="color-mix(in srgb, var(--color-brand-violet) 25%, transparent)" strokeWidth="1" />
+          <path d="M 540 280 Q 840 40 1180 190" stroke="color-mix(in srgb, var(--color-brand-mint) 65%, transparent)" strokeWidth="2" strokeDasharray="4 6" />
+        </svg>
       </div>
-      <Link href={`/${locale}/circles`} className={cn(secondaryLink, "self-start sm:self-auto")}>
-        {t.viewAllCircles}
-        <ArrowRight className="size-4" aria-hidden="true" />
-      </Link>
+
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <span className={cn(chip, "border border-brand-line bg-brand-canvas text-brand-navy shadow-2xs")}>
+            <FlaskConical className="size-3.5 text-brand-violet-ink" aria-hidden="true" />
+            {t.demoBadge}
+          </span>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] text-brand-navy sm:text-5xl">{t.title}</h1>
+          <p className="mt-2 max-w-xl text-base leading-relaxed text-brand-slate sm:text-lg">{t.lead}</p>
+        </div>
+        <Link href={`/${locale}/circles`} className={cn(secondaryLink, "self-start sm:self-auto")}>
+          {t.viewAllCircles}
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </Link>
+      </div>
     </header>
   )
 }
@@ -128,17 +150,59 @@ export function DemoNotice({ t }: { t: T }) {
 
 // ── Financial overview ──────────────────────────────────────────────────────
 
-function Metric({ icon: Icon, label, children, hint }: { icon: LucideIcon; label: string; children: React.ReactNode; hint: React.ReactNode }) {
+function Metric({
+  icon: Icon,
+  label,
+  children,
+  hint,
+  featured = false,
+}: {
+  icon: LucideIcon
+  label: string
+  children: React.ReactNode
+  hint: React.ReactNode
+  featured?: boolean
+}) {
   return (
-    <div className="flex min-w-0 flex-col rounded-3xl border border-brand-line bg-brand-white p-4 shadow-2xs sm:p-5">
-      <span className="flex items-center gap-2 text-xs font-medium text-brand-slate">
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-mist">
-          <Icon className="size-3.5 text-brand-navy" aria-hidden="true" />
+    <div
+      className={cn(
+        "relative isolate flex min-w-0 flex-col overflow-hidden rounded-[28px] border p-5 shadow-2xs sm:p-6",
+        featured
+          ? "border-brand-navy bg-brand-navy text-brand-white"
+          : "border-brand-line bg-brand-white text-brand-navy",
+      )}
+    >
+      {featured && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -top-12 -right-12 -z-10 size-40 rounded-full bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-brand-violet)_40%,transparent),transparent)]"
+        />
+      )}
+      <span
+        className={cn(
+          "flex items-center gap-2 text-xs font-medium",
+          featured ? "text-brand-on-navy" : "text-brand-slate",
+        )}
+      >
+        <span
+          className={cn(
+            "grid size-7 shrink-0 place-items-center rounded-full",
+            featured ? "bg-brand-mint text-brand-navy" : "bg-brand-mist text-brand-navy",
+          )}
+        >
+          <Icon className="size-3.5" aria-hidden="true" />
         </span>
         {label}
       </span>
-      <div className="mt-3 min-w-0 text-xl font-semibold tracking-[-0.02em] text-brand-navy tabular-nums break-words sm:text-2xl">{children}</div>
-      <p className="mt-1 text-xs text-brand-slate">{hint}</p>
+      <div
+        className={cn(
+          "mt-3 min-w-0 text-xl font-semibold tracking-[-0.02em] tabular-nums break-words sm:text-2xl",
+          featured ? "text-brand-mint" : "text-brand-navy",
+        )}
+      >
+        {children}
+      </div>
+      <p className={cn("mt-1 text-xs", featured ? "text-brand-on-navy" : "text-brand-slate")}>{hint}</p>
     </div>
   )
 }
@@ -177,6 +241,7 @@ export function FinancialOverview({ data, t, locale }: { data: Dashboard; t: T; 
         <Metric
           icon={Gift}
           label={o.payout}
+          featured
           hint={payout?.round ? fill(o.payoutHint, { round: payout.round.number, date: formatDate(payout.round.deadline, locale) }) : o.payoutEmpty}
         >
           {payout ? formatAmount(payout.circle.expectedPayout, locale) : "—"}
@@ -266,7 +331,7 @@ export function NextActionCard({ action, t, locale }: { action: NextAction | nul
             </span>
             <span>
               {kind === "UPCOMING"
-                ? fill(n.opens, { date: formatDate(round.startsAt, locale) })
+                ? fill(n.opens, { date: formatDate(round.startsAt || round.deadline, locale) })
                 : fill(n.due, { date: formatDate(round.deadline, locale) })}
             </span>
           </p>
@@ -329,11 +394,12 @@ export function CommunityTrustCard({ data, kycApproved, t }: { data: Dashboard; 
 
   return (
     <section aria-labelledby="trust-title" className="flex flex-col rounded-[28px] bg-brand-navy p-5 text-brand-white shadow-sm sm:p-7 lg:col-span-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="trust-title" className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-brand-mint">
           <ShieldCheck className="size-3.5" aria-hidden="true" />
           {tr.title}
         </h2>
+        <CreditPassportModal data={data} kycApproved={kycApproved} t={tr} authLabels={t.wallet.auth} />
       </div>
 
       {score === null ? (

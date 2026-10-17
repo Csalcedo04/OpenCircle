@@ -40,20 +40,25 @@ export function toCircle(dto: CircleDto): Circle {
     roundLengthDays: CADENCE_DAYS[dto.cadence],
     poolWalletAddress: dto.poolWalletAddress,
     size: dto.size,
-    seats: dto.seats.map((s) => ({
+    seats: dto.seats.map((s, idx) => ({
       memberId: s.userId,
+      seatId: s.memberId,
       displayName: s.displayName,
-      payoutRound: s.payoutRound,
+      payoutRound: s.payoutRound ?? idx + 1,
       collateralValue: s.collateral.value,
       grant: s.grantMode,
+      isApprover: s.isApprover,
     })),
-    rounds: dto.rounds.map((r) => ({
-      number: r.number,
-      beneficiaryId: user(r.beneficiaryMemberId),
-      status: r.state,
-      deadline: r.deadline,
-      contributions: r.contributions.map((c) => ({ memberId: user(c.memberId), status: contributionStatus(c.status) })),
-    })),
+    rounds: dto.rounds.map((r) => {
+      const fallbackUser = dto.seats.find((s) => s.payoutRound === r.number)?.userId ?? ""
+      return {
+        number: r.number,
+        beneficiaryId: r.beneficiaryMemberId ? user(r.beneficiaryMemberId) : fallbackUser,
+        status: r.state,
+        deadline: r.deadline,
+        contributions: r.contributions.map((c) => ({ memberId: user(c.memberId), status: contributionStatus(c.status) })),
+      }
+    }),
     // The UI's "no current round" is 0.
     currentRound: dto.currentRound ?? 0,
     visibility: dto.visibility,

@@ -32,6 +32,7 @@ export type CircleErrorKey =
   | "notApprover"
   | "kyc"
   | "unavailable"
+  | "featureUnavailable"
   | "generic"
 
 export type CircleField = "name" | "amount" | "size" | "cadence" | "collateral"
@@ -109,8 +110,10 @@ const apiErrors: Record<string, CircleErrorKey> = {
   ALREADY_VOTED: "alreadyVoted",
   APPLICATION_DECIDED: "applicationDecided",
   NOT_APPROVER: "notApprover",
+  NOT_CREATOR: "notApprover",
   KYC_REQUIRED: "kyc",
   BACKEND_UNAVAILABLE: "unavailable",
+  NOT_FOUND: "featureUnavailable",
 }
 
 /** API error code from creating, joining, applying or voting → message key. */

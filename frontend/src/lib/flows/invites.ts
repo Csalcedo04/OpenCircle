@@ -36,6 +36,7 @@ export const INVITE_ERROR_KEYS = [
   "notFound",
   "notActive",
   "unavailable",
+  "featureUnavailable",
   "generic",
 ] as const
 export type InviteErrorKey = (typeof INVITE_ERROR_KEYS)[number]
@@ -84,6 +85,7 @@ const apiErrors: Record<string, InviteErrorKey> = {
   INVITE_NOT_ACTIVE: "notActive",
   VALIDATION_ERROR: "targets",
   BACKEND_UNAVAILABLE: "unavailable",
+  NOT_FOUND: "featureUnavailable",
 }
 
 /** API error code from managing invites → message key. */
