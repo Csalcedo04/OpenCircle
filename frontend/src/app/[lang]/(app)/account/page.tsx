@@ -2,7 +2,9 @@ import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { MyInvitesCard } from "@/components/invites/my-invites-card"
 import { getMyDashboard, getMyKyc, getMyProfile, isBackendUnavailable } from "@/lib/api/backend"
+import { getMyInvitations } from "@/lib/api/invites"
 import { nextAction } from "@/lib/flows/account-dashboard"
 import { createClient } from "@/lib/supabase/server"
 import {
@@ -33,7 +35,7 @@ export default async function AccountPage() {
   let loaded
   try {
     // Every figure comes from the backend's records; this page never changes a payment.
-    loaded = await Promise.all([getMyProfile(), getMyKyc().catch(() => null), getMyDashboard()])
+    loaded = await Promise.all([getMyProfile(), getMyKyc().catch(() => null), getMyDashboard(), getMyInvitations().catch(() => [])])
   } catch (err) {
     if (!isBackendUnavailable(err)) throw err
     return (
@@ -45,7 +47,7 @@ export default async function AccountPage() {
       </div>
     )
   }
-  const [profile, kyc, dashboard] = loaded
+  const [profile, kyc, dashboard, invitations] = loaded
   if (!profile || !dashboard) redirect(`/${locale}/onboarding`)
 
   const a = t.account
@@ -63,6 +65,9 @@ export default async function AccountPage() {
         <CommunityTrustCard data={dashboard} kycApproved={kycApproved} t={a} />
 
         <MyCirclesSummary data={dashboard} t={a} locale={locale} />
+        <div className="lg:col-span-12">
+          <MyInvitesCard locale={locale} invites={invitations} t={t.myInvites} />
+        </div>
         {/* Both cards render nothing without an active circle; then the column collapses. */}
         <div className="grid grid-cols-1 content-start gap-6 empty:hidden lg:col-span-5">
           <UpcomingPayoutCard data={dashboard} t={a} roundStates={t.circle.states} locale={locale} />

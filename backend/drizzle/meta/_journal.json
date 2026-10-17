@@ -78,6 +78,13 @@
       "when": 1792213654599,
       "tag": "0010_circle_biweekly_and_payout_order",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792217903609,
+      "tag": "0011_friends_and_circle_invites",
+      "breakpoints": true
     }
   ]
 }

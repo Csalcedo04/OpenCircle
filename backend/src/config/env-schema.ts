@@ -27,6 +27,13 @@ export const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((v) => v === "true"),
+  // Emails (invitations, applications, reminders) go through Resend when both are set;
+  // otherwise they are only logged. EMAIL_FROM is a sender on a domain verified in Resend.
+  RESEND_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().min(3).optional(),
+}).refine((env) => (env.RESEND_API_KEY === undefined) === (env.EMAIL_FROM === undefined), {
+  path: ["EMAIL_FROM"],
+  message: "RESEND_API_KEY and EMAIL_FROM go together",
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -7,6 +7,8 @@ import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
 import type { AccountService } from "../services/account.service";
 import type { CircleService } from "../services/circle.service";
+import type { InviteService } from "../services/circles/invite.service";
+import { emailSchema } from "./shared";
 import type { KycService } from "../services/kyc.service";
 import type { WalletConsentService } from "../services/wallet-consent.service";
 import type { WalletService } from "../services/wallet.service";
@@ -57,7 +59,7 @@ export const updateProfileSchema = z
   .refine((patch) => Object.values(patch).some((value) => value !== undefined), "At least one field is required");
 
 // The email comes from the verified Supabase JWT, not from the request body.
-const tokenEmailSchema = z.email().transform((email) => email.toLowerCase());
+const tokenEmailSchema = emailSchema;
 
 // Starts Open Payments consent on this wallet; the wallet is linked only once the user approves.
 export const startConsentSchema = z.strictObject({ walletAddress: walletAddressInputSchema });
@@ -72,7 +74,8 @@ export const completeConsentSchema = z.strictObject({
 export const startKycSchema = z.strictObject({
   locale: z.enum(["en", "es"]),
   // Where the user returns after Didit; an in-app path only, so it can't become an open redirect.
-  returnPath: z.string().max(200).regex(/^\/(en|es)(\/[\w-]+)*$/),
+  // It may carry an invite token (`?invite=`), so an invited user keeps it through verification.
+  returnPath: z.string().max(400).regex(/^\/(en|es)(\/[\w-]+)*(\?invite=[\w-]{1,128})?$/),
 });
 
 // Public profile of another user (e.g. a savings-circle applicant), by id or by wallet.
@@ -93,6 +96,7 @@ export interface UserRouteServices {
   walletConsent: WalletConsentService;
   kyc: KycService;
   circles: CircleService;
+  invites: Pick<InviteService, "listMine">;
   account: AccountService;
 }
 
@@ -113,7 +117,7 @@ function currentUserEmail(res: Response): string {
   return parsed.data;
 }
 
-export function userRoutes({ users, wallets, walletConsent, kyc, circles, account }: UserRouteServices): Router {
+export function userRoutes({ users, wallets, walletConsent, kyc, circles, invites, account }: UserRouteServices): Router {
   const getMe: RequestHandler = async (_req, res) => {
     res.json(await users.getProfile(currentUserId(res)));
   };
@@ -142,6 +146,10 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles, accoun
 
   const getMyCircles: RequestHandler = async (_req, res) => {
     res.json(await circles.listForUser(currentUserId(res)));
+  };
+
+  const getMyInvitations: RequestHandler = async (_req, res) => {
+    res.json(await invites.listMine(currentUserId(res)));
   };
 
   const getMyKyc: RequestHandler = async (_req, res) => {
@@ -184,6 +192,7 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles, accoun
     .post("/me/wallet/consent", startWalletConsent)
     .post("/me/wallet/consent/complete", completeWalletConsent)
     .get("/me/circles", getMyCircles)
+    .get("/me/invitations", getMyInvitations)
     .get("/me/kyc", getMyKyc)
     .post("/me/kyc/session", startMyKyc)
     .get("/me/savings", getMySavings)

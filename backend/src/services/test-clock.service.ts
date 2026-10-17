@@ -3,6 +3,7 @@ import type { Db } from "../db/client";
 import { circleMembers, circles, contributions, rounds, testClocks, users } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { displayName } from "./circle.service";
+import { standingCodeOf } from "./circles/invite-access";
 import type { PeriodEngine } from "./circles/period-engine";
 
 export interface CreateTestClockInput {
@@ -25,7 +26,8 @@ export interface TestClockCircleDto {
   size: number;
   seatsTaken: number;
   // For the join link: the clock (and its circles) belong to the viewer, who created them.
-  inviteCode: string;
+  // Null until the circle gets a standing invite code (migration 0010 moves codes to circle_invites).
+  inviteCode: string | null;
   // The period being collected; null before the circle starts or once every period has closed.
   currentPeriod: {
     number: number;
@@ -96,7 +98,7 @@ export function createTestClockService({ db, engine }: { db: Db; engine: Pick<Pe
       cadence: circle.cadence,
       size: circle.size,
       seatsTaken: seats.length,
-      inviteCode: circle.inviteCode,
+      inviteCode: await standingCodeOf(db, circle.id, frozen),
       currentPeriod: current && {
         number: current.number,
         state: current.state,

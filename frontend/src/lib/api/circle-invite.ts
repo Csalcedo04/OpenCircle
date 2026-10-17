@@ -4,23 +4,15 @@ import { z } from "zod"
 import { backendFetch } from "@/lib/api/backend"
 import { CIRCLE_VISIBILITIES, type CircleVisibility } from "@/lib/flows/circle-invite"
 
-// The part of the circle response these calls need; the API returns the whole circle.
-const inviteStateSchema = z.object({
-  visibility: z.enum(CIRCLE_VISIBILITIES),
-  inviteUrl: z.url().nullable(),
-})
+// The part of the circle response this call needs; the API returns the whole circle.
+const visibilityStateSchema = z.object({ visibility: z.enum(CIRCLE_VISIBILITIES) })
 
-export type InviteState = z.infer<typeof inviteStateSchema>
+export type VisibilityState = z.infer<typeof visibilityStateSchema>
 
 /** Creator only, while the circle is OPEN. */
-export function setCircleVisibility(circleId: string, visibility: CircleVisibility): Promise<InviteState> {
-  return backendFetch(`/circles/${encodeURIComponent(circleId)}/visibility`, inviteStateSchema, {
+export function setCircleVisibility(circleId: string, visibility: CircleVisibility): Promise<VisibilityState> {
+  return backendFetch(`/circles/${encodeURIComponent(circleId)}/visibility`, visibilityStateSchema, {
     method: "PATCH",
     body: JSON.stringify({ visibility }),
   })
-}
-
-/** New invite code: links with the old one stop working. Creator only, while OPEN. */
-export function rotateCircleInvite(circleId: string): Promise<InviteState> {
-  return backendFetch(`/circles/${encodeURIComponent(circleId)}/invite-code`, inviteStateSchema, { method: "POST" })
 }

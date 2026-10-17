@@ -4,14 +4,18 @@ import { createDb } from "./db/client";
 import { createCircleService } from "./services/circle.service";
 import { createApplicationNotices } from "./services/circles/application-notices";
 import { createApplicationService } from "./services/circles/application.service";
+import { createInviteNotices } from "./services/circles/invite-notices";
+import { createInviteService } from "./services/circles/invite.service";
 import { createCircleCycle, createCircleTick } from "./services/circles/circle-cycle";
 import { createReminders } from "./services/circles/reminders.service";
 import { createScoring } from "./services/circles/scoring.service";
-import { createLogSender } from "./services/notifications/sender";
+import { createResendSender } from "./services/notifications/resend-sender";
+import { createChannelSender, createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
+import { createFriendService } from "./services/friend.service";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./services/open-payments/client";
@@ -40,9 +44,14 @@ async function main(): Promise<void> {
   // Contributions: the pool (OpenCircle's wallet) charges each member through their standing grant.
   const payments = createContributionPayments({ client: openPaymentsAuth, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS });
   const engine = createPeriodEngine({ db, payments, memberAccess: createMemberAccess({ db, cipher, payments }) });
-  // Real providers (email, WhatsApp) come later; until then notifications are only logged.
-  const sender = createLogSender();
+  // Emails through Resend when configured; SMS and WhatsApp (and everything else, otherwise) are only logged.
+  const log = createLogSender();
+  const sender =
+    env.RESEND_API_KEY !== undefined && env.EMAIL_FROM !== undefined
+      ? createChannelSender({ EMAIL: createResendSender({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM }), SMS: log, WHATSAPP: log })
+      : log;
   const notices = createApplicationNotices({ db, sender });
+  const inviteNotices = createInviteNotices({ db, sender, frontendUrl: env.FRONTEND_URL });
   // Periods, then scores (ICS), then payment reminders. The scheduler runs it for real-time
   // circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
@@ -75,9 +84,11 @@ async function main(): Promise<void> {
       }),
       circles,
       applications: createApplicationService({ db, circles, notices }),
+      invites: createInviteService({ db, circles, notices: inviteNotices, frontendUrl: env.FRONTEND_URL }),
+      friends: createFriendService({ db }),
       members: createMemberService({ db, circles }),
       testClocks,
-      circleTick: createCircleTick({ db, cycle, notices }),
+      circleTick: createCircleTick({ db, cycle, notices: [notices, inviteNotices] }),
       kyc: createKycService({
         db,
         didit: createDiditClient({ apiKey: env.DIDIT_API_KEY, workflowId: env.DIDIT_WORKFLOW_ID }),

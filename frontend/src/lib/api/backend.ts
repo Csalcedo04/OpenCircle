@@ -214,7 +214,7 @@ const reviewSchema = z.object({
   createdAt: z.string(),
 })
 
-const circleSummarySchema = z.object({
+export const circleSummarySchema = z.object({
   id: z.uuid(),
   name: z.string(),
   city: z.string().nullable(),
@@ -244,6 +244,8 @@ const circleSchema = circleSummarySchema.extend({
       collateral: amountSchema,
       grantMode: z.enum(["RECURRING", "PER_ROUND"]).nullable(),
       record: recordSchema,
+      /** Accepts applicants and invites people (the creator always does). */
+      isApprover: z.boolean(),
     }),
   ),
   rounds: z.array(
@@ -258,8 +260,10 @@ const circleSchema = circleSummarySchema.extend({
   ),
   reviews: z.array(reviewSchema),
   visibility: z.enum(["PRIVATE", "PUBLIC"]),
-  /** Only for the circle's creator; null otherwise. */
+  /** The standing invite link; for the creator and approvers, null otherwise. */
   inviteUrl: z.string().nullable(),
+  /** What the viewer may do here. */
+  access: z.object({ canInvite: z.boolean(), isCreator: z.boolean() }),
 })
 
 const memberSchema = recordSchema.extend({

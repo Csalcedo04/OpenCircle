@@ -39,8 +39,8 @@ const dto: CircleDto = {
   startedAt: "2026-01-03T00:00:00.000Z",
   currentRound: 1,
   seats: [
-    { memberId: "seat-a", userId: "user-a", displayName: "Ana G.", payoutRound: 1, collateral: { value: "0", ...COP }, grantMode: "RECURRING", record: record(3) },
-    { memberId: "seat-b", userId: "user-b", displayName: "Bob R.", payoutRound: 2, collateral: { value: "500000", ...COP }, grantMode: null, record: record(1) },
+    { memberId: "seat-a", userId: "user-a", displayName: "Ana G.", payoutRound: 1, collateral: { value: "0", ...COP }, grantMode: "RECURRING", record: record(3), isApprover: true },
+    { memberId: "seat-b", userId: "user-b", displayName: "Bob R.", payoutRound: 2, collateral: { value: "500000", ...COP }, grantMode: null, record: record(1), isApprover: false },
   ],
   rounds: [
     {
@@ -58,6 +58,7 @@ const dto: CircleDto = {
   reviews: [review],
   visibility: "PRIVATE",
   inviteUrl: null,
+  access: { canInvite: false, isCreator: false },
 }
 
 describe("toCircle", () => {
