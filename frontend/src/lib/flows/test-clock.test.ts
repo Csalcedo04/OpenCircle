@@ -10,6 +10,7 @@ const circle = (nextBoundary: string | null) => ({
   cadence: "MONTHLY" as const,
   size: 3,
   seatsTaken: 3,
+  inviteCode: "code",
   currentPeriod: null,
   nextBoundary,
 })

@@ -172,8 +172,10 @@ export function advanceTestClock(id: string, to: string): Promise<TestClock> {
   return backendFetch(`/test-clocks/${encodeURIComponent(id)}/advance`, testClockSchema, { method: "POST", body: JSON.stringify({ to }) })
 }
 
-export function getApiCircle(id: string): Promise<ApiCircle> {
-  return backendFetch(`/circles/${encodeURIComponent(id)}`, apiCircleSchema)
+/** `invite`: the code from a private circle's link. */
+export function getApiCircle(id: string, invite?: string): Promise<ApiCircle> {
+  const query = invite ? `?invite=${encodeURIComponent(invite)}` : ""
+  return backendFetch(`/circles/${encodeURIComponent(id)}${query}`, apiCircleSchema)
 }
 
 
@@ -243,6 +245,9 @@ const circleSchema = circleSummarySchema.extend({
     }),
   ),
   reviews: z.array(reviewSchema),
+  visibility: z.enum(["PRIVATE", "PUBLIC"]),
+  /** Only for the circle's creator; null otherwise. */
+  inviteUrl: z.string().nullable(),
 })
 
 const memberSchema = recordSchema.extend({

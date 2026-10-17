@@ -132,9 +132,11 @@ async function startedCircle(clock: TestClockDto, owner: Member, others: Member[
   });
   assert.equal(created.status, 201, created.text);
   const circle = created.body as CircleDto;
+  // Circles are private by default: the others join through the creator's invite link.
+  const invite = new URL(circle.inviteUrl ?? "http://x").searchParams.get("invite") ?? "";
   let last = circle;
   for (const [i, m] of others.entries()) {
-    const res = await server.request(`/api/circles/${circle.id}/join`, { method: "POST", token: m.token, body: { payoutRound: i + 2 } });
+    const res = await server.request(`/api/circles/${circle.id}/join`, { method: "POST", token: m.token, body: { payoutRound: i + 2, invite } });
     assert.equal(res.status, 200, res.text);
     last = res.body as CircleDto;
   }
@@ -180,6 +182,7 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
     const circleService = createCircleService({
       db,
       resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "USD", assetScale: 2 }),
+      frontendUrl: "http://localhost:3001",
       testClocksEnabled: true,
       onStarted: testClocksService.runCircle,
     });
@@ -333,7 +336,11 @@ describe("test clocks and the period engine against Supabase", { skip: databaseU
   test("with test clocks disabled a circle can't be attached to one", async () => {
     const owner = await member();
     const clock = await createClock(owner, "2026-07-01T00:00:00Z");
-    const disabled = createCircleService({ db, resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "USD", assetScale: 2 }) });
+    const disabled = createCircleService({
+      db,
+      resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "USD", assetScale: 2 }),
+      frontendUrl: "http://localhost:3001",
+    });
     await assert.rejects(
       disabled.create(owner.id, {
         name: `${PREFIX}x`,

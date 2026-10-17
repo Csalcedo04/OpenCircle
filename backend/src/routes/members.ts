@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { AppError } from "../errors/app-error";
-import { requireUser } from "../middleware/require-user";
+import { authUserId, requireUser } from "../middleware/require-user";
 import type { MemberService } from "../services/member.service";
 
 export const memberParamsSchema = z.strictObject({ id: z.uuid() });
@@ -15,7 +15,7 @@ export function memberRoutes(members: MemberService): Router {
     const params = memberParamsSchema.safeParse(req.params);
     if (!params.success) throw new AppError(404, "MEMBER_NOT_FOUND", "Member not found");
     const { id }: MemberParams = params.data;
-    res.json(await members.get(id));
+    res.json(await members.get(id, authUserId(res)));
   };
 
   return Router().use(requireUser).get("/:id", getMember);

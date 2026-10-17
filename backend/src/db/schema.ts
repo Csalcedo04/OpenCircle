@@ -201,6 +201,8 @@ export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
 // A period is one calendar week or one calendar month; a circle has one period per member.
 export const CIRCLE_CADENCES = ["WEEKLY", "MONTHLY"] as const;
+// PRIVATE: only members and holders of the invite link can see or join. PUBLIC: listed for everyone.
+export const CIRCLE_VISIBILITIES = ["PRIVATE", "PUBLIC"] as const;
 // UPCOMING: scheduled but not open yet. The rest follow the round engine.
 export const ROUND_STATES = [
   "UPCOMING",
@@ -260,6 +262,9 @@ export const circles = pgTable(
     // Legacy: new circles derive it from the cadence (7 or 30). Periods come from `cadence`.
     roundLengthDays: integer("round_length_days").notNull(),
     cadence: text("cadence").$type<(typeof CIRCLE_CADENCES)[number]>().notNull().default("MONTHLY"),
+    visibility: text("visibility").$type<(typeof CIRCLE_VISIBILITIES)[number]>().notNull().default("PRIVATE"),
+    // Secret for the invite link (32 random bytes, base64url). Rotating it revokes old links.
+    inviteCode: text("invite_code").notNull().unique(),
     // Number of seats, and so of rounds.
     size: integer("size").notNull(),
     // The pot. For now every circle uses OpenCircle's own wallet; pots are told apart in the DB.
@@ -292,6 +297,7 @@ export const circles = pgTable(
     check("circles_round_length_range", sql`${t.roundLengthDays} between 1 and 365`),
     check("circles_size_range", sql`${t.size} between 2 and 50`),
     check("circles_cadence", sql`${t.cadence} in (${inList(CIRCLE_CADENCES)})`),
+    check("circles_visibility", sql`${t.visibility} in (${inList(CIRCLE_VISIBILITIES)})`),
     index("circles_test_clock_id_idx").on(t.testClockId),
   ],
 ).enableRLS();

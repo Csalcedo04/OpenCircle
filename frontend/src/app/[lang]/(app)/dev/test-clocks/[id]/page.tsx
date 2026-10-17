@@ -66,7 +66,7 @@ export default async function TestClockPage({ params }: PageProps<"/[lang]/dev/t
         <ul className="mt-4 space-y-6">
           {clock.circles.map((c) => {
             const p = c.currentPeriod
-            const joinPath = `/${locale}/dev/circles/${c.id}`
+            const joinPath = `/${locale}/dev/circles/${c.id}?invite=${encodeURIComponent(c.inviteCode)}`
             return (
               <li key={c.id} className="rounded-3xl bg-brand-white p-6 ring-1 ring-brand-line sm:p-8">
                 <div className="flex flex-wrap items-baseline justify-between gap-3">
