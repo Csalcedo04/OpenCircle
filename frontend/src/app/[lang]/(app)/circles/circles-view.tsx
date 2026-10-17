@@ -4,7 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { ArrowRight, Calendar, Coins, Lock, MapPin, Shield, Users } from "lucide-react"
 import { RoundStatusBadge } from "@/components/round-status"
-import { Avatar, PEOPLE } from "@/components/landing/shared"
+import { MemberAvatar } from "@/components/member-avatar"
 import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, formatAmount } from "@/lib/domain/money"
@@ -202,15 +202,11 @@ export function CirclesView({ allCircles, myCircles, locale, t }: Props) {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2" aria-hidden="true">
-                      {seatMembers.map((m, idx) => {
-                        const personIndex = idx % PEOPLE.length
-                        const tone = PEOPLE[personIndex]?.tone ?? "navy"
-                        return (
-                          <div key={m.id} className="relative group/avatar" title={m.name}>
-                            <Avatar name={m.name} tone={tone} size="sm" />
-                          </div>
-                        )
-                      })}
+                      {seatMembers.map((m) => (
+                        <div key={m.id} className="relative group/avatar" title={m.name}>
+                          <MemberAvatar name={m.name} id={m.id} size="sm" />
+                        </div>
+                      ))}
                       {Array.from({ length: open }, (_, i) => (
                         <span
                           key={i}

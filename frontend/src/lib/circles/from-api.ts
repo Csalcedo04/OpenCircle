@@ -58,6 +58,7 @@ export function toCircle(dto: CircleDto): Circle {
     currentRound: dto.currentRound ?? 0,
     visibility: dto.visibility,
     cadence: dto.cadence,
+    approvalMode: dto.approvalMode,
     payoutOrder: dto.payoutOrder,
   }
 }

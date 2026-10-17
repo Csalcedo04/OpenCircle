@@ -25,6 +25,11 @@ export type CircleErrorKey =
   | "alreadyMember"
   | "notOpen"
   | "applicationRequired"
+  | "applicationPending"
+  | "walletRequired"
+  | "alreadyVoted"
+  | "applicationDecided"
+  | "notApprover"
   | "kyc"
   | "unavailable"
   | "generic"
@@ -99,9 +104,14 @@ const apiErrors: Record<string, CircleErrorKey> = {
   ALREADY_MEMBER: "alreadyMember",
   CIRCLE_NOT_OPEN: "notOpen",
   APPLICATION_REQUIRED: "applicationRequired",
+  APPLICATION_PENDING: "applicationPending",
+  WALLET_REQUIRED: "walletRequired",
+  ALREADY_VOTED: "alreadyVoted",
+  APPLICATION_DECIDED: "applicationDecided",
+  NOT_APPROVER: "notApprover",
   KYC_REQUIRED: "kyc",
   BACKEND_UNAVAILABLE: "unavailable",
 }
 
-/** API error code from creating or joining → message key. */
+/** API error code from creating, joining, applying or voting → message key. */
 export const circleErrorKey = (code: string): CircleErrorKey => apiErrors[code] ?? "generic"
