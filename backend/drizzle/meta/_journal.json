@@ -71,6 +71,13 @@
       "when": 1792205208054,
       "tag": "0009_circle_city_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792213654599,
+      "tag": "0010_circle_biweekly_and_payout_order",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,7 @@ import {
   circleMembers,
   circles,
   contributions,
+  creditProfiles,
   reviews,
   rounds,
   testClocks,
@@ -19,6 +20,7 @@ import {
   wallets,
 } from "../db/schema";
 import { AppError } from "../errors/app-error";
+import { payoutSequence, type PayoutOrder } from "./circles/payout-order";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
 import { sameSecret } from "./secret-compare";
@@ -47,8 +49,8 @@ export interface CircleViewer {
   invite?: string | undefined;
 }
 
+// No payout round: it comes from the circle's payout order when the circle starts.
 export interface SeatInput {
-  payoutRound: number;
   collateralValue: bigint;
   grantMode: GrantMode | null;
 }
@@ -65,10 +67,9 @@ export interface CreateCircleInput extends SeatInput {
   visibility?: CircleVisibility | undefined;
   /** Who accepts applicants to a public circle; the creator and their delegates by default. */
   approvalMode?: ApprovalMode | undefined;
+  /** Best score first unless the creator asks for last. */
+  payoutOrder?: PayoutOrder | undefined;
 }
-
-// An applicant's seat preferences: with no payout round they get the next free one.
-export type SeatRequest = Omit<SeatInput, "payoutRound"> & { payoutRound: number | null };
 
 export interface CircleSummaryDto {
   id: string;
@@ -80,6 +81,7 @@ export interface CircleSummaryDto {
   seatsTaken: number;
   cadence: Cadence;
   visibility: CircleVisibility;
+  payoutOrder: PayoutOrder;
   createdAt: string;
 }
 
@@ -91,6 +93,7 @@ export interface SeatDto {
   displayName: string;
   /** Payment record across all their circles, for trust. */
   record: MemberRecord;
+  // Provisional (join order) until the circle starts.
   payoutRound: number;
   collateral: AmountDto;
   grantMode: GrantMode | null;
@@ -193,6 +196,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     size: circles.size,
     cadence: circles.cadence,
     visibility: circles.visibility,
+    payoutOrder: circles.payoutOrder,
     createdAt: circles.createdAt,
     seatsTaken: sql<number>`(select count(*)::int from ${circleMembers} where ${circleMembers.circleId} = ${circles.id})`,
   };
@@ -207,6 +211,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     size: number;
     cadence: Cadence;
     visibility: CircleVisibility;
+    payoutOrder: PayoutOrder;
     createdAt: Date;
     seatsTaken: number;
   }
@@ -221,6 +226,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     seatsTaken: r.seatsTaken,
     cadence: r.cadence,
     visibility: r.visibility,
+    payoutOrder: r.payoutOrder,
     createdAt: r.createdAt.toISOString(),
   });
 
@@ -375,13 +381,33 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     if (!clock) throw notFound;
   }
 
-  // The last seat is filled: schedule every round and open round 1. Same transaction as the join.
-  async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
-    const seats = await tx
-      .select({ id: circleMembers.id, payoutRound: circleMembers.payoutRound })
+  /**
+   * Replaces the provisional rounds with the circle's payout order (by score). Rounds are first
+   * moved past the circle's size so the (circle, round) unique constraint never sees a duplicate.
+   */
+  async function assignPayoutRounds(tx: Tx, circle: CircleRow): Promise<{ id: string; payoutRound: number }[]> {
+    const ranked = await tx
+      .select({ id: circleMembers.id, score: creditProfiles.internalCreditScore, joinedAt: circleMembers.joinedAt })
       .from(circleMembers)
-      .where(eq(circleMembers.circleId, circle.id))
-      .orderBy(asc(circleMembers.payoutRound));
+      .innerJoin(users, eq(circleMembers.userId, users.id))
+      .leftJoin(creditProfiles, eq(creditProfiles.walletId, users.opWallet))
+      .where(eq(circleMembers.circleId, circle.id));
+    const order = payoutSequence(ranked, circle.payoutOrder);
+
+    await tx
+      .update(circleMembers)
+      .set({ payoutRound: sql`${circleMembers.payoutRound} + ${circle.size}` })
+      .where(eq(circleMembers.circleId, circle.id));
+    const seats = order.map((id, i) => ({ id, payoutRound: i + 1 }));
+    for (const seat of seats) {
+      await tx.update(circleMembers).set({ payoutRound: seat.payoutRound }).where(eq(circleMembers.id, seat.id));
+    }
+    return seats;
+  }
+
+  // The last seat is filled: order the seats, schedule every round and open round 1. Same transaction as the join.
+  async function start(tx: Tx, circle: CircleRow, now: Date): Promise<void> {
+    const seats = await assignPayoutRounds(tx, circle);
 
     await tx.update(circles).set({ status: "ACTIVE", startedAt: now }).where(eq(circles.id, circle.id));
 
@@ -421,18 +447,15 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
 
   /**
    * Seats a user in an OPEN circle the caller has locked (FOR UPDATE), so seats are counted
-   * one at a time. A null payout round takes the lowest free one. Filling the last seat
-   * starts the circle; returns whether it did, so the caller runs afterStarted once committed.
+   * one at a time. The seat gets the lowest free round until the circle starts. Filling the last
+   * seat starts the circle; returns whether it did, so the caller runs afterStarted once committed.
    */
-  async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: SeatRequest): Promise<boolean> {
+  async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: SeatInput): Promise<boolean> {
     if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
-    if (seat.payoutRound !== null && seat.payoutRound > circle.size) {
-      throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
-    }
     const taken = (
       await tx.select({ payoutRound: circleMembers.payoutRound }).from(circleMembers).where(eq(circleMembers.circleId, circle.id))
     ).map((m) => m.payoutRound);
-    const payoutRound = seat.payoutRound ?? Array.from({ length: circle.size }, (_, i) => i + 1).find((n) => !taken.includes(n));
+    const payoutRound = Array.from({ length: circle.size }, (_, i) => i + 1).find((n) => !taken.includes(n));
     if (payoutRound === undefined) throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
 
     try {
@@ -492,11 +515,8 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       return new Set(rows.map((r) => r.id));
     },
 
-    /** Creates an OPEN circle with its creator in the payout round they chose. */
+    /** Creates an OPEN circle with its creator in the first seat. */
     async create(userId: string, input: CreateCircleInput): Promise<CircleDto> {
-      if (input.payoutRound > input.size) {
-        throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
-      }
       if (input.testClockId !== undefined) await ownedTestClock(userId, input.testClockId);
       const remote = await resolvePoolWallet();
       const id = await db.transaction(async (tx) => {
@@ -522,6 +542,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
             visibility: input.visibility ?? "PRIVATE",
             inviteCode: newInviteCode(),
             approvalMode: input.approvalMode ?? "DELEGATES",
+            payoutOrder: input.payoutOrder ?? "BEST_SCORE_FIRST",
           })
           .returning({ id: circles.id });
         if (!circle) throw new Error("Circle insert returned no row");
@@ -529,7 +550,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         await tx.insert(circleMembers).values({
           circleId: circle.id,
           userId,
-          payoutRound: input.payoutRound,
+          payoutRound: 1,
           collateralValue: input.collateralValue,
           grantMode: input.grantMode,
           isApprover: true,
