@@ -32,6 +32,15 @@ export async function lockCircle(tx: Tx, circleId: string): Promise<CircleRow> {
 }
 
 /**
+ * Whether a seat may decide applications: under DELEGATES the approvers (the creator is always
+ * one), under MAJORITY every member. One rule for the DTO's `canVote` and for voting itself.
+ */
+export function mayDecide(circle: Pick<CircleRow, "approvalMode">, seat: Pick<Membership, "isApprover"> | null): boolean {
+  if (seat === null) return false;
+  return circle.approvalMode === "MAJORITY" || seat.isApprover;
+}
+
+/**
  * The caller's seat when they manage the circle: its creator or an approver. A non-member can't
  * tell the circle exists (404); a plain member gets 403.
  */
