@@ -118,8 +118,11 @@ export interface CircleDto extends CircleSummaryDto {
   testClockId: string | null;
   /** The standing invite link (no expiry, no use limit); for the creator and approvers only. */
   inviteUrl: string | null;
-  /** What the viewer may do here: invite people (creator or approver), change visibility (creator). */
-  access: { canInvite: boolean; isCreator: boolean };
+  /**
+   * What the viewer may do here: invite people (creator or approver), change visibility (creator),
+   * see and decide applications (members; who decides depends on the approval mode).
+   */
+  access: { canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean };
   // The round being collected or paid out; null before the circle starts or once it is over.
   currentRound: number | null;
   seats: SeatDto[];
@@ -289,7 +292,10 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       viewer.userId === undefined ? null : membership(db, id, viewer.userId),
     ]);
     const isCreator = viewer.userId === circle.createdBy;
+    const isMember = viewerSeat !== null;
     const canInvite = isCreator || (viewerSeat?.isApprover ?? false);
+    // DELEGATES: the creator and the delegated approvers decide; MAJORITY: every member votes.
+    const canVote = circle.approvalMode === "MAJORITY" ? isMember : canInvite;
     const standingCode = canInvite ? await standingCodeOf(db, id, new Date()) : null;
 
     const { assetCode, assetScale } = circle;
@@ -303,7 +309,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
       inviteUrl: standingCode === null ? null : inviteUrl(circle.id, standingCode),
-      access: { canInvite, isCreator },
+      access: { canInvite, isCreator, isMember, canVote },
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
