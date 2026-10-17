@@ -154,6 +154,71 @@ export async function seedApprover(circleId: string, user: TestUser): Promise<vo
   must(await admin().from("circle_members").update({ is_approver: true }).eq("circle_id", circleId).eq("user_id", user.id), "make approver")
 }
 
+/**
+ * Starts the circle directly: round 1 COLLECTING with the given deadline, every seat owing its
+ * contribution (PENDING). Returns each seat's contribution id by user, to mark some as paid.
+ */
+export async function seedCollectingRound(circleId: string, deadline: Date): Promise<Map<string, string>> {
+  const db = admin()
+  const circle = must(await db.from("circles").select("contribution_value, asset_code, asset_scale").eq("id", circleId).single(), "read circle") as {
+    contribution_value: string
+    asset_code: string
+    asset_scale: number
+  }
+  const seats = must(await db.from("circle_members").select("id, user_id, payout_round").eq("circle_id", circleId).order("payout_round"), "read seats") as {
+    id: string
+    user_id: string
+    payout_round: number
+  }[]
+  const first = seats[0]
+  if (!first) throw new Error("seedCollectingRound: the circle has no seats")
+  must(await db.from("circles").update({ status: "ACTIVE", started_at: new Date(deadline.getTime() - 7 * 86_400_000).toISOString() }).eq("id", circleId), "start circle")
+  const round = must(
+    await db
+      .from("rounds")
+      .insert({
+        circle_id: circleId,
+        number: 1,
+        beneficiary_member_id: first.id,
+        state: "COLLECTING",
+        starts_at: new Date(deadline.getTime() - 7 * 86_400_000).toISOString(),
+        deadline: deadline.toISOString(),
+        opened_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single(),
+    "insert round",
+  )
+  if (!round) throw new Error("insert round: no row returned")
+  const byUser = new Map<string, string>()
+  for (const seat of seats) {
+    const row = must(
+      await db
+        .from("contributions")
+        .insert({
+          round_id: round.id,
+          member_id: seat.id,
+          value: circle.contribution_value,
+          asset_code: circle.asset_code,
+          asset_scale: circle.asset_scale,
+          status: "PENDING",
+          idempotency_key: `e2e-${randomUUID()}`,
+        })
+        .select("id")
+        .single(),
+      "insert contribution",
+    )
+    if (row) byUser.set(seat.user_id, row.id)
+  }
+  return byUser
+}
+
+/** Marks a contribution as paid (COMPLETED) or in flight (PROCESSING). */
+export async function setContributionStatus(contributionId: string, status: "COMPLETED" | "PROCESSING"): Promise<void> {
+  const completedAt = status === "COMPLETED" ? new Date().toISOString() : null
+  must(await admin().from("contributions").update({ status, completed_at: completedAt }).eq("id", contributionId), "update contribution")
+}
+
 /** Seats a user in a circle directly, skipping the join flow. */
 export async function seatMember(circleId: string, user: TestUser, payoutRound: number) {
   must(await admin().from("circle_members").insert({ circle_id: circleId, user_id: user.id, payout_round: payoutRound }), "seat member")

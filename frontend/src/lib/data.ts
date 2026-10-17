@@ -28,7 +28,7 @@ export interface CircleView {
    * Who can find and join it, and what the viewer may do: `canInvite` for the creator and
    * approvers (who also get `inviteUrl`), `isCreator` for who may change the visibility.
    */
-  access: { visibility: CircleVisibility; inviteUrl: string | null; canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean }
+  access: { visibility: CircleVisibility; inviteUrl: string | null; canInvite: boolean; isCreator: boolean; isMember: boolean; canVote: boolean; canJoin: boolean }
 }
 
 /** A member with the reviews they received and the circles they're in. */
