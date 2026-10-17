@@ -50,7 +50,6 @@ export default async function JoinPage({ params, searchParams }: PageProps<"/[la
                 uncovered: t.circle.uncovered,
                 threshold: t.circle.threshold,
                 eligible: t.circle.eligible,
-                seat: t.circle.seat,
               }}
               notCovered={t.join.notCovered}
             />

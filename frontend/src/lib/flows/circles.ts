@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { Cadence, NewCircleRequest, SeatRequest } from "@/lib/api/backend"
+import type { Cadence, NewCircleRequest, PayoutOrder, SeatRequest } from "@/lib/api/backend"
 import { parseWholeUnits } from "@/lib/domain/money"
 import { CIRCLE_VISIBILITIES } from "@/lib/flows/circle-invite"
 
@@ -7,7 +7,8 @@ import { CIRCLE_VISIBILITIES } from "@/lib/flows/circle-invite"
 
 /** Circles are in the pot's currency: COP, 2 decimals (OpenCircle's test-network wallet). */
 export const CIRCLE_ASSET_SCALE = 2
-export const CADENCES = ["WEEKLY", "MONTHLY"] as const satisfies readonly Cadence[]
+export const CADENCES = ["WEEKLY", "BIWEEKLY", "MONTHLY"] as const satisfies readonly Cadence[]
+export const PAYOUT_ORDERS = ["BEST_SCORE_FIRST", "BEST_SCORE_LAST"] as const satisfies readonly PayoutOrder[]
 export const MIN_SIZE = 3
 export const MAX_SIZE = 12
 const MIN_CONTRIBUTION = 1_000n
@@ -19,7 +20,6 @@ export type CircleErrorKey =
   | "amount"
   | "size"
   | "cadence"
-  | "seat"
   | "collateral"
   | "seatTaken"
   | "alreadyMember"
@@ -29,7 +29,7 @@ export type CircleErrorKey =
   | "unavailable"
   | "generic"
 
-export type CircleField = "name" | "amount" | "size" | "cadence" | "seat" | "collateral"
+export type CircleField = "name" | "amount" | "size" | "cadence" | "collateral"
 export type FieldErrors = Partial<Record<CircleField, CircleErrorKey>>
 
 /** Whole pesos ("20.000", "20000") → minor units, or null if not a whole amount. */
@@ -41,7 +41,7 @@ export interface CreateFields {
   amount: string
   size: string
   cadence: string
-  payoutRound: string
+  payoutOrder: string
   visibility: string
 }
 
@@ -50,6 +50,7 @@ const createSchema = z.object({
   cadence: z.enum(CADENCES, "cadence"),
   // Anything unexpected falls back to private, the safe default.
   visibility: z.enum(CIRCLE_VISIBILITIES).catch("PRIVATE"),
+  payoutOrder: z.enum(PAYOUT_ORDERS).catch("BEST_SCORE_FIRST"),
 })
 
 export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircleRequest } | { ok: false; errors: FieldErrors } {
@@ -61,8 +62,6 @@ export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircle
   if (contribution === null || contribution < pesos(MIN_CONTRIBUTION) || contribution > pesos(MAX_CONTRIBUTION)) errors.amount = "amount"
   const size = Number(f.size)
   if (!Number.isInteger(size) || size < MIN_SIZE || size > MAX_SIZE) errors.size = "size"
-  const payoutRound = Number(f.payoutRound)
-  if (!Number.isInteger(payoutRound) || payoutRound < 1 || (!errors.size && payoutRound > size)) errors.seat = "seat"
 
   if (!base.success || Object.keys(errors).length > 0 || contribution === null) return { ok: false, errors }
   return {
@@ -72,30 +71,27 @@ export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircle
       contributionValue: contribution.toString(),
       size,
       cadence: base.data.cadence,
-      payoutRound,
+      payoutOrder: base.data.payoutOrder,
       visibility: base.data.visibility,
     },
   }
 }
 
 export interface JoinFields {
-  payoutRound: string
   collateral: string
   grantMode: string
 }
 
 export function parseJoinForm(
   f: JoinFields,
-  circle: { size: number; assetScale: number },
+  circle: { assetScale: number },
 ): { ok: true; seat: SeatRequest } | { ok: false; errors: FieldErrors } {
   const errors: FieldErrors = {}
-  const payoutRound = Number(f.payoutRound)
-  if (!Number.isInteger(payoutRound) || payoutRound < 1 || payoutRound > circle.size) errors.seat = "seat"
   const collateral = f.collateral.trim() === "" ? 0n : parseWholeUnits(f.collateral.trim(), circle.assetScale)
   if (collateral === null) errors.collateral = "collateral"
   if (Object.keys(errors).length > 0 || collateral === null) return { ok: false, errors }
   const grantMode = f.grantMode === "RECURRING" || f.grantMode === "PER_ROUND" ? f.grantMode : null
-  return { ok: true, seat: { payoutRound, collateralValue: collateral.toString(), grantMode } }
+  return { ok: true, seat: { collateralValue: collateral.toString(), grantMode } }
 }
 
 const apiErrors: Record<string, CircleErrorKey> = {
@@ -103,7 +99,6 @@ const apiErrors: Record<string, CircleErrorKey> = {
   ALREADY_MEMBER: "alreadyMember",
   CIRCLE_NOT_OPEN: "notOpen",
   APPLICATION_REQUIRED: "applicationRequired",
-  INVALID_PAYOUT_ROUND: "seat",
   KYC_REQUIRED: "kyc",
   BACKEND_UNAVAILABLE: "unavailable",
 }

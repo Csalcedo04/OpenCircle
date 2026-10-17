@@ -1,5 +1,5 @@
 {
-  "id": "b48e2498-f58d-451a-b192-a1d0f12c6873",
+  "id": "5c26c127-5928-486f-b844-9e98f5eb550b",
   "prevId": "79a58e9d-a60c-4650-9be0-e14da3d684ce",
   "version": "7",
   "dialect": "postgresql",
@@ -334,242 +334,6 @@
       },
       "isRLSEnabled": true
     },
-    "public.circle_invites": {
-      "name": "circle_invites",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "circle_id": {
-          "name": "circle_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "token": {
-          "name": "token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'ACTIVE'"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max_uses": {
-          "name": "max_uses",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "uses": {
-          "name": "uses",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "accepted_member_id": {
-          "name": "accepted_member_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "circle_invites_circle_id_idx": {
-          "name": "circle_invites_circle_id_idx",
-          "columns": [
-            {
-              "expression": "circle_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "circle_invites_user_id_idx": {
-          "name": "circle_invites_user_id_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "circle_invites_email_idx": {
-          "name": "circle_invites_email_idx",
-          "columns": [
-            {
-              "expression": "email",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"circle_invites\".\"email\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "circle_invites_circle_id_circles_id_fk": {
-          "name": "circle_invites_circle_id_circles_id_fk",
-          "tableFrom": "circle_invites",
-          "tableTo": "circles",
-          "columnsFrom": [
-            "circle_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "circle_invites_created_by_users_id_fk": {
-          "name": "circle_invites_created_by_users_id_fk",
-          "tableFrom": "circle_invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "circle_invites_user_id_users_id_fk": {
-          "name": "circle_invites_user_id_users_id_fk",
-          "tableFrom": "circle_invites",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "circle_invites_accepted_member_id_circle_members_id_fk": {
-          "name": "circle_invites_accepted_member_id_circle_members_id_fk",
-          "tableFrom": "circle_invites",
-          "tableTo": "circle_members",
-          "columnsFrom": [
-            "accepted_member_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "circle_invites_token_unique": {
-          "name": "circle_invites_token_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "circle_invites_kind": {
-          "name": "circle_invites_kind",
-          "value": "\"circle_invites\".\"kind\" in ('CODE', 'DIRECT')"
-        },
-        "circle_invites_status": {
-          "name": "circle_invites_status",
-          "value": "\"circle_invites\".\"status\" in ('ACTIVE', 'ACCEPTED', 'REVOKED')"
-        },
-        "circle_invites_direct_target": {
-          "name": "circle_invites_direct_target",
-          "value": "(\"circle_invites\".\"kind\" = 'DIRECT') = (\"circle_invites\".\"user_id\" is not null or \"circle_invites\".\"email\" is not null)"
-        },
-        "circle_invites_max_uses": {
-          "name": "circle_invites_max_uses",
-          "value": "\"circle_invites\".\"max_uses\" is null or (\"circle_invites\".\"kind\" = 'CODE' and \"circle_invites\".\"max_uses\" >= 1)"
-        },
-        "circle_invites_uses_non_negative": {
-          "name": "circle_invites_uses_non_negative",
-          "value": "\"circle_invites\".\"uses\" >= 0"
-        },
-        "circle_invites_accepted": {
-          "name": "circle_invites_accepted",
-          "value": "(\"circle_invites\".\"status\" = 'ACCEPTED') = (\"circle_invites\".\"accepted_member_id\" is not null)"
-        },
-        "circle_invites_accepted_direct": {
-          "name": "circle_invites_accepted_direct",
-          "value": "\"circle_invites\".\"accepted_member_id\" is null or \"circle_invites\".\"kind\" = 'DIRECT'"
-        },
-        "circle_invites_email_lower": {
-          "name": "circle_invites_email_lower",
-          "value": "\"circle_invites\".\"email\" is null or \"circle_invites\".\"email\" = lower(\"circle_invites\".\"email\")"
-        }
-      },
-      "isRLSEnabled": true
-    },
     "public.circle_members": {
       "name": "circle_members",
       "schema": "",
@@ -797,11 +561,18 @@
           "notNull": true,
           "default": "'PRIVATE'"
         },
+        "payout_order": {
+          "name": "payout_order",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'BEST_SCORE_FIRST'"
+        },
         "invite_code": {
           "name": "invite_code",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "size": {
           "name": "size",
@@ -993,11 +764,15 @@
         },
         "circles_cadence": {
           "name": "circles_cadence",
-          "value": "\"circles\".\"cadence\" in ('WEEKLY', 'MONTHLY')"
+          "value": "\"circles\".\"cadence\" in ('WEEKLY', 'BIWEEKLY', 'MONTHLY')"
         },
         "circles_visibility": {
           "name": "circles_visibility",
           "value": "\"circles\".\"visibility\" in ('PRIVATE', 'PUBLIC')"
+        },
+        "circles_payout_order": {
+          "name": "circles_payout_order",
+          "value": "\"circles\".\"payout_order\" in ('BEST_SCORE_FIRST', 'BEST_SCORE_LAST')"
         },
         "circles_approval_mode": {
           "name": "circles_approval_mode",
@@ -1384,135 +1159,6 @@
         "credit_profiles_borrowing_capacity_non_negative": {
           "name": "credit_profiles_borrowing_capacity_non_negative",
           "value": "\"credit_profiles\".\"borrowing_capacity\" >= 0"
-        }
-      },
-      "isRLSEnabled": true
-    },
-    "public.friendships": {
-      "name": "friendships",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "requester_id": {
-          "name": "requester_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "addressee_id": {
-          "name": "addressee_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'PENDING'"
-        },
-        "accepted_at": {
-          "name": "accepted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "friendships_pair_unique": {
-          "name": "friendships_pair_unique",
-          "columns": [
-            {
-              "expression": "least(\"requester_id\", \"addressee_id\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "greatest(\"requester_id\", \"addressee_id\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "friendships_addressee_id_idx": {
-          "name": "friendships_addressee_id_idx",
-          "columns": [
-            {
-              "expression": "addressee_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "friendships_requester_id_users_id_fk": {
-          "name": "friendships_requester_id_users_id_fk",
-          "tableFrom": "friendships",
-          "tableTo": "users",
-          "columnsFrom": [
-            "requester_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "friendships_addressee_id_users_id_fk": {
-          "name": "friendships_addressee_id_users_id_fk",
-          "tableFrom": "friendships",
-          "tableTo": "users",
-          "columnsFrom": [
-            "addressee_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "friendships_status": {
-          "name": "friendships_status",
-          "value": "\"friendships\".\"status\" in ('PENDING', 'ACCEPTED')"
-        },
-        "friendships_not_self": {
-          "name": "friendships_not_self",
-          "value": "\"friendships\".\"requester_id\" <> \"friendships\".\"addressee_id\""
-        },
-        "friendships_accepted_at": {
-          "name": "friendships_accepted_at",
-          "value": "(\"friendships\".\"status\" = 'ACCEPTED') = (\"friendships\".\"accepted_at\" is not null)"
         }
       },
       "isRLSEnabled": true

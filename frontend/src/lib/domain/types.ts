@@ -83,7 +83,8 @@ export type Circle = {
   rounds: Round[]
   currentRound: number
   visibility?: "PRIVATE" | "PUBLIC" | undefined
-  cadence?: "WEEKLY" | "MONTHLY" | undefined
+  cadence?: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | undefined
+  payoutOrder?: "BEST_SCORE_FIRST" | "BEST_SCORE_LAST" | undefined
 }
 
 export type Review = {

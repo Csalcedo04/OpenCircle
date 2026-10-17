@@ -148,7 +148,6 @@ const validCircle = (overrides: Record<string, unknown> = {}) => ({
   contributionValue: "2000000",
   size: 3,
   cadence: "WEEKLY",
-  payoutRound: 1,
   // These suites test circles that anyone can find; private circles have their own block below.
   visibility: "PUBLIC",
   ...overrides,
@@ -174,7 +173,7 @@ async function standingCode(circleId: string): Promise<string | null> {
 
 // Joins through the circle's invite link (read from the DB) unless the body brings its own
 // `invite`; without a link, public circles take applications instead (APPLICATION_REQUIRED).
-async function join(id: string, token: string, body: Record<string, unknown>) {
+async function join(id: string, token: string, body: Record<string, unknown> = {}) {
   const code = "invite" in body ? null : await standingCode(id);
   return server.request(`/api/circles/${id}/join`, {
     method: "POST",
@@ -294,9 +293,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal((res.body as CircleDto).city, null);
     });
 
-    test("→ 201: OPEN, creator seated in the chosen round, amounts in the pot's asset", async () => {
+    test("→ 201: OPEN, creator in the first seat, best score first by default, amounts in the pot's asset", async () => {
       const { id, token } = await member();
-      const circle = await createCircle(token, { payoutRound: 2 });
+      const circle = await createCircle(token);
 
       assert.equal(circle.status, "OPEN");
       assert.deepEqual(circle.contribution, { value: "2000000", assetCode: "COP", assetScale: 2 });
@@ -308,7 +307,8 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(circle.currentRound, null);
       assert.deepEqual(circle.rounds, []);
       assert.equal(circle.seats.length, 1);
-      assert.equal(circle.seats[0]?.payoutRound, 2);
+      assert.equal(circle.seats[0]?.payoutRound, 1);
+      assert.equal(circle.payoutOrder, "BEST_SCORE_FIRST");
       assert.equal(circle.seats[0]?.displayName, "[test-circles] G.");
 
       const [row] = await db.select().from(circles).where(eq(circles.id, circle.id));
@@ -336,7 +336,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         { contributionValue: "0" },
         { size: 1 },
         { size: 51 },
-        { payoutRound: 4 },
+        // Rounds come from the payout order, never from the request.
+        { payoutRound: 1 },
+        { payoutOrder: "RANDOM" },
         { cadence: "DAILY" },
         { cadence: undefined },
         { roundLengthDays: 7 },
@@ -391,54 +393,50 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
   });
 
   describe("join", () => {
-    test("takes a free seat; repeats and taken rounds are refused", async () => {
+    test("takes the next free seat; a repeat or a chosen round is refused", async () => {
       const owner = await member();
       const circle = await createCircle(owner.token, { size: 4 });
       const bob = await member();
       const carol = await member();
 
-      const ok = await join(circle.id, bob.token, { payoutRound: 2, collateralValue: "500000", grantMode: "RECURRING" });
+      const ok = await join(circle.id, bob.token, { collateralValue: "500000", grantMode: "RECURRING" });
       assert.equal(ok.status, 200);
       const seat = (ok.body as CircleDto).seats.find((s) => s.payoutRound === 2);
       assert.deepEqual(seat?.collateral, { value: "500000", assetCode: "COP", assetScale: 2 });
       assert.equal(seat?.grantMode, "RECURRING");
 
-      const again = await join(circle.id, bob.token, { payoutRound: 3 });
+      const again = await join(circle.id, bob.token);
       assert.equal(again.status, 409);
       assert.equal(errorCode(again.body), "ALREADY_MEMBER");
 
-      const taken = await join(circle.id, carol.token, { payoutRound: 2 });
-      assert.equal(taken.status, 409);
-      assert.equal(errorCode(taken.body), "SEAT_TAKEN");
-
-      const outOfRange = await join(circle.id, carol.token, { payoutRound: 5 });
-      assert.equal(outOfRange.status, 422);
-      assert.equal(errorCode(outOfRange.body), "INVALID_PAYOUT_ROUND");
+      const chosen = await join(circle.id, carol.token, { payoutRound: 3 });
+      assert.equal(chosen.status, 400);
+      assert.equal(errorCode(chosen.body), "VALIDATION_ERROR");
     });
 
     test("without approved KYC → 403 KYC_REQUIRED", async () => {
       const owner = await member();
       const circle = await createCircle(owner.token);
       const { token } = await member({ kyc: false });
-      const res = await join(circle.id, token, { payoutRound: 2 });
+      const res = await join(circle.id, token, {});
       assert.equal(res.status, 403);
       assert.equal(errorCode(res.body), "KYC_REQUIRED");
     });
 
     test("an unknown circle → 404 CIRCLE_NOT_FOUND", async () => {
       const { token } = await member();
-      const res = await join(randomUUID(), token, { payoutRound: 1 });
+      const res = await join(randomUUID(), token, {});
       assert.equal(res.status, 404);
       assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
     });
 
     test("filling the last seat starts the circle: rounds scheduled, round 1 contributions pending", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 3, cadence: "WEEKLY", payoutRound: 3 });
+      const circle = await createCircle(owner.token, { size: 3, cadence: "WEEKLY" });
       const bob = await member();
       const carol = await member();
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 1 })).status, 200);
-      const last = await join(circle.id, carol.token, { payoutRound: 2 });
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
+      const last = await join(circle.id, carol.token, {});
       assert.equal(last.status, 200);
 
       const started = last.body as CircleDto;
@@ -450,7 +448,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         ["COLLECTING", "UPCOMING", "UPCOMING"],
       );
 
-      // Round n pays out to the member who chose payout round n.
+      // Round n pays out to the member who holds payout round n.
       for (const round of started.rounds) {
         const seat = started.seats.find((s) => s.memberId === round.beneficiaryMemberId);
         assert.equal(seat?.payoutRound, round.number);
@@ -482,18 +480,18 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(events[0]?.eventType, "circle.started");
 
       const late = await member();
-      const closed = await join(circle.id, late.token, { payoutRound: 1 });
+      const closed = await join(circle.id, late.token, {});
       assert.equal(closed.status, 409);
       assert.equal(errorCode(closed.body), "CIRCLE_NOT_OPEN");
     });
 
     test("a monthly circle's periods follow calendar months from its start", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 3, cadence: "MONTHLY", payoutRound: 1 });
+      const circle = await createCircle(owner.token, { size: 3, cadence: "MONTHLY" });
       assert.equal(circle.cadence, "MONTHLY");
       const [bob, carol] = await Promise.all([member(), member()]);
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
-      const started = (await join(circle.id, carol.token, { payoutRound: 3 })).body as CircleDto;
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
+      const started = (await join(circle.id, carol.token, {})).body as CircleDto;
 
       const start = new Date(started.startedAt ?? "");
       assert.deepEqual(
@@ -502,12 +500,45 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       );
     });
 
+    for (const [order, expected] of [
+      ["BEST_SCORE_FIRST", ["high", "new", "low"]],
+      ["BEST_SCORE_LAST", ["low", "new", "high"]],
+    ] as const) {
+      test(`filling the circle orders payout rounds by score: ${order}`, async () => {
+        // Join order low → new → high; with no score yet "new" ranks as the initial score (50).
+        const low = await member({ score: 0.3 });
+        const circle = await createCircle(low.token, { size: 3, payoutOrder: order });
+        assert.equal(circle.payoutOrder, order);
+        const [fresh, high] = [await member(), await member({ score: 0.9 })];
+        assert.equal((await join(circle.id, fresh.token)).status, 200);
+        const started = (await join(circle.id, high.token)).body as CircleDto;
+
+        const names = new Map([[low.id, "low"], [fresh.id, "new"], [high.id, "high"]]);
+        const byRound = [...started.seats].sort((a, b) => a.payoutRound - b.payoutRound).map((s) => names.get(s.userId));
+        assert.deepEqual(byRound, expected);
+        for (const round of started.rounds) {
+          assert.equal(started.seats.find((s) => s.memberId === round.beneficiaryMemberId)?.payoutRound, round.number);
+        }
+      });
+    }
+
+    test("a biweekly circle's periods are two weeks long", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 2, cadence: "BIWEEKLY" });
+      const started = (await join(circle.id, (await member()).token)).body as CircleDto;
+      const start = Date.parse(started.startedAt ?? "");
+      assert.deepEqual(
+        started.rounds.map((r) => Date.parse(r.deadline) - start),
+        [1, 2].map((n) => n * 14 * 86_400_000),
+      );
+    });
+
     test("two users racing for the last seat: one wins, the circle starts once", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 2, payoutRound: 1 });
+      const circle = await createCircle(owner.token, { size: 2 });
       const [bob, carol] = await Promise.all([member(), member()]);
 
-      const results = await Promise.all([bob, carol].map((u) => join(circle.id, u.token, { payoutRound: 2 })));
+      const results = await Promise.all([bob, carol].map((u) => join(circle.id, u.token, {})));
       assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
 
       const seats = await db.select().from(circleMembers).where(eq(circleMembers.circleId, circle.id));
@@ -523,9 +554,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     // A started circle of 3 whose round-1 contributions end on time, late and failed.
     async function settledCircle() {
       const [ana, bob, cam] = [await member({ name: "Ana Gómez" }), await member({ name: "Bob Ruiz" }), await member({ name: "Cam Díaz" })];
-      const circle = await createCircle(ana.token, { size: 3, payoutRound: 1 });
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
-      assert.equal((await join(circle.id, cam.token, { payoutRound: 3 })).status, 200);
+      const circle = await createCircle(ana.token, { size: 3 });
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
+      assert.equal((await join(circle.id, cam.token, {})).status, 200);
 
       const [round] = await db.select().from(rounds).where(and(eq(rounds.circleId, circle.id), eq(rounds.number, 1)));
       assert.ok(round, "round 1 missing");
@@ -597,7 +628,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const viewer = await member();
       // The viewer shares a circle with the subject, so the profile is visible to them.
       const shared = await createCircle(viewer.token, { size: 3 });
-      assert.equal((await join(shared.id, subject.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(shared.id, subject.token, {})).status, 200);
       assert.equal((await server.request(`/api/members/${subject.id}`)).status, 401);
 
       const res = await server.request(`/api/members/${subject.id}`, { token: viewer.token });
@@ -636,7 +667,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         await server.request(`/api/circles/${circle.id}`),
         await server.request(`/api/circles/${circle.id}`, { token: stranger.token }),
         await server.request(`/api/circles/${circle.id}?invite=wrong`, { token: stranger.token }),
-        await joinWithoutInvite(circle.id, stranger.token, { payoutRound: 2 }),
+        await joinWithoutInvite(circle.id, stranger.token, {}),
       ]) {
         assert.equal(res.status, 404);
         assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
@@ -646,7 +677,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(viaLink.status, 200);
       assert.equal((viaLink.body as CircleDto).inviteUrl, null, "invite link leaked to a non-creator");
 
-      const joined = await join(circle.id, stranger.token, { payoutRound: 2, invite: inviteOf(circle) });
+      const joined = await join(circle.id, stranger.token, { invite: inviteOf(circle) });
       assert.equal(joined.status, 200, joined.text);
       // Now a member: no link needed, and it's in their own list.
       assert.equal((await server.request(`/api/circles/${circle.id}`, { token: stranger.token })).status, 200);
@@ -682,18 +713,18 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal((made.body as CircleDto).visibility, "PUBLIC");
       const all = await server.request("/api/circles");
       assert.ok((all.body as { id: string }[]).some((c) => c.id === circle.id));
-      assert.equal((await join(circle.id, other.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, other.token, {})).status, 200);
     });
 
     test("a member's profile hides private circles, and reviews from them, from people outside", async () => {
       const [owner, bob, stranger] = await Promise.all([member(), member(), member()]);
       const hidden = await createCircle(owner.token, { visibility: "PRIVATE", size: 3, name: `${PREFIX}Secreta ${randomInt(1e6)}` });
-      assert.equal((await join(hidden.id, bob.token, { payoutRound: 2, invite: inviteOf(hidden) })).status, 200);
+      assert.equal((await join(hidden.id, bob.token, { invite: inviteOf(hidden) })).status, 200);
       await db.insert(reviews).values({ authorId: owner.id, subjectId: bob.id, circleId: hidden.id, rating: 5, comment: "Cumplido" });
 
       // "Outside" the private circle, but sharing a public one with Bob, so Bob's profile is visible.
       const open = await createCircle(stranger.token, { size: 3 });
-      assert.equal((await join(open.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(open.id, bob.token, {})).status, 200);
 
       const outside = (await server.request(`/api/members/${bob.id}`, { token: stranger.token })).body as MemberDto;
       assert.ok(!outside.circles.some((c) => c.id === hidden.id), "private circle listed to a stranger");
@@ -707,9 +738,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
     test("visibility can't change once the circle has started", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 2, payoutRound: 1 });
+      const circle = await createCircle(owner.token, { size: 2 });
       const bob = await member();
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
       const res = await server.request(`/api/circles/${circle.id}/visibility`, { method: "PATCH", token: owner.token, body: { visibility: "PRIVATE" } });
       assert.equal(res.status, 409);
       assert.equal(errorCode(res.body), "CIRCLE_NOT_OPEN");
@@ -738,14 +769,14 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const circle = await createCircle(owner.token, { size: 3 });
       const bob = await member();
 
-      const direct = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2 });
+      const direct = await joinWithoutInvite(circle.id, bob.token, {});
       assert.equal(direct.status, 403);
       assert.equal(errorCode(direct.body), "APPLICATION_REQUIRED");
-      const wrong = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2, invite: "wrong" });
+      const wrong = await joinWithoutInvite(circle.id, bob.token, { invite: "wrong" });
       assert.equal(wrong.status, 403);
       assert.equal((await getCircle(circle.id)).seatsTaken, 1);
 
-      const viaLink = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2, invite: inviteOf(circle) });
+      const viaLink = await joinWithoutInvite(circle.id, bob.token, { invite: inviteOf(circle) });
       assert.equal(viaLink.status, 200, viaLink.text);
       assert.equal((await getCircle(circle.id)).seatsTaken, 2);
     });
@@ -794,7 +825,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const circle = await createCircle(owner.token, { size: 4 });
       const bob = await member({ name: "Bob Ruiz", score: 0.8734 });
 
-      const res = await applyTo(circle.id, bob.token, { payoutRound: 3, collateralValue: "500000", grantMode: "RECURRING" });
+      const res = await applyTo(circle.id, bob.token, { collateralValue: "500000", grantMode: "RECURRING" });
       assert.equal(res.status, 201, res.text);
       const application = res.body as ApplicationDto;
       assert.equal(application.status, "PENDING");
@@ -805,7 +836,6 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.ok(!res.text.includes("@example.test") && !res.text.includes("+57"), "contact data leaked");
 
       const [row] = await db.select().from(circleApplications).where(eq(circleApplications.id, application.id));
-      assert.equal(row?.payoutRound, 3);
       assert.equal(row?.collateralValue, 500000n);
       assert.equal(row?.grantMode, "RECURRING");
       const events = await db.select().from(auditEvents).where(eq(auditEvents.externalId, `application.created:${application.id}`));
@@ -826,25 +856,20 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const owner = await member();
       const circle = await createCircle(owner.token);
       const bob = await member();
-      for (const body of [{ payoutRound: 0 }, { collateralValue: "1.5" }, { grantMode: "ALWAYS" }, { status: "ACCEPTED" }]) {
+      for (const body of [{ payoutRound: 1 }, { collateralValue: "1.5" }, { grantMode: "ALWAYS" }, { status: "ACCEPTED" }]) {
         const res = await applyTo(circle.id, bob.token, body);
         assert.equal(res.status, 400, JSON.stringify(body));
         assert.equal(errorCode(res.body), "VALIDATION_ERROR");
       }
     });
 
-    test("unknown or malformed circle → 404; payout round past the size → 422", async () => {
+    test("unknown or malformed circle → 404", async () => {
       const bob = await member();
       for (const id of [randomUUID(), "not-a-uuid"]) {
         const res = await applyTo(id, bob.token);
         assert.equal(res.status, 404, id);
         assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
       }
-      const owner = await member();
-      const circle = await createCircle(owner.token, { size: 3 });
-      const res = await applyTo(circle.id, bob.token, { payoutRound: 4 });
-      assert.equal(res.status, 422);
-      assert.equal(errorCode(res.body), "INVALID_PAYOUT_ROUND");
     });
 
     test("members, a second pending application and users without a wallet are refused", async () => {
@@ -918,11 +943,11 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
   });
 
   describe("POST /:id/applications/:applicationId/votes (DELEGATES)", () => {
-    test("the creator's first decision accepts and seats the applicant in their preferred round", async () => {
+    test("the creator's first decision accepts and seats the applicant in the next free round", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 4, payoutRound: 1 });
+      const circle = await createCircle(owner.token, { size: 4 });
       const bob = await member();
-      const application = await applied(circle.id, bob, { payoutRound: 3, collateralValue: "500000", grantMode: "RECURRING" });
+      const application = await applied(circle.id, bob, { collateralValue: "500000", grantMode: "RECURRING" });
 
       const res = await voteOn(circle.id, application.id, owner.token, "ACCEPT");
       assert.equal(res.status, 200, res.text);
@@ -933,7 +958,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
       const after = await getCircle(circle.id);
       assert.equal(after.seatsTaken, 2);
-      const seat = after.seats.find((s) => s.payoutRound === 3);
+      const seat = after.seats.find((s) => s.payoutRound === 2);
       assert.deepEqual(seat?.collateral, { value: "500000", assetCode: "COP", assetScale: 2 });
       assert.equal(seat?.grantMode, "RECURRING");
       assert.equal(seat?.isApprover, false);
@@ -942,11 +967,11 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(events.length, 1);
     });
 
-    test("a taken or missing preferred round falls back to the next free one", async () => {
+    test("accepted applicants take the next free rounds", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 4, payoutRound: 1 });
+      const circle = await createCircle(owner.token, { size: 4 });
       const [bob, carol] = await Promise.all([member(), member()]);
-      await seated(circle.id, owner, bob, { payoutRound: 1 });
+      await seated(circle.id, owner, bob);
       await seated(circle.id, owner, carol);
       const rounds = (await getCircle(circle.id)).seats.map((s) => s.payoutRound).sort();
       assert.deepEqual(rounds, [1, 2, 3]);
@@ -1046,11 +1071,11 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
   describe("filling the circle", () => {
     test("accepting the last seat starts it: rounds scheduled, round 1 contributions pending, other applications rejected", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 3, payoutRound: 3 });
+      const circle = await createCircle(owner.token, { size: 3 });
       const [bob, carol, dave] = await Promise.all([member(), member(), member()]);
-      await seated(circle.id, owner, bob, { payoutRound: 1 });
+      await seated(circle.id, owner, bob, {});
       const daveApp = await applied(circle.id, dave);
-      const last = await seated(circle.id, owner, carol, { payoutRound: 2 });
+      const last = await seated(circle.id, owner, carol, {});
       assert.equal(last.status, "ACCEPTED");
 
       const started = await getCircle(circle.id);
@@ -1102,7 +1127,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
     test("two acceptances racing for the last seat: one wins, the circle starts once", async () => {
       const owner = await member();
-      const circle = await createCircle(owner.token, { size: 2, payoutRound: 1 });
+      const circle = await createCircle(owner.token, { size: 2 });
       const [bob, carol] = await Promise.all([member(), member()]);
       const apps = [await applied(circle.id, bob), await applied(circle.id, carol)];
 
@@ -1505,7 +1530,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.ok(circle.inviteUrl, "no standing code");
       assert.deepEqual(circle.access, { canInvite: true, isCreator: true });
 
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
       const asMember = await getCircle(circle.id, bob.token);
       assert.equal(asMember.inviteUrl, null);
       assert.deepEqual(asMember.access, { canInvite: false, isCreator: false });
@@ -1520,7 +1545,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     test("an approver makes a limited code; it counts uses and shows EXPIRED once spent", async () => {
       const [owner, bob, carol, dave] = await Promise.all([member(), member(), member(), member()]);
       const circle = await createCircle(owner.token, { visibility: "PRIVATE", size: 5 });
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
       await makeApprover(circle.id, owner, bob);
 
       const made = await makeInvite(circle.id, bob.token, { kind: "CODE", maxUses: 1, expiresInHours: 1 });
@@ -1533,7 +1558,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.ok(code.expiresAt && new Date(code.expiresAt) > new Date());
       assert.equal(code.createdByName, displayName(`${PREFIX}Ana María Gómez`));
 
-      assert.equal((await join(circle.id, carol.token, { payoutRound: 3, invite: tokenOf(code) })).status, 200);
+      assert.equal((await join(circle.id, carol.token, { invite: tokenOf(code) })).status, 200);
       const listed = (await invitesOf(circle.id, owner.token)).body as InviteDto[];
       const spent = listed.find((i) => i.id === code.id);
       assert.ok(spent && spent.kind === "CODE");
@@ -1541,7 +1566,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal(spent.status, "EXPIRED");
       // Spent: the private circle doesn't exist for the next holder of the link.
       assert.equal((await server.request(`/api/circles/${circle.id}?invite=${tokenOf(code)}`, { token: dave.token })).status, 404);
-      assert.equal((await join(circle.id, dave.token, { payoutRound: 4, invite: tokenOf(code) })).status, 404);
+      assert.equal((await join(circle.id, dave.token, { invite: tokenOf(code) })).status, 404);
       assert.deepEqual(((await invitesOf(circle.id, owner.token, "?status=EXPIRED")).body as InviteDto[]).map((i) => i.id), [code.id]);
     });
 
@@ -1552,7 +1577,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         const [code] = (await makeInvite(circle.id, owner.token, { kind: "CODE", expiresInHours: 1 })).body as CodeInviteDto[];
         assert.ok(code);
         await db.update(circleInvites).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(circleInvites.id, code.id));
-        const res = await join(circle.id, bob.token, { payoutRound: 2, invite: tokenOf(code) });
+        const res = await join(circle.id, bob.token, { invite: tokenOf(code) });
         assert.equal(res.status, visibility === "PRIVATE" ? 404 : 403);
         assert.equal(errorCode(res.body), visibility === "PRIVATE" ? "CIRCLE_NOT_FOUND" : "APPLICATION_REQUIRED");
       }
@@ -1562,7 +1587,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const [owner, bob, carol] = await Promise.all([member(), member(), member()]);
       const circle = await createCircle(owner.token, { visibility: "PRIVATE", size: 4 });
       const oldStanding = inviteOf(circle);
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
       await makeApprover(circle.id, owner, bob);
       const [limited] = (await makeInvite(circle.id, owner.token, { kind: "CODE", maxUses: 5 })).body as CodeInviteDto[];
       assert.ok(limited);
@@ -1580,7 +1605,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     test("only the creator and approvers manage invites; nothing can be made once the circle started", async () => {
       const [owner, bob, stranger] = await Promise.all([member(), member(), member()]);
       const circle = await createCircle(owner.token, { size: 2 });
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
       const [code] = (await invitesOf(circle.id, owner.token)).body as InviteDto[];
       assert.ok(code);
 
@@ -1629,7 +1654,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const [code] = (await makeInvite(circle.id, owner.token, { kind: "CODE", maxUses: 2 })).body as CodeInviteDto[];
       assert.ok(code);
       const joiners = await Promise.all([member(), member(), member()]);
-      const results = await Promise.all(joiners.map((m, i) => join(circle.id, m.token, { payoutRound: i + 2, invite: tokenOf(code) })));
+      const results = await Promise.all(joiners.map((m) => join(circle.id, m.token, { invite: tokenOf(code) })));
       assert.deepEqual(results.map((r) => r.status).sort(), [200, 200, 404]);
       const [row] = await db.select({ uses: circleInvites.uses }).from(circleInvites).where(eq(circleInvites.id, code.id));
       assert.equal(row?.uses, 2);
@@ -1657,7 +1682,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const nobody = `nobody-${randomUUID()}@example.test`;
       // Bob is visible to the owner (they share a circle); Carol is reached by email.
       const shared = await createCircle(owner.token, { size: 3 });
-      assert.equal((await join(shared.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(shared.id, bob.token, {})).status, 200);
 
       const before = sentInvites().length;
       const res = await makeInvite(circle.id, owner.token, {
@@ -1709,7 +1734,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.deepEqual(await mine(dave.token), []);
 
       assert.equal((await server.request(`/api/circles/${circle.id}?invite=${tokenOf(url)}`, { token: bob.token })).status, 200);
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2, invite: tokenOf(url) })).status, 200);
+      assert.equal((await join(circle.id, bob.token, { invite: tokenOf(url) })).status, 200);
       const listed = ((await invitesOf(circle.id, owner.token)).body as InviteDto[]).find((i) => i.id === invite.id);
       assert.equal(listed?.status, "ACCEPTED");
       const [row] = await db.select({ userId: circleInvites.userId, memberId: circleInvites.acceptedMemberId }).from(circleInvites).where(eq(circleInvites.id, invite.id));
@@ -1718,7 +1743,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.deepEqual(await mine(bob.token), []);
       // Single use: the link is dead for everyone now.
       assert.equal((await server.request(`/api/circles/${circle.id}?invite=${tokenOf(url)}`, { token: dave.token })).status, 404);
-      assert.equal((await join(circle.id, dave.token, { payoutRound: 3, invite: tokenOf(url) })).status, 404);
+      assert.equal((await join(circle.id, dave.token, { invite: tokenOf(url) })).status, 404);
     });
 
     test("a direct link shows the circle to anyone but only seats its addressee", async () => {
@@ -1731,10 +1756,10 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         // The emailed link works before signing in, so the invitee can read what they're joining.
         assert.equal((await server.request(`/api/circles/${circle.id}?invite=${token}`)).status, 200);
         assert.equal((await server.request(`/api/circles/${circle.id}?invite=${token}`, { token: carol.token })).status, 200);
-        const res = await join(circle.id, carol.token, { payoutRound: 2, invite: token });
+        const res = await join(circle.id, carol.token, { invite: token });
         assert.equal(res.status, visibility === "PRIVATE" ? 404 : 403, res.text);
         assert.equal(errorCode(res.body), visibility === "PRIVATE" ? "CIRCLE_NOT_FOUND" : "APPLICATION_REQUIRED");
-        assert.equal((await join(circle.id, bob.token, { payoutRound: 2, invite: token })).status, 200);
+        assert.equal((await join(circle.id, bob.token, { invite: token })).status, 200);
       }
     });
 
@@ -1749,7 +1774,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const newcomer = await member({ email });
       assert.deepEqual((await mine(newcomer.token)).map((i) => i.id), [invite.id]);
       const token = await directToken(invite.id);
-      assert.equal((await join(circle.id, newcomer.token, { payoutRound: 2, invite: token })).status, 200);
+      assert.equal((await join(circle.id, newcomer.token, { invite: token })).status, 200);
       const [row] = await db.select({ userId: circleInvites.userId, status: circleInvites.status }).from(circleInvites).where(eq(circleInvites.id, invite.id));
       assert.deepEqual(row, { userId: newcomer.id, status: "ACCEPTED" });
     });
@@ -1775,7 +1800,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     test("members, people already invited and users the inviter can't see are refused", async () => {
       const [owner, bob, hidden] = await Promise.all([member(), member(), member()]);
       const circle = await createCircle(owner.token, { visibility: "PRIVATE", size: 4 });
-      assert.equal((await join(circle.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(circle.id, bob.token, {})).status, 200);
       const carolEmail = `carol-${randomUUID()}@example.test`;
       assert.equal((await makeInvite(circle.id, owner.token, { kind: "DIRECT", targets: [{ email: carolEmail }] })).status, 201);
 
@@ -1798,7 +1823,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const [owner, bob] = await Promise.all([member(), member()]);
       const circle = await createCircle(owner.token, { visibility: "PRIVATE", size: 4 });
       const shared = await createCircle(owner.token, { size: 3 });
-      assert.equal((await join(shared.id, bob.token, { payoutRound: 2 })).status, 200);
+      assert.equal((await join(shared.id, bob.token, {})).status, 200);
       const res = await makeInvite(circle.id, owner.token, { kind: "DIRECT", targets: [{ userId: bob.id }, { email: `${bob.id}@example.test` }] });
       assert.equal(res.status, 201, res.text);
       assert.equal((res.body as InviteDto[]).length, 1);

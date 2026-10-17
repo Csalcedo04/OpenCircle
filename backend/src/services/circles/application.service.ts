@@ -13,7 +13,7 @@ import {
   wallets,
 } from "../../db/schema";
 import { AppError } from "../../errors/app-error";
-import type { CircleDto, CircleService, SeatRequest } from "../circle.service";
+import type { CircleDto, CircleService, SeatInput } from "../circle.service";
 import { publicProfileColumns, toPublicProfile, type PublicProfileDto } from "../user.service";
 import type { Tx } from "../wallet.service";
 import type { ApplicationNotices } from "./application-notices";
@@ -107,14 +107,11 @@ export function createApplicationService({ db, circles: circleService, notices }
      * Private circles are joined through their invite link instead, and to anyone
      * else they don't exist.
      */
-    async apply(userId: string, circleId: string, seat: SeatRequest): Promise<ApplicationDto> {
+    async apply(userId: string, circleId: string, seat: SeatInput): Promise<ApplicationDto> {
       const id = await db.transaction(async (tx) => {
         const circle = await lockCircle(tx, circleId);
         if (circle.visibility !== "PUBLIC") throw circleNotFound();
         if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
-        if (seat.payoutRound !== null && seat.payoutRound > circle.size) {
-          throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
-        }
         if (await membership(tx, circleId, userId)) {
           throw new AppError(409, "ALREADY_MEMBER", "You already have a seat in this circle");
         }
@@ -208,16 +205,7 @@ export function createApplicationService({ db, circles: circleService, notices }
         if (outcome === null) return { accepted: false, started: false };
 
         if (outcome === "ACCEPT") {
-          // A preferred payout round taken since applying falls back to the next free one.
-          const [holder] =
-            application.payoutRound === null
-              ? []
-              : await tx
-                  .select({ id: circleMembers.id })
-                  .from(circleMembers)
-                  .where(and(eq(circleMembers.circleId, circleId), eq(circleMembers.payoutRound, application.payoutRound)));
-          const seat = { ...application, payoutRound: holder ? null : application.payoutRound };
-          const filled = await circleService.takeSeat(tx, circle, application.userId, seat);
+          const filled = await circleService.takeSeat(tx, circle, application.userId, application);
           await decide(tx, circle, applicationId, "ACCEPT", now);
           if (filled) {
             const others = await tx

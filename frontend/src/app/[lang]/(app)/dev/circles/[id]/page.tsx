@@ -71,7 +71,7 @@ export default async function DevCirclePage({ params, searchParams }: PageProps<
           <h2 className="font-heading text-xl font-semibold">{d.joinTitle}</h2>
           <div className="mt-5">
             {circle.status === "OPEN" && free.length > 0 ? (
-              <JoinForm locale={locale} t={d} circleId={circle.id} rounds={free} invite={invite} />
+              <JoinForm locale={locale} t={d} circleId={circle.id} invite={invite} />
             ) : (
               <p className="text-muted-foreground">{d.full}</p>
             )}

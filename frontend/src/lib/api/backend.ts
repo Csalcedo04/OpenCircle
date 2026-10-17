@@ -191,7 +191,8 @@ export function getApiCircle(id: string, invite?: string): Promise<ApiCircle> {
 // ── Circles and members ─────────────────────────────────────────────────────
 
 const amountSchema = z.object({ value: z.string().regex(/^\d+$/), assetCode: z.string(), assetScale: z.number().int() })
-const cadenceSchema = z.enum(["WEEKLY", "MONTHLY"])
+const cadenceSchema = z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY"])
+const payoutOrderSchema = z.enum(["BEST_SCORE_FIRST", "BEST_SCORE_LAST"])
 const circleStatusSchema = z.enum(["OPEN", "ACTIVE", "COMPLETED"])
 
 const recordSchema = z.object({
@@ -222,6 +223,8 @@ export const circleSummarySchema = z.object({
   size: z.number().int(),
   seatsTaken: z.number().int(),
   cadence: cadenceSchema,
+  /** Who receives the pot first, by reliability score; rounds are assigned when the circle fills. */
+  payoutOrder: payoutOrderSchema,
   createdAt: z.string(),
 })
 
@@ -276,6 +279,7 @@ export type CircleDto = z.infer<typeof circleSchema>
 export type MemberDto = z.infer<typeof memberSchema>
 export type ReviewDto = z.infer<typeof reviewSchema>
 export type Cadence = z.infer<typeof cadenceSchema>
+export type PayoutOrder = z.infer<typeof payoutOrderSchema>
 
 /** `?invite=` for circles shared by link (private circles). */
 const inviteQuery = (invite: string | undefined) => (invite ? `?invite=${encodeURIComponent(invite)}` : "")
@@ -304,8 +308,8 @@ export async function fetchMember(id: string): Promise<MemberDto | null> {
   }
 }
 
+/** No payout round: the circle's payout order assigns it when the circle fills. */
 export interface SeatRequest {
-  payoutRound: number
   /** Minor units, integer string. */
   collateralValue?: string
   grantMode?: "RECURRING" | "PER_ROUND" | null
@@ -319,6 +323,8 @@ export interface NewCircleRequest extends SeatRequest {
   contributionValue: string
   size: number
   cadence: Cadence
+  /** Best score first unless set; the API defaults to BEST_SCORE_FIRST. */
+  payoutOrder?: PayoutOrder | undefined
   /** Private (invite link only) unless set to PUBLIC; the API defaults to PRIVATE. */
   visibility?: CircleVisibility | undefined
   /** Dev only (TEST_CLOCKS_ENABLED): run the circle on this test clock. */
@@ -359,4 +365,87 @@ export async function getMySavings(): Promise<Savings | null> {
 /** Circles the caller has a seat in, private ones included. */
 export function getMyCircles(): Promise<CircleSummaryDto[]> {
   return backendFetch("/users/me/circles", z.array(circleSummarySchema))
+}
+
+// ── The account page: one read of the user's money, circles and record ─────
+
+const contributionStatusSchema = z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])
+const isoDate = z.string()
+
+const dashboardSchema = z.object({
+  wallet: z
+    .object({
+      address: z.string(),
+      assetCode: z.string(),
+      assetScale: z.number().int(),
+      authorization: z.object({ status: z.enum(["ACTIVE", "REVOKED", "NONE"]), since: isoDate.nullable() }),
+    })
+    .nullable(),
+  ics: z.number().nullable(),
+  record: recordSchema,
+  contributed: z.array(amountSchema),
+  circles: z.array(
+    z.object({
+      id: z.uuid(),
+      name: z.string(),
+      status: circleStatusSchema,
+      cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY"]),
+      size: z.number().int(),
+      seatsTaken: z.number().int(),
+      contribution: amountSchema,
+      expectedPayout: amountSchema,
+      myPayoutRound: z.number().int(),
+      currentRound: z.number().int().nullable(),
+      now: isoDate,
+      onTestClock: z.boolean(),
+      rounds: z.array(
+        z.object({
+          number: z.number().int(),
+          state: z.enum(["UPCOMING", "COLLECTING", "FUNDED", "RISK_CHECK", "BLOCKED", "PAYING_OUT", "PAID_OUT", "REFUNDED"]),
+          startsAt: isoDate,
+          deadline: isoDate,
+          mine: z.boolean(),
+          verified: z.number().int(),
+          myStatus: contributionStatusSchema.nullable(),
+          myFailureCode: z.string().nullable(),
+        }),
+      ),
+    }),
+  ),
+  activity: z.array(
+    z.object({
+      id: z.uuid(),
+      type: z.literal("CONTRIBUTION"),
+      circleId: z.uuid(),
+      circleName: z.string(),
+      roundNumber: z.number().int(),
+      amount: amountSchema,
+      status: contributionStatusSchema,
+      failureCode: z.string().nullable(),
+      deadline: isoDate,
+      createdAt: isoDate,
+      requestedAt: isoDate.nullable(),
+      completedAt: isoDate.nullable(),
+      fromWallet: z.string().nullable(),
+      toWallet: z.string(),
+      incomingPaymentUrl: z.string().nullable(),
+      outgoingPaymentUrl: z.string().nullable(),
+    }),
+  ),
+})
+
+export type Dashboard = z.infer<typeof dashboardSchema>
+export type DashboardCircle = Dashboard["circles"][number]
+export type DashboardRound = DashboardCircle["rounds"][number]
+export type Activity = Dashboard["activity"][number]
+export type PaymentStatus = z.infer<typeof contributionStatusSchema>
+
+/** The account page's data, or null without a profile yet. Reads only. */
+export async function getMyDashboard(): Promise<Dashboard | null> {
+  try {
+    return await backendFetch("/users/me/dashboard", dashboardSchema)
+  } catch (err) {
+    if (err instanceof BackendError && err.code === "PROFILE_NOT_FOUND") return null
+    throw err
+  }
 }

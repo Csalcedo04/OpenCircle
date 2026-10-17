@@ -205,8 +205,10 @@ export const kycVerifications = pgTable(
 
 export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
-// A period is one calendar week or one calendar month; a circle has one period per member.
-export const CIRCLE_CADENCES = ["WEEKLY", "MONTHLY"] as const;
+// A period is one or two calendar weeks, or one calendar month; a circle has one period per member.
+export const CIRCLE_CADENCES = ["WEEKLY", "BIWEEKLY", "MONTHLY"] as const;
+// Who receives the pot first, by reliability score (ICS). Set by the creator; joining means agreeing.
+export const PAYOUT_ORDERS = ["BEST_SCORE_FIRST", "BEST_SCORE_LAST"] as const;
 // PRIVATE: only members and holders of the invite link can see or join. PUBLIC: listed for everyone.
 export const CIRCLE_VISIBILITIES = ["PRIVATE", "PUBLIC"] as const;
 // UPCOMING: scheduled but not open yet. The rest follow the round engine.
@@ -275,7 +277,9 @@ export const circles = pgTable(
     roundLengthDays: integer("round_length_days").notNull(),
     cadence: text("cadence").$type<(typeof CIRCLE_CADENCES)[number]>().notNull().default("MONTHLY"),
     visibility: text("visibility").$type<(typeof CIRCLE_VISIBILITIES)[number]>().notNull().default("PRIVATE"),
-    // Legacy: superseded by `circle_invites` (migration 0010). Never read or written anymore.
+    // Seats are reordered by score when the circle fills; until then a seat's round is provisional.
+    payoutOrder: text("payout_order").$type<(typeof PAYOUT_ORDERS)[number]>().notNull().default("BEST_SCORE_FIRST"),
+    // Legacy: superseded by `circle_invites` (migration 0011). Never read or written anymore.
     inviteCode: text("invite_code").unique(),
     // Number of seats, and so of rounds.
     size: integer("size").notNull(),
@@ -312,6 +316,7 @@ export const circles = pgTable(
     check("circles_size_range", sql`${t.size} between 2 and 50`),
     check("circles_cadence", sql`${t.cadence} in (${inList(CIRCLE_CADENCES)})`),
     check("circles_visibility", sql`${t.visibility} in (${inList(CIRCLE_VISIBILITIES)})`),
+    check("circles_payout_order", sql`${t.payoutOrder} in (${inList(PAYOUT_ORDERS)})`),
     check("circles_approval_mode", sql`${t.approvalMode} in (${inList(APPROVAL_MODES)})`),
     index("circles_test_clock_id_idx").on(t.testClockId),
   ],
@@ -329,6 +334,7 @@ export const circleMembers = pgTable(
       .notNull()
       .references(() => users.id),
     // 1-based; at most the circle's size (checked by the service, the DB can't see circles.size here).
+    // Provisional (join order) while the circle is OPEN; set from the payout order when it starts.
     payoutRound: integer("payout_round").notNull(),
     // Held in the pot as coverage for debt after the member's own payout.
     collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
