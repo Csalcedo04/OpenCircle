@@ -15,8 +15,11 @@ export interface CircleView {
   circle: Circle
   members: Member[]
   reviews: Review[]
-  /** Who can find and join it; `inviteUrl` is set only when the viewer created the circle. */
-  access: { visibility: CircleVisibility; inviteUrl: string | null }
+  /**
+   * Who can find and join it, and what the viewer may do: `canInvite` for the creator and
+   * approvers (who also get `inviteUrl`), `isCreator` for who may change the visibility.
+   */
+  access: { visibility: CircleVisibility; inviteUrl: string | null; canInvite: boolean; isCreator: boolean }
 }
 
 /** A member with the reviews they received and the circles they're in. */
@@ -33,7 +36,7 @@ export async function getCircleView(id: string, invite?: string): Promise<Circle
     circle: toCircle(dto),
     members: membersOf(dto),
     reviews: dto.reviews.map(toReview),
-    access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl },
+    access: { visibility: dto.visibility, inviteUrl: dto.inviteUrl, ...dto.access },
   }
 }
 

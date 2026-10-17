@@ -357,6 +357,7 @@ const en = {
     seatTaken: "Someone just took that round. Pick another.",
     alreadyMember: "You already have a seat in this circle.",
     notOpen: "This circle isn’t taking members anymore.",
+    applicationRequired: "This circle takes members by invitation. Ask its creator for an invite link.",
     kyc: "Verify your identity to create or join a circle.",
     unavailable: "OpenCircle can’t reach its service right now. Try again in a moment.",
     generic: "Something went wrong. Try again.",

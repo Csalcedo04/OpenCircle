@@ -358,6 +358,7 @@ const es: Dictionary = {
     seatTaken: "Alguien acaba de tomar esa ronda. Elige otra.",
     alreadyMember: "Ya tienes un cupo en este círculo.",
     notOpen: "Este círculo ya no recibe miembros.",
+    applicationRequired: "Este círculo recibe miembros por invitación. Pídele un enlace a quien lo creó.",
     kyc: "Verifica tu identidad para crear o unirte a un círculo.",
     unavailable: "OpenCircle no puede conectarse con su servicio en este momento. Inténtalo en un momento.",
     generic: "Algo salió mal. Inténtalo de nuevo.",
