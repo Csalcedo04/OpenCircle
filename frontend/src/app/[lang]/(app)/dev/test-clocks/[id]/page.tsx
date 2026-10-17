@@ -90,32 +90,34 @@ export default async function TestClockPage({ params }: PageProps<"/[lang]/dev/t
                       {d.beneficiary}: <span className="font-medium text-foreground">{p.beneficiary.displayName}</span>. {d.deadline}:{" "}
                       <span className="tabular-nums text-foreground">{formatDateTime(p.deadline, locale)}</span>
                     </p>
-                    <table className="mt-4 w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border text-left text-muted-foreground">
-                          <th className="py-2 font-medium">{d.member}</th>
-                          <th className="py-2 font-medium">{d.status}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {p.contributions.map((m) => {
-                          const Icon = statusIcon[m.status as keyof typeof statusIcon] ?? Lock
-                          const failure = m.failureCode ? d.failures[m.failureCode as keyof typeof d.failures] : undefined
-                          return (
-                            <tr key={m.memberId}>
-                              <td className="py-2.5">{m.displayName}</td>
-                              <td className={cn("py-2.5", m.status === "COMPLETED" && "text-brand-violet-ink")}>
-                                <span className="inline-flex items-center gap-1.5">
-                                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                                  {d.statuses[m.status as keyof typeof d.statuses] ?? m.status}
-                                  {failure ? ` (${failure})` : ""}
-                                </span>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border text-left text-muted-foreground">
+                            <th className="py-2 font-medium">{d.member}</th>
+                            <th className="py-2 font-medium">{d.status}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {p.contributions.map((m) => {
+                            const Icon = statusIcon[m.status as keyof typeof statusIcon] ?? Lock
+                            const failure = m.failureCode ? d.failures[m.failureCode as keyof typeof d.failures] : undefined
+                            return (
+                              <tr key={m.memberId}>
+                                <td className="py-2.5">{m.displayName}</td>
+                                <td className={cn("py-2.5", m.status === "COMPLETED" && "text-brand-violet-ink")}>
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                                    {d.statuses[m.status as keyof typeof d.statuses] ?? m.status}
+                                    {failure ? ` (${failure})` : ""}
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </>
                 )}
               </li>

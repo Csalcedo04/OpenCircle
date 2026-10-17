@@ -52,30 +52,42 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
   const o = t.onboarding
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10 sm:px-6 sm:py-14">
-      {/* Progress: fills on arrival, honours reduced motion, marks the current step for screen readers. */}
-      <div className="mb-8">
-        <Stepper current={step} labels={[o.profileTitle, o.walletTitle]} stepText={o.step} />
-      </div>
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 sm:py-12">
+      {/* Editorial Authority Header Card */}
+      <header className="relative isolate overflow-hidden rounded-3xl bg-brand-navy p-6 text-brand-white shadow-xl sm:p-8">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 overflow-hidden opacity-30 select-none"
+        >
+          <svg viewBox="0 0 900 300" fill="none" className="h-full w-full">
+            <circle cx="760" cy="110" r="150" stroke="var(--color-brand-mint)" strokeWidth="1.2" strokeDasharray="5 7" />
+            <circle cx="760" cy="110" r="230" stroke="var(--color-brand-violet)" strokeWidth="1" />
+            <path d="M 320 270 Q 580 40 880 180" stroke="var(--color-brand-mint)" strokeWidth="1.5" strokeDasharray="4 6" />
+          </svg>
+        </div>
+
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider text-brand-mint">
+          {step === 1 ? <User className="size-3.5" aria-hidden="true" /> : <Wallet className="size-3.5" aria-hidden="true" />}
+          <span>{o.title}</span>
+        </div>
+
+        <h1 className="mt-3 font-heading text-2xl font-semibold tracking-[-0.03em] text-brand-white sm:text-3xl">
+          {step === 1 ? o.profileTitle : o.walletTitle}
+        </h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-brand-on-navy sm:text-base">
+          {step === 1 ? o.lead : o.walletLead}
+        </p>
+      </header>
 
       {/* Main Bento Card */}
-      <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-full bg-brand-violet/10 text-brand-violet-ink">
-            {step === 1 ? <User className="size-4.5" /> : <Wallet className="size-4.5" />}
-          </span>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-brand-navy">
-              {step === 1 ? o.profileTitle : o.walletTitle}
-            </h1>
-            <p className="text-xs text-brand-slate">
-              {step === 1 ? o.lead : o.walletLead}
-            </p>
-          </div>
+      <div className="mt-6 rounded-3xl border border-brand-line bg-brand-white p-6 shadow-sm sm:p-8">
+        {/* Progress: fills on arrival, honours reduced motion, marks the current step for screen readers. */}
+        <div className="mb-8 rounded-2xl border border-brand-line bg-brand-canvas/60 p-4">
+          <Stepper current={step} labels={[o.profileTitle, o.walletTitle]} stepText={o.step} />
         </div>
 
         {step === 1 ? (
-          <div key="profile" className="oc-step-in mt-8">
+          <div key="profile" className="oc-step-in">
             <ProfileForm
               locale={locale}
               t={o}
@@ -86,7 +98,7 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
             />
           </div>
         ) : (
-          <div key="wallet" className="oc-step-in mt-6 space-y-6">
+          <div key="wallet" className="oc-step-in space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-brand-mint/40 border border-brand-mint px-4 py-3 text-xs font-medium text-brand-navy">
               <div className="flex items-center gap-2 min-w-0">
                 <CheckCircle2 className="size-4 shrink-0 text-brand-navy" aria-hidden="true" />

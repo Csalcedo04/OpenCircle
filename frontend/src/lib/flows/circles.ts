@@ -1,5 +1,5 @@
 import { z } from "zod"
-import type { Cadence, NewCircleRequest, PayoutOrder, SeatRequest } from "@/lib/api/backend"
+import type { Cadence, NewCircleRequest, PayoutMode, PayoutOrder, SeatRequest } from "@/lib/api/backend"
 import { parseWholeUnits } from "@/lib/domain/money"
 import { CIRCLE_VISIBILITIES } from "@/lib/flows/circle-invite"
 
@@ -9,8 +9,11 @@ import { CIRCLE_VISIBILITIES } from "@/lib/flows/circle-invite"
 export const CIRCLE_ASSET_SCALE = 2
 export const CADENCES = ["WEEKLY", "BIWEEKLY", "MONTHLY"] as const satisfies readonly Cadence[]
 export const PAYOUT_ORDERS = ["BEST_SCORE_FIRST", "BEST_SCORE_LAST"] as const satisfies readonly PayoutOrder[]
+export const PAYOUT_MODES = ["PER_ROUND", "END"] as const satisfies readonly PayoutMode[]
 export const MIN_SIZE = 3
 export const MAX_SIZE = 12
+export const MIN_ROUNDS_TOTAL = 2
+export const MAX_ROUNDS_TOTAL = 52
 const MIN_CONTRIBUTION = 1_000n
 const MAX_CONTRIBUTION = 10_000_000n
 
@@ -20,6 +23,7 @@ export type CircleErrorKey =
   | "amount"
   | "size"
   | "cadence"
+  | "roundsTotal"
   | "collateral"
   | "seatTaken"
   | "alreadyMember"
@@ -31,11 +35,13 @@ export type CircleErrorKey =
   | "applicationDecided"
   | "notApprover"
   | "kyc"
+  | "debtOutstanding"
+  | "goalNotDivisible"
   | "unavailable"
   | "featureUnavailable"
   | "generic"
 
-export type CircleField = "name" | "amount" | "size" | "cadence" | "collateral"
+export type CircleField = "name" | "amount" | "size" | "cadence" | "roundsTotal" | "collateral"
 export type FieldErrors = Partial<Record<CircleField, CircleErrorKey>>
 
 /** Whole pesos ("20.000", "20000") → minor units, or null if not a whole amount. */
@@ -49,6 +55,8 @@ export interface CreateFields {
   cadence: string
   payoutOrder: string
   visibility: string
+  payoutMode?: string | undefined
+  roundsTotal?: string | undefined
 }
 
 const createSchema = z.object({
@@ -57,6 +65,7 @@ const createSchema = z.object({
   // Anything unexpected falls back to private, the safe default.
   visibility: z.enum(CIRCLE_VISIBILITIES).catch("PRIVATE"),
   payoutOrder: z.enum(PAYOUT_ORDERS).catch("BEST_SCORE_FIRST"),
+  payoutMode: z.enum(PAYOUT_MODES).catch("PER_ROUND"),
 })
 
 export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircleRequest } | { ok: false; errors: FieldErrors } {
@@ -69,7 +78,33 @@ export function parseCreateForm(f: CreateFields): { ok: true; request: NewCircle
   const size = Number(f.size)
   if (!Number.isInteger(size) || size < MIN_SIZE || size > MAX_SIZE) errors.size = "size"
 
+  const payoutMode = base.success ? base.data.payoutMode : "PER_ROUND"
+  let roundsTotal = size
+  if (payoutMode === "END") {
+    roundsTotal = f.roundsTotal !== undefined && f.roundsTotal.trim() !== "" ? Number(f.roundsTotal) : size
+    if (!Number.isInteger(roundsTotal) || roundsTotal < MIN_ROUNDS_TOTAL || roundsTotal > MAX_ROUNDS_TOTAL) {
+      errors.roundsTotal = "roundsTotal"
+    }
+  }
+
   if (!base.success || Object.keys(errors).length > 0 || contribution === null) return { ok: false, errors }
+
+  if (payoutMode === "END") {
+    const goalValue = (contribution * BigInt(size) * BigInt(roundsTotal)).toString()
+    return {
+      ok: true,
+      request: {
+        name: base.data.name,
+        payoutMode: "END",
+        goalValue,
+        roundsTotal,
+        size,
+        cadence: base.data.cadence,
+        visibility: base.data.visibility,
+      },
+    }
+  }
+
   return {
     ok: true,
     request: {
@@ -112,9 +147,12 @@ const apiErrors: Record<string, CircleErrorKey> = {
   NOT_APPROVER: "notApprover",
   NOT_CREATOR: "notApprover",
   KYC_REQUIRED: "kyc",
+  DEBT_OUTSTANDING: "debtOutstanding",
+  GOAL_NOT_DIVISIBLE: "goalNotDivisible",
   BACKEND_UNAVAILABLE: "unavailable",
   NOT_FOUND: "featureUnavailable",
 }
 
 /** API error code from creating, joining, applying or voting → message key. */
 export const circleErrorKey = (code: string): CircleErrorKey => apiErrors[code] ?? "generic"
+

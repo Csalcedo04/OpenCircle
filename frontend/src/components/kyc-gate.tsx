@@ -22,10 +22,18 @@ type Props = {
 
 function Panel({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
   return (
-    <section className="max-w-xl rounded-3xl bg-brand-white p-6 ring-1 ring-brand-line sm:p-8">
+    <section className="relative isolate max-w-xl overflow-hidden rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden opacity-40 select-none">
+        <svg viewBox="0 0 600 240" fill="none" className="h-full w-full">
+          <circle cx="520" cy="60" r="120" stroke="var(--color-brand-line)" strokeWidth="1.5" strokeDasharray="5 7" />
+          <circle cx="520" cy="60" r="185" stroke="color-mix(in srgb, var(--color-brand-violet) 25%, transparent)" strokeWidth="1" />
+        </svg>
+      </div>
       <div className="flex items-center gap-3 text-brand-navy">
-        {icon}
-        <h2 className="text-xl font-semibold tracking-[-0.02em]">{title}</h2>
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-2xl bg-brand-violet/10 text-brand-violet-ink">
+          {icon}
+        </span>
+        <h2 className="text-xl font-bold tracking-[-0.02em] text-brand-navy">{title}</h2>
       </div>
       {children}
     </section>
@@ -44,8 +52,8 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
   if (!data?.claims) {
     return (
       <Panel icon={icon} title={t.title}>
-        <p className="mt-3 text-muted-foreground">{t.needsLogin}</p>
-        <Link href={`/${locale}/login?next=${encodeURIComponent(returnPath)}`} className={buttonVariants({ className: "mt-6 h-11 px-5 text-base" })}>
+        <p className="mt-3 text-sm leading-relaxed text-brand-slate">{t.needsLogin}</p>
+        <Link href={`/${locale}/login?next=${encodeURIComponent(returnPath)}`} className={buttonVariants({ className: "mt-6 h-11 rounded-full px-6 text-sm font-semibold" })}>
           {t.goLogin}
         </Link>
       </Panel>
@@ -63,8 +71,8 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
   if (!profile?.walletAddress || !kyc) {
     return (
       <Panel icon={icon} title={t.title}>
-        <p className="mt-3 text-muted-foreground">{t.needsOnboarding}</p>
-        <Link href={`/${locale}/onboarding`} className={buttonVariants({ className: "mt-6 h-11 px-5 text-base" })}>
+        <p className="mt-3 text-sm leading-relaxed text-brand-slate">{t.needsOnboarding}</p>
+        <Link href={`/${locale}/onboarding`} className={buttonVariants({ className: "mt-6 h-11 rounded-full px-6 text-sm font-semibold" })}>
           {t.goOnboarding}
         </Link>
       </Panel>
@@ -78,7 +86,7 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
   if (state === "in-review") {
     return (
       <Panel icon={<Clock className="size-5 shrink-0 text-brand-violet-ink" aria-hidden="true" />} title={t.title}>
-        <p className="mt-3 text-muted-foreground" role="status">
+        <p className="mt-3 text-sm leading-relaxed text-brand-slate" role="status">
           {t.pending}
         </p>
         {refresher}
@@ -89,7 +97,7 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
   if (state === "checking") {
     return (
       <Panel icon={<Clock className="size-5 shrink-0 text-brand-violet-ink" aria-hidden="true" />} title={t.title}>
-        <p className="mt-3 text-muted-foreground" role="status">
+        <p className="mt-3 text-sm leading-relaxed text-brand-slate" role="status">
           {t.checking}
         </p>
         <KycStartForm locale={locale} returnPath={returnPath} t={{ ...t, start: t.resume }} />
@@ -100,7 +108,7 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
 
   return (
     <Panel icon={icon} title={t.title}>
-      <p className="mt-3 text-muted-foreground">{state === "declined" ? t.declined : t.lead}</p>
+      <p className="mt-3 text-sm leading-relaxed text-brand-slate">{state === "declined" ? t.declined : t.lead}</p>
       <KycStartForm locale={locale} returnPath={returnPath} t={t} />
       {refresher}
     </Panel>

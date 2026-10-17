@@ -1,9 +1,10 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { DebtsCard } from "@/components/debts-card"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { MyInvitesCard } from "@/components/invites/my-invites-card"
-import { getMyDashboard, getMyKyc, getMyProfile, isBackendUnavailable, isFeatureUnavailable } from "@/lib/api/backend"
+import { getMyDashboard, getMyDebts, getMyKyc, getMyProfile, isBackendUnavailable, isFeatureUnavailable } from "@/lib/api/backend"
 import { getMyInvitations } from "@/lib/api/invites"
 import { nextAction } from "@/lib/flows/account-dashboard"
 import { createClient } from "@/lib/supabase/server"
@@ -43,6 +44,10 @@ export default async function AccountPage() {
         if (isFeatureUnavailable(err) || isBackendUnavailable(err)) return []
         throw err
       }),
+      getMyDebts().catch((err: unknown) => {
+        if (isFeatureUnavailable(err) || isBackendUnavailable(err)) return []
+        throw err
+      }),
     ])
   } catch (err) {
     if (!isBackendUnavailable(err)) throw err
@@ -55,7 +60,7 @@ export default async function AccountPage() {
       </div>
     )
   }
-  const [profile, kyc, dashboard, invitations] = loaded
+  const [profile, kyc, dashboard, invitations, debts] = loaded
   if (!profile || !dashboard) redirect(`/${locale}/onboarding`)
 
   const a = t.account
@@ -69,6 +74,7 @@ export default async function AccountPage() {
       <FinancialOverview data={dashboard} t={a} locale={locale} />
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <DebtsCard debts={debts} locale={locale} t={a.debts} />
         <NextActionCard action={nextAction(dashboard)} t={a} locale={locale} />
         <CommunityTrustCard data={dashboard} kycApproved={kycApproved} t={a} />
 

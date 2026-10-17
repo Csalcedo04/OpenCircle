@@ -111,14 +111,18 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
             const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
             const open = circle.size - circle.seats.length
             const pot = potFor(circle)
-            const potFormatted = formatAmount(amount(pot, circle.contribution), locale)
+            const isGoal = circle.payoutMode === "END" && circle.goal != null
+            const potFormatted = isGoal && circle.goal
+              ? formatAmount(circle.goal, locale)
+              : formatAmount(amount(pot, circle.contribution), locale)
+            const totalRounds = circle.roundsTotal ?? circle.size
             const fillPct =
               circle.size > 0
                 ? Math.min(
                     100,
                     Math.round(
                       ((circle.status === "OPEN" ? circle.seats.length : circle.currentRound) * 100) /
-                        circle.size,
+                        (circle.status === "OPEN" ? circle.size : totalRounds),
                     ),
                   )
                 : 0
@@ -142,6 +146,11 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
                         <Calendar className="size-3 text-brand-navy/70" aria-hidden="true" />
                         <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>
                       </span>
+                      {circle.payoutMode === "END" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand-mint/45 px-2.5 py-1 text-[11px] font-bold text-brand-navy">
+                          <span>{t.circle.goalBadge}</span>
+                        </span>
+                      )}
                       {circle.visibility === "PRIVATE" ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-brand-violet/12 px-2.5 py-1 text-[11px] font-semibold text-brand-violet-ink">
                           <Lock className="size-2.5" aria-hidden="true" />
@@ -181,7 +190,7 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
                     </Link>
                   </div>
 
-                  {/* Main Metrics: Contribution in Mist + Pot in Deep Navy with Mint figures (matching HeroDashboard) */}
+                  {/* Main Metrics: Contribution in Mist + Pot/Goal in Deep Navy with Mint figures */}
                   <dl className="mt-5 grid grid-cols-2 gap-3">
                     <div className="rounded-2xl bg-brand-mist p-3.5 sm:p-4">
                       <dt className="flex items-center gap-1.5 text-[11px] font-medium text-brand-navy/70">
@@ -195,7 +204,7 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
                     <div className="rounded-2xl bg-brand-navy p-3.5 text-brand-white sm:p-4">
                       <dt className="flex items-center gap-1.5 text-[11px] font-medium text-brand-on-navy">
                         <Coins className="size-3.5 text-brand-mint" aria-hidden="true" />
-                        <span>{t.circle.potLabel}</span>
+                        <span>{isGoal ? t.circle.goalTarget : t.circle.potLabel}</span>
                       </dt>
                       <dd className="mt-1.5 text-lg font-semibold tracking-[-0.02em] text-brand-mint tabular-nums sm:text-xl">
                         {potFormatted}
@@ -215,7 +224,7 @@ export function CirclesView({ allCircles, myCircles, locale, t, initialTab = "al
                         </span>
                       ) : (
                         <span className="font-semibold text-brand-navy">
-                          {fill(t.circles.round, { round: circle.currentRound, size: circle.size })}
+                          {fill(t.circles.round, { round: circle.currentRound, size: totalRounds })}
                         </span>
                       )}
                     </div>

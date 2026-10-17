@@ -50,9 +50,10 @@ export function toCircle(dto: CircleDto): Circle {
       collateralValue: s.collateral.value,
       grant: s.grantMode,
       isApprover: s.isApprover,
+      payout: s.payout ?? null,
     })),
     rounds: dto.rounds.map((r) => {
-      const fallbackUser = dto.seats.find((s) => s.payoutRound === r.number)?.userId ?? ""
+      const fallbackUser = dto.payoutMode === "END" ? "" : (dto.seats.find((s) => s.payoutRound === r.number)?.userId ?? "")
       return {
         number: r.number,
         beneficiaryId: r.beneficiaryMemberId ? user(r.beneficiaryMemberId) : fallbackUser,
@@ -67,6 +68,11 @@ export function toCircle(dto: CircleDto): Circle {
     cadence: dto.cadence,
     approvalMode: dto.approvalMode,
     payoutOrder: dto.payoutOrder,
+    payoutMode: dto.payoutMode ?? "PER_ROUND",
+    goal: dto.goal ?? null,
+    roundsTotal: dto.roundsTotal ?? null,
+    poolCollected: dto.poolCollected ?? null,
+    payoutPerMember: dto.payoutPerMember ?? null,
   }
 }
 

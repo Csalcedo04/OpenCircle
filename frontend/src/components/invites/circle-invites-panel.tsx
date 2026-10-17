@@ -16,11 +16,12 @@ type Props = {
   open: boolean
   isCreator: boolean
   visibility: CircleVisibility
+  standingInviteUrl?: string | null | undefined
   t: Dictionary
 }
 
-/** The managers' box on a circle page: visibility (creator), codes and direct invites, who's pending. */
-export async function CircleInvitesPanel({ locale, circleId, circleName, open, isCreator, visibility, t }: Props) {
+/** The managers' box on a circle page: visibility (creator), standing link rotation, codes and direct invites. */
+export async function CircleInvitesPanel({ locale, circleId, circleName, open, isCreator, visibility, standingInviteUrl, t }: Props) {
   let invites, friends
   try {
     ;[invites, friends] = await Promise.all([getCircleInvites(circleId), getFriends().catch(() => null)])
@@ -40,7 +41,17 @@ export async function CircleInvitesPanel({ locale, circleId, circleName, open, i
         </div>
       )}
       <div className="mt-6">
-        <InviteManager locale={locale} circleId={circleId} circleName={circleName} open={open} invites={invites} friends={friends} t={t.invites} tShare={t.share} />
+        <InviteManager
+          locale={locale}
+          circleId={circleId}
+          circleName={circleName}
+          open={open}
+          invites={invites}
+          friends={friends}
+          standingInviteUrl={standingInviteUrl}
+          t={t.invites}
+          tShare={t.share}
+        />
       </div>
     </section>
   )

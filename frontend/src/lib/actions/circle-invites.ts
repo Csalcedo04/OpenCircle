@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { hasLocale } from "@/i18n/config"
-import { BackendError } from "@/lib/api/backend"
+import { BackendError, rotateCircleInviteCode } from "@/lib/api/backend"
 import { createCircleInvites, revokeCircleInvite, type InviteDto } from "@/lib/api/invites"
 import { inviteErrorKey, parseCodeInviteForm, parseDirectInviteForm, type InviteErrorKey, type InviteFieldErrors } from "@/lib/flows/invites"
 
@@ -15,6 +15,12 @@ export type InviteFormState = {
 }
 
 export type RevokeState = { error: InviteErrorKey | null; done: boolean }
+
+export type RotateStandingLinkState = {
+  error: InviteErrorKey | null
+  inviteUrl: string | null
+  rotated: boolean
+}
 
 const text = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "")
 
@@ -62,4 +68,20 @@ export async function revokeInviteAction(locale: string, circleId: string, invit
   }
   revalidatePath(`/${locale}/circles/${circleId}`)
   return { error: null, done: true }
+}
+
+/** Rotates the circle's permanent standing invite link and revokes the previous one. */
+export async function rotateInviteCodeAction(
+  locale: string,
+  circleId: string,
+  prev: RotateStandingLinkState,
+): Promise<RotateStandingLinkState> {
+  if (!hasLocale(locale)) return { error: "generic", inviteUrl: prev.inviteUrl, rotated: false }
+  try {
+    const updated = await rotateCircleInviteCode(circleId)
+    revalidatePath(`/${locale}/circles/${circleId}`)
+    return { error: null, inviteUrl: updated.inviteUrl, rotated: true }
+  } catch (err) {
+    return { error: failed("Circle standing invite rotate failed", err), inviteUrl: prev.inviteUrl, rotated: false }
+  }
 }
