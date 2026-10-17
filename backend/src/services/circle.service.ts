@@ -552,6 +552,11 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         const [circle] = await tx.select().from(circles).where(eq(circles.id, circleId)).for("update");
         // A non-member can only join a private circle through its current invite link.
         if (!circle || !(await canSee(circle, { userId, invite }))) throw notFound();
+        // Public circles are semi-public: without the creator's invite link, applicants are
+        // accepted by the creator and their delegates (POST /circles/:id/applications).
+        if (circle.visibility === "PUBLIC" && !sameCode(invite, circle.inviteCode)) {
+          throw new AppError(403, "APPLICATION_REQUIRED", "Apply to join this circle; its approvers decide");
+        }
         return takeSeat(tx, circle, userId, input);
       });
       if (started) await afterStarted(circleId);

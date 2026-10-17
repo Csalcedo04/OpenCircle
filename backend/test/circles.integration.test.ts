@@ -130,7 +130,18 @@ async function createCircle(token: string, overrides: Record<string, unknown> = 
   return res.body as CircleDto;
 }
 
-const join = (id: string, token: string, body: Record<string, unknown>) =>
+// Joins through the creator's invite link (read from the DB) unless the body brings its own
+// `invite`; without a link, public circles take applications instead (APPLICATION_REQUIRED).
+async function join(id: string, token: string, body: Record<string, unknown>) {
+  const [row] = "invite" in body ? [] : await db.select({ inviteCode: circles.inviteCode }).from(circles).where(eq(circles.id, id));
+  return server.request(`/api/circles/${id}/join`, {
+    method: "POST",
+    token,
+    body: row ? { ...body, invite: row.inviteCode } : body,
+  });
+}
+
+const joinWithoutInvite = (id: string, token: string, body: Record<string, unknown>) =>
   server.request(`/api/circles/${id}/join`, { method: "POST", token, body });
 
 // The `invite` query value of a circle's invite link.
@@ -506,8 +517,8 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
     test("a member who never joined a circle has an empty record", async () => {
       const lone = await member();
-      const viewer = await member();
-      const res = await server.request(`/api/members/${lone.id}`, { token: viewer.token });
+      // Seen by themselves: someone who shares no circle with them can't see the profile at all.
+      const res = await server.request(`/api/members/${lone.id}`, { token: lone.token });
       assert.equal(res.status, 200);
       const profile = res.body as MemberDto;
       assert.deepEqual(profile.payments, { onTime: 0, late: 0, missed: 0 });
@@ -521,6 +532,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     test("profiles need sign-in, never leak identity data, and unknown ids are 404", async () => {
       const subject = await member({ name: "Valentina Restrepo" });
       const viewer = await member();
+      // The viewer shares a circle with the subject, so the profile is visible to them.
+      const shared = await createCircle(viewer.token, { size: 3 });
+      assert.equal((await join(shared.id, subject.token, { payoutRound: 2 })).status, 200);
       assert.equal((await server.request(`/api/members/${subject.id}`)).status, 401);
 
       const res = await server.request(`/api/members/${subject.id}`, { token: viewer.token });
@@ -559,7 +573,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         await server.request(`/api/circles/${circle.id}`),
         await server.request(`/api/circles/${circle.id}`, { token: stranger.token }),
         await server.request(`/api/circles/${circle.id}?invite=wrong`, { token: stranger.token }),
-        await join(circle.id, stranger.token, { payoutRound: 2 }),
+        await joinWithoutInvite(circle.id, stranger.token, { payoutRound: 2 }),
       ]) {
         assert.equal(res.status, 404);
         assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
@@ -614,6 +628,10 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal((await join(hidden.id, bob.token, { payoutRound: 2, invite: inviteOf(hidden) })).status, 200);
       await db.insert(reviews).values({ authorId: owner.id, subjectId: bob.id, circleId: hidden.id, rating: 5, comment: "Cumplido" });
 
+      // "Outside" the private circle, but sharing a public one with Bob, so Bob's profile is visible.
+      const open = await createCircle(stranger.token, { size: 3 });
+      assert.equal((await join(open.id, bob.token, { payoutRound: 2 })).status, 200);
+
       const outside = (await server.request(`/api/members/${bob.id}`, { token: stranger.token })).body as MemberDto;
       assert.ok(!outside.circles.some((c) => c.id === hidden.id), "private circle listed to a stranger");
       assert.ok(!outside.reviews.some((r) => r.circleId === hidden.id), "review from a private circle shown to a stranger");
@@ -648,6 +666,51 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const bad = await server.request("/api/circles", { method: "POST", token, body: validCircle({ approvalMode: "CREATOR_ONLY" }) });
       assert.equal(bad.status, 400);
       assert.equal(errorCode(bad.body), "VALIDATION_ERROR");
+    });
+  });
+
+  describe("semi-public circles", () => {
+    test("joining a public circle without the creator's link → 403 APPLICATION_REQUIRED; with it → seated", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const bob = await member();
+
+      const direct = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2 });
+      assert.equal(direct.status, 403);
+      assert.equal(errorCode(direct.body), "APPLICATION_REQUIRED");
+      const wrong = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2, invite: "wrong" });
+      assert.equal(wrong.status, 403);
+      assert.equal((await getCircle(circle.id)).seatsTaken, 1);
+
+      const viaLink = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2, invite: inviteOf(circle) });
+      assert.equal(viaLink.status, 200, viaLink.text);
+      assert.equal((await getCircle(circle.id)).seatsTaken, 2);
+    });
+  });
+
+  describe("member profile access (GET /api/members/:id)", () => {
+    test("visible to co-members and to members of a circle the user applied to; hidden from strangers", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      const [bob, carol, stranger] = await Promise.all([member(), member(), member()]);
+      await seated(circle.id, owner, bob);
+      const carolApp = await applied(circle.id, carol);
+
+      const memberProfile = (target: string, token: string) => server.request(`/api/members/${target}`, { token });
+      assert.equal((await memberProfile(bob.id, owner.token)).status, 200);
+      assert.equal((await memberProfile(carol.id, bob.token)).status, 200);
+      for (const [target, viewer] of [
+        [bob.id, stranger.token],
+        [carol.id, stranger.token],
+        [owner.id, carol.token],
+      ] as const) {
+        const res = await memberProfile(target, viewer);
+        assert.equal(res.status, 404);
+        assert.equal(errorCode(res.body), "MEMBER_NOT_FOUND");
+      }
+
+      await voteOn(circle.id, carolApp.id, owner.token, "REJECT");
+      assert.equal((await memberProfile(carol.id, bob.token)).status, 404);
     });
   });
 

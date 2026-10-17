@@ -59,6 +59,26 @@ export const toPublicProfile = (row: { fullName: string | null; walletAddress: s
   ics: icsFromStored(row.score),
 });
 
+/**
+ * SQL condition on `users`: the row is the viewer, shares a circle with the viewer, or has a
+ * pending application to a circle the viewer belongs to. Who may see another user's profile.
+ */
+export function profileVisibleTo(db: Db, viewerId: string) {
+  const viewer = alias(circleMembers, "viewer");
+  const peer = alias(circleMembers, "peer");
+  const sharesCircle = db
+    .select({ one: sql`1` })
+    .from(viewer)
+    .innerJoin(peer, eq(peer.circleId, viewer.circleId))
+    .where(and(eq(viewer.userId, viewerId), eq(peer.userId, users.id)));
+  const appliedToViewersCircle = db
+    .select({ one: sql`1` })
+    .from(viewer)
+    .innerJoin(circleApplications, eq(circleApplications.circleId, viewer.circleId))
+    .where(and(eq(viewer.userId, viewerId), eq(circleApplications.userId, users.id), eq(circleApplications.status, "PENDING")));
+  return or(eq(users.id, viewerId), exists(sharesCircle), exists(appliedToViewersCircle));
+}
+
 const profileNotFound = () => new AppError(404, "PROFILE_NOT_FOUND", "User profile not found");
 
 const conflictByConstraint: Record<string, () => AppError> = {
@@ -101,21 +121,6 @@ export function createUserService(db: Db) {
    * not found either.
    */
   async function getPublicProfile(viewerId: string, lookup: PublicProfileLookup): Promise<PublicProfileDto> {
-    const viewer = alias(circleMembers, "viewer");
-    const peer = alias(circleMembers, "peer");
-    const sharesCircle = db
-      .select({ one: sql`1` })
-      .from(viewer)
-      .innerJoin(peer, eq(peer.circleId, viewer.circleId))
-      .where(and(eq(viewer.userId, viewerId), eq(peer.userId, users.id)));
-    const appliedToViewersCircle = db
-      .select({ one: sql`1` })
-      .from(viewer)
-      .innerJoin(circleApplications, eq(circleApplications.circleId, viewer.circleId))
-      .where(
-        and(eq(viewer.userId, viewerId), eq(circleApplications.userId, users.id), eq(circleApplications.status, "PENDING")),
-      );
-
     const [row] = await db
       .select(publicProfileColumns)
       .from(users)
@@ -124,7 +129,7 @@ export function createUserService(db: Db) {
       .where(
         and(
           "id" in lookup ? eq(users.id, lookup.id) : eq(wallets.addressUrl, lookup.walletAddress),
-          or(eq(users.id, viewerId), exists(sharesCircle), exists(appliedToViewersCircle)),
+          profileVisibleTo(db, viewerId),
         ),
       )
       .limit(1);
