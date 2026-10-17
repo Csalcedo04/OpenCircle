@@ -17,7 +17,7 @@ import type { CircleDto, CircleService, SeatInput } from "../circle.service";
 import { publicProfileColumns, toPublicProfile, type PublicProfileDto } from "../user.service";
 import type { Tx } from "../wallet.service";
 import type { ApplicationNotices } from "./application-notices";
-import { circleNotFound, lockCircle, membership, type CircleRow } from "./circle-access";
+import { circleNotFound, lockCircle, mayDecide, membership, type CircleRow } from "./circle-access";
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 export type VoteDecision = (typeof VOTE_DECISIONS)[number];
@@ -172,7 +172,7 @@ export function createApplicationService({ db, circles: circleService, notices }
         if (application.status !== "PENDING") {
           throw new AppError(409, "APPLICATION_DECIDED", "This application was already decided");
         }
-        if (circle.approvalMode === "DELEGATES" && !voter.isApprover) {
+        if (!mayDecide(circle, voter)) {
           throw new AppError(403, "NOT_APPROVER", "Only the circle's approvers can decide on applications");
         }
 

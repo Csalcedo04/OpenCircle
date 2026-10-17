@@ -10,6 +10,7 @@ import type { Dictionary } from "@/i18n/dictionaries/en"
 import { castVoteAction, type VoteState } from "@/lib/actions/circle-applications"
 import { ApproversModal } from "@/components/approvers-modal"
 import type { ApplicationDto, ApplicationStatus } from "@/lib/api/backend"
+import type { CircleErrorKey } from "@/lib/flows/circles"
 import type { Seat } from "@/lib/domain/types"
 import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/view"
@@ -45,7 +46,7 @@ function StatusChip({ status, t }: { status: ApplicationStatus; t: Dictionary["c
   )
 }
 
-/** One decision button; what the API answers replaces the card. */
+/** One decision button. The action revalidates the page, so the card updates from fresh props. */
 function VoteButton({
   locale,
   circleId,
@@ -86,11 +87,9 @@ function VoteButton({
         {pending ? <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" /> : accept ? <Check aria-hidden="true" /> : <X aria-hidden="true" />}
         {accept ? t.voteAccept : t.voteReject}
       </Button>
-      {state.error && (
-        <span role="alert" className="ml-2 text-xs font-medium text-brand-violet-ink">
-          {tErr[state.error]}
-        </span>
-      )}
+      <span className="sr-only" aria-live="polite">
+        {state.error ? tErr[state.error] : ""}
+      </span>
     </form>
   )
 }
@@ -108,24 +107,16 @@ export function ApplicationsSection({
   tErr,
 }: Props) {
   const router = useRouter()
-  // Local copy so a vote's answer shows at once; the page revalidates behind it.
-  const [items, setItems] = useState(applications)
-  const [received, setReceived] = useState(applications)
-  if (received !== applications) {
-    // New props after a revalidation: adopt them (React's "adjust state on prop change" pattern).
-    setReceived(applications)
-    setItems(applications)
+  // The action's revalidatePath already re-renders the list; only errors need handling here.
+  const [errors, setErrors] = useState<Record<string, CircleErrorKey | null>>({})
+
+  const onResult = (applicationId: string, state: VoteState) => {
+    setErrors((prev) => ({ ...prev, [applicationId]: state.error }))
+    // "Already decided" or "already voted": someone got there first, so show the current state.
+    if (state.error) router.refresh()
   }
 
-  const onResult = (state: VoteState) => {
-    if (!state.application) return
-    const next = state.application
-    setItems((prev) => prev.map((a) => (a.id === next.id ? next : a)))
-    // Accepting can fill the circle and auto-reject the rest: re-read everything.
-    if (next.status !== "PENDING") router.refresh()
-  }
-
-  if (items.length === 0) {
+  if (applications.length === 0) {
     return (
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-8 text-center sm:p-12">
         <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-brand-canvas">
@@ -152,7 +143,7 @@ export function ApplicationsSection({
         )}
       </div>
       <ul className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {items.map((app) => {
+        {applications.map((app) => {
           const name = app.applicant.fullName ?? app.applicant.walletAddress
           return (
             <li key={app.id} className="flex flex-col justify-between rounded-2xl border border-brand-line/70 bg-brand-canvas p-5">
@@ -184,10 +175,15 @@ export function ApplicationsSection({
                   </div>
                 </dl>
               </div>
+              {errors[app.id] && (
+                <p role="alert" className="mt-3 text-xs font-medium text-brand-violet-ink">
+                  {tErr[errors[app.id] ?? "generic"]}
+                </p>
+              )}
               {canVote && app.status === "PENDING" && (
                 <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-brand-line/60 pt-4">
-                  <VoteButton locale={locale} circleId={circleId} application={app} decision="REJECT" onResult={onResult} t={t} tErr={tErr} />
-                  <VoteButton locale={locale} circleId={circleId} application={app} decision="ACCEPT" onResult={onResult} t={t} tErr={tErr} />
+                  <VoteButton locale={locale} circleId={circleId} application={app} decision="REJECT" onResult={(s) => onResult(app.id, s)} t={t} tErr={tErr} />
+                  <VoteButton locale={locale} circleId={circleId} application={app} decision="ACCEPT" onResult={(s) => onResult(app.id, s)} t={t} tErr={tErr} />
                 </div>
               )}
             </li>

@@ -1677,30 +1677,52 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const [owner, bob, stranger] = await Promise.all([member(), member(), member()]);
       const circle = await createCircle(owner.token, { size: 4 });
       assert.ok(circle.inviteUrl, "no standing code");
-      assert.deepEqual(circle.access, { canInvite: true, isCreator: true, isMember: true, canVote: true });
+      assert.deepEqual(circle.access, { canInvite: true, isCreator: true, isMember: true, canVote: true, canJoin: false });
 
       assert.equal((await join(circle.id, bob.token, {})).status, 200);
       const asMember = await getCircle(circle.id, bob.token);
       assert.equal(asMember.inviteUrl, null);
-      assert.deepEqual(asMember.access, { canInvite: false, isCreator: false, isMember: true, canVote: false });
-      assert.deepEqual((await getCircle(circle.id, stranger.token)).access, { canInvite: false, isCreator: false, isMember: false, canVote: false });
+      assert.deepEqual(asMember.access, { canInvite: false, isCreator: false, isMember: true, canVote: false, canJoin: false });
+      assert.deepEqual((await getCircle(circle.id, stranger.token)).access, { canInvite: false, isCreator: false, isMember: false, canVote: false, canJoin: false });
 
       await makeApprover(circle.id, owner, bob);
       const asApprover = await getCircle(circle.id, bob.token);
       assert.equal(asApprover.inviteUrl, circle.inviteUrl);
-      assert.deepEqual(asApprover.access, { canInvite: true, isCreator: false, isMember: true, canVote: true });
+      assert.deepEqual(asApprover.access, { canInvite: true, isCreator: false, isMember: true, canVote: true, canJoin: false });
     });
 
     test("under MAJORITY every member may vote; under DELEGATES only the creator and approvers", async () => {
       const [owner, bob] = await Promise.all([member(), member()]);
       const majority = await createCircle(owner.token, { size: 4, approvalMode: "MAJORITY" });
       assert.equal((await join(majority.id, bob.token)).status, 200);
-      assert.deepEqual((await getCircle(majority.id, bob.token)).access, { canInvite: false, isCreator: false, isMember: true, canVote: true });
+      assert.deepEqual((await getCircle(majority.id, bob.token)).access, { canInvite: false, isCreator: false, isMember: true, canVote: true, canJoin: false });
       const delegates = await createCircle(owner.token, { size: 4 });
       assert.equal((await join(delegates.id, bob.token)).status, 200);
       assert.equal((await getCircle(delegates.id, bob.token)).access.canVote, false);
       assert.equal((await getCircle(delegates.id, owner.token)).access.canVote, true);
       assert.equal((await getCircle(delegates.id)).access.canVote, false, "anonymous");
+    });
+
+    test("canJoin says whether the viewer's link would seat them: a usable code yes, a spent or foreign one no", async () => {
+      const [owner, bob, carol] = await Promise.all([member(), member(), member()]);
+      const circle = await createCircle(owner.token, { size: 4 });
+      const code = inviteOf(circle);
+      const [limited] = (await makeInvite(circle.id, owner.token, { kind: "CODE", maxUses: 1 })).body as CodeInviteDto[];
+      assert.ok(limited);
+      const withCode = (token: string, who: Member) => server.request(`/api/circles/${circle.id}?invite=${encodeURIComponent(token)}`, { token: who.token });
+
+      assert.equal(((await withCode(code, bob)).body as CircleDto).access.canJoin, true);
+      assert.equal((await getCircle(circle.id, bob.token)).access.canJoin, false, "public without a link: apply instead");
+      assert.equal((await join(circle.id, bob.token, { invite: tokenOf(limited) })).status, 200);
+      assert.equal(((await withCode(tokenOf(limited), carol)).body as CircleDto).access.canJoin, false, "spent code");
+      assert.equal(((await withCode(code, bob)).body as CircleDto).access.canJoin, false, "already a member");
+
+      const [direct] = (await makeInvite(circle.id, owner.token, { kind: "DIRECT", targets: [{ email: `${carol.id}@example.test` }] })).body as DirectInviteDto[];
+      assert.ok(direct);
+      const [row] = await db.select({ token: circleInvites.token }).from(circleInvites).where(eq(circleInvites.id, direct.id));
+      const dave = await member();
+      assert.equal(((await withCode(row?.token ?? "", carol)).body as CircleDto).access.canJoin, true, "addressee");
+      assert.equal(((await withCode(row?.token ?? "", dave)).body as CircleDto).access.canJoin, false, "someone else's invite");
     });
 
     test("an approver makes a limited code; it counts uses and shows EXPIRED once spent", async () => {

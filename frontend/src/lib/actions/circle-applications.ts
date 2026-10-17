@@ -7,6 +7,8 @@ import { BackendError, setCircleApprovers, voteOnApplication, type ApplicationDt
 import { circleErrorKey, type CircleErrorKey } from "@/lib/flows/circles"
 
 const memberIdsSchema = z.array(z.uuid()).max(50)
+// A Server Action is an HTTP endpoint: everything it gets is checked, not trusted from the client.
+const voteInputSchema = z.object({ circleId: z.uuid(), applicationId: z.uuid(), decision: z.enum(["ACCEPT", "REJECT"]) })
 
 export type VoteState = {
   error: CircleErrorKey | null
@@ -17,8 +19,10 @@ export type VoteState = {
 // Bound per row and decision: React's previous state and form data aren't needed.
 export async function castVoteAction(locale: string, circleId: string, applicationId: string, decision: VoteDecision): Promise<VoteState> {
   if (!hasLocale(locale)) return { error: "generic", application: null }
+  const input = voteInputSchema.safeParse({ circleId, applicationId, decision })
+  if (!input.success) return { error: "generic", application: null }
   try {
-    const application = await voteOnApplication(circleId, applicationId, decision)
+    const application = await voteOnApplication(input.data.circleId, input.data.applicationId, input.data.decision)
     revalidatePath(`/${locale}/circles/${circleId}`)
     return { error: null, application }
   } catch (err) {
