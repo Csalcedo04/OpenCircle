@@ -5,6 +5,7 @@ import { publicProfileRateLimit } from "../middleware/rate-limit";
 import { requireUser } from "../middleware/require-user";
 import type { UserClaims } from "@supabase/server";
 import { DOCUMENT_TYPES, type DocumentType, type UserService } from "../services/user.service";
+import type { AccountService } from "../services/account.service";
 import type { CircleService } from "../services/circle.service";
 import type { KycService } from "../services/kyc.service";
 import type { WalletConsentService } from "../services/wallet-consent.service";
@@ -92,6 +93,7 @@ export interface UserRouteServices {
   walletConsent: WalletConsentService;
   kyc: KycService;
   circles: CircleService;
+  account: AccountService;
 }
 
 // requireUser runs at router level, so the claims are always present here.
@@ -111,7 +113,7 @@ function currentUserEmail(res: Response): string {
   return parsed.data;
 }
 
-export function userRoutes({ users, wallets, walletConsent, kyc, circles }: UserRouteServices): Router {
+export function userRoutes({ users, wallets, walletConsent, kyc, circles, account }: UserRouteServices): Router {
   const getMe: RequestHandler = async (_req, res) => {
     res.json(await users.getProfile(currentUserId(res)));
   };
@@ -169,6 +171,11 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles }: User
     res.json(await wallets.getSavings(currentUserId(res)));
   };
 
+  // Everything the account page shows, read in one call. Reads only.
+  const getMyDashboard: RequestHandler = async (_req, res) => {
+    res.json(await account.getDashboard(currentUserId(res)));
+  };
+
   return Router()
     .use(requireUser)
     .get("/me", getMe)
@@ -180,6 +187,7 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles }: User
     .get("/me/kyc", getMyKyc)
     .post("/me/kyc/session", startMyKyc)
     .get("/me/savings", getMySavings)
+    .get("/me/dashboard", getMyDashboard)
     .get("/public", publicProfileLimit, getPublicByWallet)
     .get("/:id/public", publicProfileLimit, getPublicById);
 }
