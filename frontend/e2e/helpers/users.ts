@@ -53,7 +53,7 @@ export interface SeedOptions {
   /** Link a test wallet, as completed wallet consent would. */
   wallet?: boolean
   /** Didit status of the user's latest KYC session. */
-  kyc?: "Approved" | "In Review" | "Declined" | "Not Started"
+  kyc?: "Approved" | "In Progress" | "In Review" | "Declined" | "Not Started"
 }
 
 /** Creates the profile (and optionally wallet and KYC state) directly, skipping the UI. */
@@ -89,9 +89,86 @@ export async function seedProfile(user: TestUser, options: SeedOptions = {}): Pr
   }
 }
 
+const E2E_POOL_PREFIX = "https://ilp.interledger-test.dev/oc-e2e-pool-"
+
+/**
+ * A PUBLIC, OPEN circle created directly in the database, owned by `owner` (who takes round 1).
+ * Its own throwaway pot wallet keeps it apart from real circles. Deleted with its owner.
+ */
+export async function seedCircle(owner: TestUser, options: { size?: number; name?: string } = {}): Promise<{ id: string; inviteCode: string }> {
+  const db = admin()
+  const pool = must(
+    await db
+      .from("wallets")
+      .insert({ address_url: `${E2E_POOL_PREFIX}${randomUUID()}`, asset_code: "COP", asset_scale: 2 })
+      .select("id")
+      .single(),
+    "insert pool wallet",
+  )
+  if (!pool) throw new Error("insert pool wallet: no row returned")
+  const inviteCode = randomUUID().replace(/-/g, "")
+  const circle = must(
+    await db
+      .from("circles")
+      .insert({
+        name: options.name ?? `${E2E_PREFIX}Natillera`,
+        city: "Medellín",
+        contribution_value: "2000000",
+        asset_code: "COP",
+        asset_scale: 2,
+        threshold_value: "2000000",
+        round_length_days: 7,
+        cadence: "WEEKLY",
+        visibility: "PUBLIC",
+        invite_code: inviteCode,
+        size: options.size ?? 3,
+        pool_wallet_id: pool.id,
+        created_by: owner.id,
+      })
+      .select("id")
+      .single(),
+    "insert circle",
+  )
+  if (!circle) throw new Error("insert circle: no row returned")
+  must(await db.from("circle_members").insert({ circle_id: circle.id, user_id: owner.id, payout_round: 1 }), "seat owner")
+  return { id: circle.id, inviteCode }
+}
+
+/** The invite code of a circle (what the creator's invite link carries). */
+export async function inviteCodeOf(circleId: string): Promise<string> {
+  const row = must(await admin().from("circles").select("invite_code").eq("id", circleId).single(), "read invite code")
+  return (row as { invite_code: string }).invite_code
+}
+
+/** Deletes circles with everything that hangs off them; never OpenCircle's real pot wallet. */
+async function deleteCircles(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const db = admin()
+  const circles = must(await db.from("circles").select("id, pool_wallet_id").in("id", ids), "read circles") as { id: string; pool_wallet_id: string }[]
+  const rounds = (must(await db.from("rounds").select("id").in("circle_id", ids), "read rounds") as { id: string }[]).map((r) => r.id)
+  if (rounds.length > 0) must(await db.from("contributions").delete().in("round_id", rounds), "delete contributions")
+  must(await db.from("rounds").delete().in("circle_id", ids), "delete rounds")
+  must(await db.from("reviews").delete().in("circle_id", ids), "delete reviews")
+  must(await db.from("audit_events").delete().in("external_id", ids.map((id) => `circle.started:${id}`)), "delete circle audit")
+  must(await db.from("circle_members").delete().in("circle_id", ids), "delete seats")
+  must(await db.from("circles").delete().in("id", ids), "delete circles")
+  const pools = circles.map((c) => c.pool_wallet_id)
+  const own = (must(await db.from("wallets").select("id, address_url").in("id", pools), "read pools") as { id: string; address_url: string }[])
+    .filter((w) => w.address_url.startsWith(E2E_POOL_PREFIX))
+    .map((w) => w.id)
+  if (own.length > 0) {
+    must(await db.from("audit_events").delete().in("wallet_id", own), "delete pool audit")
+    must(await db.from("wallets").delete().in("id", own), "delete pool wallets")
+  }
+}
+
 /** Removes everything a test user may have created, then the auth user. */
 export async function deleteTestUser(user: TestUser): Promise<void> {
   const db = admin()
+  // Circles they created or sit in go first: seats and circles reference users.
+  const created = (must(await db.from("circles").select("id").eq("created_by", user.id), "read created circles") as { id: string }[]).map((c) => c.id)
+  const joined = (must(await db.from("circle_members").select("circle_id").eq("user_id", user.id), "read seats") as { circle_id: string }[]).map((m) => m.circle_id)
+  await deleteCircles([...new Set([...created, ...joined])])
   const profile = await db.from("users").select("op_wallet").eq("id", user.id).maybeSingle()
   const walletId = (profile.data as { op_wallet: string | null } | null)?.op_wallet ?? null
   for (const table of ["kyc_verifications", "consent_challenges", "wallet_grants"]) {

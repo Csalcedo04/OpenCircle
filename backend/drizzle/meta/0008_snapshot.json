@@ -1,6 +1,6 @@
 {
-  "id": "ffe2d591-e833-4440-860e-16373b38a80d",
-  "prevId": "3f4c8f74-d4c1-4be7-84cd-0e560704eb84",
+  "id": "f2972de9-9713-4b78-9f8c-d4b253baef58",
+  "prevId": "71140cbc-e3f2-48e4-b718-95afad161f33",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -508,12 +508,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "goal_value": {
-          "name": "goal_value",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
         "asset_code": {
           "name": "asset_code",
           "type": "text",
@@ -553,6 +547,26 @@
           "primaryKey": false,
           "notNull": true
         },
+        "cadence": {
+          "name": "cadence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'MONTHLY'"
+        },
+        "visibility": {
+          "name": "visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PRIVATE'"
+        },
+        "invite_code": {
+          "name": "invite_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "size": {
           "name": "size",
           "type": "integer",
@@ -570,6 +584,12 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "test_clock_id": {
+          "name": "test_clock_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "approval_mode": {
           "name": "approval_mode",
@@ -629,6 +649,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "circles_test_clock_id_idx": {
+          "name": "circles_test_clock_id_idx",
+          "columns": [
+            {
+              "expression": "test_clock_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -657,10 +692,31 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "circles_test_clock_id_test_clocks_id_fk": {
+          "name": "circles_test_clock_id_test_clocks_id_fk",
+          "tableFrom": "circles",
+          "tableTo": "test_clocks",
+          "columnsFrom": [
+            "test_clock_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "circles_invite_code_unique": {
+          "name": "circles_invite_code_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "invite_code"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
         "circles_status": {
@@ -699,13 +755,17 @@
           "name": "circles_size_range",
           "value": "\"circles\".\"size\" between 2 and 50"
         },
+        "circles_cadence": {
+          "name": "circles_cadence",
+          "value": "\"circles\".\"cadence\" in ('WEEKLY', 'MONTHLY')"
+        },
+        "circles_visibility": {
+          "name": "circles_visibility",
+          "value": "\"circles\".\"visibility\" in ('PRIVATE', 'PUBLIC')"
+        },
         "circles_approval_mode": {
           "name": "circles_approval_mode",
           "value": "\"circles\".\"approval_mode\" in ('DELEGATES', 'MAJORITY')"
-        },
-        "circles_goal_whole_rounds": {
-          "name": "circles_goal_whole_rounds",
-          "value": "\"circles\".\"goal_value\" > 0 and \"circles\".\"goal_value\" % (\"circles\".\"contribution_value\" * \"circles\".\"size\") = 0"
         }
       },
       "isRLSEnabled": true
@@ -894,6 +954,36 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "incoming_payment_url": {
+          "name": "incoming_payment_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quote_url": {
+          "name": "quote_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "outgoing_payment_url": {
+          "name": "outgoing_payment_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "requested_at": {
+          "name": "requested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "completed_at": {
           "name": "completed_at",
@@ -1321,7 +1411,7 @@
           "name": "beneficiary_member_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "state": {
           "name": "state",
@@ -1329,6 +1419,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'UPCOMING'"
+        },
+        "starts_at": {
+          "name": "starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
         },
         "deadline": {
           "name": "deadline",
@@ -1420,6 +1516,93 @@
         "rounds_state": {
           "name": "rounds_state",
           "value": "\"rounds\".\"state\" in ('UPCOMING', 'COLLECTING', 'FUNDED', 'RISK_CHECK', 'BLOCKED', 'PAYING_OUT', 'PAID_OUT', 'REFUNDED')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.test_clocks": {
+      "name": "test_clocks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "frozen_time": {
+          "name": "frozen_time",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "test_clocks_owner_user_id_idx": {
+          "name": "test_clocks_owner_user_id_idx",
+          "columns": [
+            {
+              "expression": "owner_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "test_clocks_owner_user_id_users_id_fk": {
+          "name": "test_clocks_owner_user_id_users_id_fk",
+          "tableFrom": "test_clocks",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "test_clocks_name_length": {
+          "name": "test_clocks_name_length",
+          "value": "char_length(\"test_clocks\".\"name\") between 1 and 80"
         }
       },
       "isRLSEnabled": true

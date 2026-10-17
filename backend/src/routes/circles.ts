@@ -1,12 +1,19 @@
-import { Router, type RequestHandler } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { AppError } from "../errors/app-error";
-import { APPLICATION_STATUSES, APPROVAL_MODES, CIRCLE_STATUSES, GRANT_MODES, VOTE_DECISIONS } from "../db/schema";
+import {
+  APPLICATION_STATUSES,
+  APPROVAL_MODES,
+  CIRCLE_CADENCES,
+  CIRCLE_STATUSES,
+  CIRCLE_VISIBILITIES,
+  GRANT_MODES,
+  VOTE_DECISIONS,
+} from "../db/schema";
 import { requireKyc } from "../middleware/require-kyc";
-import { authUserId, requireUser } from "../middleware/require-user";
+import { optionalUser, requireUser } from "../middleware/require-user";
 import type { CircleService } from "../services/circle.service";
 import type { ApplicationService } from "../services/circles/application.service";
-import { MAX_ROUNDS } from "../services/circles/circle-plan";
 import type { KycService } from "../services/kyc.service";
 
 // Money in the asset's minor unit as an integer string: never a float. 18 digits stays within bigint.
@@ -16,34 +23,41 @@ const minorUnits = (min: "zero" | "positive") =>
     .regex(min === "zero" ? /^(0|[1-9]\d{0,17})$/ : /^[1-9]\d{0,17}$/, "Must be an integer amount in minor units")
     .transform((v) => BigInt(v));
 
-// payoutRound is the member's position in the circle (join order).
 const seatFields = {
   payoutRound: z.int().min(1),
   collateralValue: minorUnits("zero").default(0n),
   grantMode: z.enum(GRANT_MODES).nullable().default(null),
 };
 
-const createCircleFields = {
-  name: z.string().trim().min(1).max(80),
-  city: z.string().trim().min(1).max(80),
-  // What the common pot must reach, in the pot asset's minor unit.
-  goalValue: minorUnits("positive"),
-  size: z.int().min(2).max(50),
-  // Monthly by default.
-  roundLengthDays: z.int().min(1).max(365).default(30),
-  approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
-  ...seatFields,
-  payoutRound: seatFields.payoutRound.default(1),
-};
-
 // Strict objects: unknown keys (status, feeBps, poolWallet...) are rejected, never silently stored.
-// Exactly one of roundsTotal (contribution = goal ÷ (size × rounds)) or contributionValue (rounds derived).
 export const createCircleSchema = z
-  .union([
-    z.strictObject({ ...createCircleFields, roundsTotal: z.int().min(1).max(MAX_ROUNDS) }),
-    z.strictObject({ ...createCircleFields, contributionValue: minorUnits("positive") }),
-  ])
+  .strictObject({
+    name: z.string().trim().min(1).max(80),
+    city: z.string().trim().min(1).max(80),
+    contributionValue: minorUnits("positive"),
+    size: z.int().min(2).max(50),
+    // One period per member; each period is a calendar week or month.
+    cadence: z.enum(CIRCLE_CADENCES),
+    // Dev only: rejected with 404 unless test clocks are enabled and the user owns the clock.
+    testClockId: z.uuid().optional(),
+    // Private (invite only) by default.
+    visibility: z.enum(CIRCLE_VISIBILITIES).default("PRIVATE"),
+    // Who accepts applicants to a public circle.
+    approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
+    ...seatFields,
+  })
   .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" });
+
+// The invite code from a private circle's link (base64url); bounded so it can't be used to send huge input.
+const inviteCode = z.string().min(1).max(128);
+
+export const joinCircleSchema = z.strictObject({ ...seatFields, invite: inviteCode.optional() });
+
+export const listCirclesQuerySchema = z.object({ status: z.enum(CIRCLE_STATUSES).optional() });
+
+export const getCircleQuerySchema = z.object({ invite: inviteCode.optional() });
+
+export const visibilitySchema = z.strictObject({ visibility: z.enum(CIRCLE_VISIBILITIES) });
 
 // Seat preferences; without a payout round the applicant gets the next free one when accepted.
 export const applySchema = z.strictObject({ ...seatFields, payoutRound: seatFields.payoutRound.nullable().default(null) });
@@ -52,11 +66,11 @@ export const voteSchema = z.strictObject({ decision: z.enum(VOTE_DECISIONS) });
 
 export const setApproversSchema = z.strictObject({ memberIds: z.array(z.uuid()).max(50) });
 
-export const listCirclesQuerySchema = z.object({ status: z.enum(CIRCLE_STATUSES).optional() });
-
 export const listApplicationsQuerySchema = z.strictObject({ status: z.enum(APPLICATION_STATUSES).optional() });
 
 export type CreateCircleBody = z.infer<typeof createCircleSchema>;
+export type JoinCircleBody = z.infer<typeof joinCircleSchema>;
+export type VisibilityBody = z.infer<typeof visibilitySchema>;
 export type ApplyBody = z.infer<typeof applySchema>;
 export type VoteBody = z.infer<typeof voteSchema>;
 export type SetApproversBody = z.infer<typeof setApproversSchema>;
@@ -78,52 +92,80 @@ const circleId = (id: unknown) => pathId(id, () => new AppError(404, "CIRCLE_NOT
 const applicationId = (id: unknown) =>
   pathId(id, () => new AppError(404, "APPLICATION_NOT_FOUND", "Application not found"));
 
+function currentUserId(res: Response): string {
+  const user = res.locals.user;
+  if (!user) throw new AppError(401, "UNAUTHORIZED", "Unauthorized");
+  return user.id;
+}
+
 export function circleRoutes({ circles, applications, kyc }: CircleRouteServices): Router {
-  // Browsing is public; creating and applying need a signed-in, KYC-approved user.
+  // Public circles are open to browse; private ones need membership or the invite link.
+  // Creating and joining need a signed-in, KYC-approved user.
   const list: RequestHandler = async (req, res) => {
     const { status } = listCirclesQuerySchema.parse(req.query);
     res.json(await circles.list({ status }));
   };
 
   const getOne: RequestHandler = async (req, res) => {
-    res.json(await circles.get(circleId(req.params.id)));
+    const { invite } = getCircleQuerySchema.parse(req.query);
+    res.json(await circles.get(circleId(req.params.id), { userId: res.locals.user?.id, invite }));
   };
 
   const create: RequestHandler = async (req, res) => {
     const body: CreateCircleBody = createCircleSchema.parse(req.body);
-    res.status(201).json(await circles.create(authUserId(res), body));
+    res.status(201).json(await circles.create(currentUserId(res), body));
   };
 
+  const join: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const { invite, ...seat }: JoinCircleBody = joinCircleSchema.parse(req.body);
+    res.json(await circles.join(currentUserId(res), id, seat, invite));
+  };
+
+  const setVisibility: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const { visibility }: VisibilityBody = visibilitySchema.parse(req.body);
+    res.json(await circles.setVisibility(currentUserId(res), id, visibility));
+  };
+
+  const rotateInvite: RequestHandler = async (req, res) => {
+    res.json(await circles.rotateInviteCode(currentUserId(res), circleId(req.params.id)));
+  };
+
+  // Public circles: apply, and the circle's approvers (or majority) decide.
   const apply: RequestHandler = async (req, res) => {
     const id = circleId(req.params.id);
     const body: ApplyBody = applySchema.parse(req.body);
-    res.status(201).json(await applications.apply(authUserId(res), id, body));
+    res.status(201).json(await applications.apply(currentUserId(res), id, body));
   };
 
   const listApplications: RequestHandler = async (req, res) => {
     const id = circleId(req.params.id);
     const { status } = listApplicationsQuerySchema.parse(req.query);
-    res.json(await applications.list(authUserId(res), id, status));
+    res.json(await applications.list(currentUserId(res), id, status));
   };
 
   const vote: RequestHandler = async (req, res) => {
     const id = circleId(req.params.id);
     const appId = applicationId(req.params.applicationId);
     const { decision }: VoteBody = voteSchema.parse(req.body);
-    res.json(await applications.vote(authUserId(res), id, appId, decision));
+    res.json(await applications.vote(currentUserId(res), id, appId, decision));
   };
 
   const setApprovers: RequestHandler = async (req, res) => {
     const id = circleId(req.params.id);
     const { memberIds }: SetApproversBody = setApproversSchema.parse(req.body);
-    res.json(await applications.setApprovers(authUserId(res), id, memberIds));
+    res.json(await applications.setApprovers(currentUserId(res), id, memberIds));
   };
 
   const verified = [requireUser, requireKyc(kyc)];
   return Router()
     .get("/", list)
-    .get("/:id", getOne)
+    .get("/:id", optionalUser, getOne)
     .post("/", ...verified, create)
+    .post("/:id/join", ...verified, join)
+    .patch("/:id/visibility", requireUser, setVisibility)
+    .post("/:id/invite-code", requireUser, rotateInvite)
     .post("/:id/applications", ...verified, apply)
     .get("/:id/applications", requireUser, listApplications)
     .post("/:id/applications/:applicationId/votes", requireUser, vote)

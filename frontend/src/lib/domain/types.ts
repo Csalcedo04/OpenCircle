@@ -31,10 +31,15 @@ export type GrantMode = "RECURRING" | "PER_ROUND"
 
 export type Member = {
   id: string
+  /** "Ana G." from the API; never the full legal name. */
   name: string
-  walletAddress: string
-  memberSince: string // ISO date
+  /** Only on the member's own profile page; seats in a circle don't carry it. */
+  walletAddress: string | null
+  /** First circle joined; null if they never joined one. ISO timestamp. */
+  memberSince: string | null
   payments: { onTime: number; late: number; missed: number }
+  /** Ratings received across all circles (average ×10, e.g. 46 = 4.6 stars). */
+  ratings: { count: number; tenths: number }
   circlesCompleted: number
 }
 
@@ -81,8 +86,10 @@ export type Circle = {
 export type Review = {
   id: string
   authorId: string
+  authorName: string
   subjectId: string
   circleId: string
+  circleName: string
   rating: 1 | 2 | 3 | 4 | 5
   comment: string
   date: string // ISO date

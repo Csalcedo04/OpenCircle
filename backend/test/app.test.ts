@@ -152,16 +152,6 @@ test("circle application routes validate ids and bodies before reaching the serv
   }
 });
 
-test("POST /api/circles/:id/join is gone: seats are taken through applications", async () => {
-  const token = await auth.token("66666666-6666-4666-8666-666666666666");
-  const res = await server.request("/api/circles/11111111-1111-4111-8111-111111111111/join", {
-    method: "POST",
-    token,
-    body: { payoutRound: 1 },
-  });
-  assert.equal(res.status, 404);
-});
-
 test("PUT /api/users/me/wallet is gone: wallets are linked only through consent", async () => {
   const token = await auth.token("33333333-3333-4333-8333-333333333333");
   const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: "$wallet.test/x" } });
@@ -237,5 +227,45 @@ test("Didit webhook answers 503 when no secret is configured", async () => {
     assert.equal(res.status, 503);
   } finally {
     await unconfigured.close();
+  }
+});
+
+test("test clock routes don't exist unless TEST_CLOCKS_ENABLED", async () => {
+  const token = await auth.token("11111111-1111-4111-8111-111111111111");
+  for (const [method, path] of [
+    ["POST", "/api/test-clocks"],
+    ["GET", "/api/test-clocks/11111111-1111-4111-8111-111111111111"],
+    ["POST", "/api/test-clocks/11111111-1111-4111-8111-111111111111/advance"],
+  ] as const) {
+    const res = await server.request(path, { method, token, body: method === "POST" ? { name: "x" } : undefined });
+    assert.equal(res.status, 404, path);
+    assert.equal(errorCode(res.body), "NOT_FOUND");
+  }
+});
+
+test("GET /api/circles/:id is optional-auth: anonymous, signed in, or 401 for a bad token", async () => {
+  const seen: unknown[] = [];
+  const circles: Services["circles"] = {
+    ...fakeServices().circles,
+    get: async (_id, viewer) => {
+      seen.push(viewer);
+      return {} as Awaited<ReturnType<Services["circles"]["get"]>>;
+    },
+  };
+  const circleServer = await startServer(fakeServices({ circles }));
+  try {
+    const id = "22222222-2222-4222-8222-222222222222";
+    assert.equal((await circleServer.request(`/api/circles/${id}?invite=abc`)).status, 200);
+    const userId = "11111111-1111-4111-8111-111111111111";
+    assert.equal((await circleServer.request(`/api/circles/${id}`, { token: await auth.token(userId) })).status, 200);
+    assert.deepEqual(seen, [
+      { userId: undefined, invite: "abc" },
+      { userId, invite: undefined },
+    ]);
+    const bad = await circleServer.request(`/api/circles/${id}`, { token: "not-a-jwt" });
+    assert.equal(bad.status, 401);
+    assert.equal(seen.length, 2);
+  } finally {
+    await circleServer.close();
   }
 });

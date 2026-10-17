@@ -15,7 +15,6 @@ import {
 } from "../../db/schema";
 import { AppError } from "../../errors/app-error";
 import type { CircleDto, CircleService, SeatRequest } from "../circle.service";
-import { takeSeat } from "../circle.service";
 import { publicProfileColumns, toPublicProfile, type PublicProfileDto } from "../user.service";
 import type { Tx } from "../wallet.service";
 
@@ -46,7 +45,12 @@ export function majorityOutcome(votes: { accept: number; reject: number }, membe
   return null;
 }
 
-export function createApplicationService({ db, circles: circleService }: { db: Db; circles: Pick<CircleService, "get"> }) {
+export interface ApplicationServiceDeps {
+  db: Db;
+  circles: Pick<CircleService, "get" | "takeSeat" | "afterStarted">;
+}
+
+export function createApplicationService({ db, circles: circleService }: ApplicationServiceDeps) {
   const voteCount = (decision: VoteDecision) =>
     sql<number>`(select count(*)::int from ${applicationVotes} where ${applicationVotes.applicationId} = ${circleApplications.id} and ${applicationVotes.decision} = ${decision})`;
 
@@ -108,10 +112,15 @@ export function createApplicationService({ db, circles: circleService }: { db: D
   }
 
   return {
-    /** Applies for a seat in an OPEN circle; members then accept or reject the application. */
+    /**
+     * Applies for a seat in an OPEN public circle; members then accept or reject it.
+     * Private circles are joined through their invite link instead, and to anyone
+     * else they don't exist.
+     */
     async apply(userId: string, circleId: string, seat: SeatRequest): Promise<ApplicationDto> {
       const id = await db.transaction(async (tx) => {
         const circle = await lockCircle(tx, circleId);
+        if (circle.visibility !== "PUBLIC") throw circleNotFound();
         if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
         if (seat.payoutRound !== null && seat.payoutRound > circle.size) {
           throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
@@ -160,7 +169,7 @@ export function createApplicationService({ db, circles: circleService }: { db: D
      */
     async vote(viewerId: string, circleId: string, applicationId: string, decision: VoteDecision): Promise<ApplicationDto> {
       const now = new Date();
-      await db.transaction(async (tx) => {
+      const started = await db.transaction(async (tx): Promise<boolean> => {
         // Lock order: circle, then application (same as apply), so concurrent votes serialize.
         const circle = await lockCircle(tx, circleId);
         const voter = await membership(tx, circleId, viewerId);
@@ -205,12 +214,21 @@ export function createApplicationService({ db, circles: circleService }: { db: D
             .where(eq(circleMembers.circleId, circleId));
           outcome = majorityOutcome(votes, members);
         }
-        if (outcome === null) return;
+        if (outcome === null) return false;
 
         if (outcome === "ACCEPT") {
-          const started = await takeSeat(tx, circle, application.userId, application, now);
+          // A preferred payout round taken since applying falls back to the next free one.
+          const [holder] =
+            application.payoutRound === null
+              ? []
+              : await tx
+                  .select({ id: circleMembers.id })
+                  .from(circleMembers)
+                  .where(and(eq(circleMembers.circleId, circleId), eq(circleMembers.payoutRound, application.payoutRound)));
+          const seat = { ...application, payoutRound: holder ? null : application.payoutRound };
+          const filled = await circleService.takeSeat(tx, circle, application.userId, seat);
           await decide(tx, circle, applicationId, "ACCEPT", now);
-          if (started) {
+          if (filled) {
             const others = await tx
               .select({ id: circleApplications.id })
               .from(circleApplications)
@@ -223,10 +241,12 @@ export function createApplicationService({ db, circles: circleService }: { db: D
               );
             for (const other of others) await decide(tx, circle, other.id, "REJECT", now);
           }
-        } else {
-          await decide(tx, circle, applicationId, "REJECT", now);
+          return filled;
         }
+        await decide(tx, circle, applicationId, "REJECT", now);
+        return false;
       });
+      if (started) await circleService.afterStarted(circleId);
       return findOne(applicationId);
     },
 
@@ -253,7 +273,7 @@ export function createApplicationService({ db, circles: circleService }: { db: D
           .set({ isApprover: sql`${circleMembers.userId} = ${creatorId} or ${ids.length > 0 ? inArray(circleMembers.id, ids) : sql`false`}` })
           .where(eq(circleMembers.circleId, circleId));
       });
-      return circleService.get(circleId);
+      return circleService.get(circleId, { userId: creatorId });
     },
   };
 }

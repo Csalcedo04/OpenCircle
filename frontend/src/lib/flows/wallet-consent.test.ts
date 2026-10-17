@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest"
-import { consentFailureReason, consentMessageKey, isWalletInput, walletErrorKey } from "./wallet-consent"
+import { consentFailureReason, consentMessageKey, walletAddressFromInput, walletErrorKey } from "./wallet-consent"
 
-describe("isWalletInput", () => {
-  it("accepts payment pointers and https addresses only", () => {
-    expect(isWalletInput("$ilp.interledger-test.dev/ana")).toBe(true)
-    expect(isWalletInput("https://ilp.interledger-test.dev/ana")).toBe(true)
-    for (const bad of ["", "ana", "http://ilp.interledger-test.dev/ana", "$ilp.interledger-test.dev/ ana"]) {
-      expect(isWalletInput(bad), bad).toBe(false)
+describe("walletAddressFromInput", () => {
+  it("turns the username users remember into a test-network wallet address", () => {
+    expect(walletAddressFromInput("ana")).toBe("$ilp.interledger-test.dev/ana")
+    expect(walletAddressFromInput("  ana.gomez_01-co ")).toBe("$ilp.interledger-test.dev/ana.gomez_01-co")
+  })
+
+  it("keeps a pasted full address, with or without $", () => {
+    expect(walletAddressFromInput("$ilp.interledger-test.dev/ana")).toBe("$ilp.interledger-test.dev/ana")
+    expect(walletAddressFromInput("https://ilp.interledger-test.dev/ana")).toBe("https://ilp.interledger-test.dev/ana")
+    expect(walletAddressFromInput("ilp.interledger-test.dev/ana")).toBe("$ilp.interledger-test.dev/ana")
+  })
+
+  it("rejects what can't be a username or an address", () => {
+    for (const bad of ["", "ana gomez", "ana/../x", "http://ilp.interledger-test.dev/ana", "ana?x=1", "<script>"]) {
+      expect(walletAddressFromInput(bad), bad).toBeNull()
     }
   })
 })

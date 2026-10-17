@@ -47,22 +47,22 @@
     {
       "idx": 6,
       "version": "7",
-      "when": 1792186889343,
-      "tag": "0006_circle_applications",
+      "when": 1792189649753,
+      "tag": "0006_circle_periods",
       "breakpoints": true
     },
     {
       "idx": 7,
       "version": "7",
-      "when": 1792188272668,
-      "tag": "0007_circle_goal",
+      "when": 1792201265074,
+      "tag": "0007_circle_visibility",
       "breakpoints": true
     },
     {
       "idx": 8,
       "version": "7",
-      "when": 1792189153328,
-      "tag": "0008_user_delete_cascade",
+      "when": 1792203948591,
+      "tag": "0008_circle_applications_and_user_cascade",
       "breakpoints": true
     }
   ]

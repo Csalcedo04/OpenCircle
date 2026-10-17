@@ -4,6 +4,7 @@ import { Logo } from "@/components/logo-mark"
 import { HeaderAccount } from "@/components/header-account"
 import { LocaleToggle } from "@/components/locale-toggle"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { cn } from "@/lib/utils"
 
 const navLink =
   "inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-brand-white outline-none hover:bg-brand-white/10 focus-visible:ring-3 focus-visible:ring-brand-mint"
@@ -21,10 +22,11 @@ export async function SiteHeader() {
           <Logo />
         </Link>
         <nav className="flex items-center gap-1">
-          <Link href={`/${locale}/circles`} className={navLink}>
+          {/* Below md the mobile dock carries Circles and Create; the header keeps language and account. */}
+          <Link href={`/${locale}/circles`} className={cn(navLink, "max-md:hidden")}>
             {t.nav.circles}
           </Link>
-          <Link href={`/${locale}/circles/new`} className={navLink}>
+          <Link href={`/${locale}/circles/new`} className={cn(navLink, "max-md:hidden")}>
             {t.nav.create}
           </Link>
           <LocaleToggle locale={locale} label={t.nav.language} switchTo={t.nav.switchTo} />

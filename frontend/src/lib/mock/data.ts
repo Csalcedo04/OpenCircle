@@ -1,4 +1,4 @@
-import type { Circle, Contribution, Member, Review, Round, RoundStatus } from "@/lib/domain/types"
+import type {Circle, Contribution, Round, RoundStatus} from "@/lib/domain/types"
 
 /**
  * Demo data standing in for the backend until the payments service lands.
@@ -10,18 +10,6 @@ const COP = { assetCode: "COP", assetScale: 2 } as const
 const cop = (whole: number) => (BigInt(whole) * 100n).toString()
 const WALLET = "https://ilp.interledger-test.dev"
 
-export const members: Member[] = [
-  { id: "alice", name: "Alice Restrepo", walletAddress: `${WALLET}/alice`, memberSince: "2025-11-02", payments: { onTime: 22, late: 1, missed: 0 }, circlesCompleted: 3 },
-  { id: "bob", name: "Bob Cárdenas", walletAddress: `${WALLET}/bob`, memberSince: "2026-03-14", payments: { onTime: 9, late: 2, missed: 1 }, circlesCompleted: 1 },
-  { id: "charlie", name: "Charlie Mejía", walletAddress: `${WALLET}/charlie`, memberSince: "2025-08-21", payments: { onTime: 31, late: 0, missed: 0 }, circlesCompleted: 5 },
-  { id: "diana", name: "Diana Ospina", walletAddress: `${WALLET}/diana`, memberSince: "2026-01-09", payments: { onTime: 14, late: 1, missed: 0 }, circlesCompleted: 2 },
-  { id: "edward", name: "Edward Gómez", walletAddress: `${WALLET}/edward`, memberSince: "2026-06-30", payments: { onTime: 5, late: 0, missed: 0 }, circlesCompleted: 0 },
-  { id: "valentina", name: "Valentina Ruiz", walletAddress: `${WALLET}/valentina`, memberSince: "2025-05-17", payments: { onTime: 40, late: 2, missed: 0 }, circlesCompleted: 6 },
-  { id: "mateo", name: "Mateo Zapata", walletAddress: `${WALLET}/mateo`, memberSince: "2026-02-11", payments: { onTime: 12, late: 3, missed: 1 }, circlesCompleted: 1 },
-  { id: "sofia", name: "Sofía Henao", walletAddress: `${WALLET}/sofia`, memberSince: "2025-10-04", payments: { onTime: 19, late: 0, missed: 0 }, circlesCompleted: 3 },
-  { id: "juan", name: "Juan Pablo Vélez", walletAddress: `${WALLET}/juanpablo`, memberSince: "2026-09-01", payments: { onTime: 1, late: 0, missed: 0 }, circlesCompleted: 0 },
-  { id: "camila", name: "Camila Arango", walletAddress: `${WALLET}/camila`, memberSince: "2025-12-12", payments: { onTime: 16, late: 1, missed: 0 }, circlesCompleted: 2 },
-]
 
 function contributions(ids: string[], status: (id: string) => Contribution["status"]): Contribution[] {
   return ids.map((memberId) => ({ memberId, status: status(memberId) }))
@@ -158,17 +146,3 @@ const poblado: Circle = {
 
 export const circles: Circle[] = [laureles, envigado, bello, poblado]
 
-export const reviews: Review[] = [
-  { id: "r1", authorId: "charlie", subjectId: "alice", circleId: "mercado-bello", rating: 5, comment: "Always paid the first day of the round. Would save with her again.", date: "2026-10-09" },
-  { id: "r2", authorId: "diana", subjectId: "alice", circleId: "natillera-laureles", rating: 5, comment: "Muy cumplida y clara con todo el grupo.", date: "2026-10-10" },
-  { id: "r3", authorId: "alice", subjectId: "bob", circleId: "natillera-laureles", rating: 3, comment: "Pagó, pero tarde dos veces. Hay que recordarle.", date: "2026-10-10" },
-  { id: "r4", authorId: "valentina", subjectId: "bob", circleId: "parceros-envigado", rating: 4, comment: "Good member once his recurring payment was set up.", date: "2026-08-20" },
-  { id: "r5", authorId: "sofia", subjectId: "charlie", circleId: "mercado-bello", rating: 5, comment: "Organizó la natillera del barrio por años. Confianza total.", date: "2026-09-26" },
-  { id: "r6", authorId: "alice", subjectId: "charlie", circleId: "mercado-bello", rating: 5, comment: "Answers questions fast and pays on time.", date: "2026-10-09" },
-  { id: "r7", authorId: "charlie", subjectId: "diana", circleId: "mercado-bello", rating: 5, comment: "Cumplida en cada ronda.", date: "2026-10-03" },
-  { id: "r8", authorId: "mateo", subjectId: "valentina", circleId: "parceros-envigado", rating: 5, comment: "She explained how the pool works to the whole group.", date: "2026-09-21" },
-  { id: "r9", authorId: "sofia", subjectId: "valentina", circleId: "parceros-envigado", rating: 4, comment: "Muy responsable.", date: "2026-09-22" },
-  { id: "r10", authorId: "valentina", subjectId: "mateo", circleId: "parceros-envigado", rating: 3, comment: "Se le olvidó un pago y lo cubrió su colateral.", date: "2026-09-22" },
-  { id: "r11", authorId: "camila", subjectId: "sofia", circleId: "parceros-envigado", rating: 5, comment: "Never late. Friendly with new members.", date: "2026-10-05" },
-  { id: "r12", authorId: "sofia", subjectId: "camila", circleId: "parceros-envigado", rating: 4, comment: "Buena compañera de ahorro.", date: "2026-10-05" },
-]

@@ -28,15 +28,15 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
     </div>,
     <div key="pay" className="space-y-2.5">
       <div className="flex items-center justify-between text-xs font-semibold">
-        <span>Consentimiento GNAP</span>
-        <span className="text-brand-violet-ink">5/5 listo</span>
+        <span>{t.mock.gnapConsent}</span>
+        <span className="text-brand-violet-ink">{t.mock.gnapReady}</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-brand-white">
         <div className="oc-reveal h-full w-full rounded-full bg-brand-violet" />
       </div>
-      <div className="flex items-center justify-between gap-1.5 pt-1 text-[11px] text-brand-slate">
-        <span>Débito autorizado</span>
-        <span className="font-semibold text-brand-navy">100% verificado</span>
+      <div className="flex items-center justify-between gap-1.5 pt-1 text-[11px] text-brand-navy/70">
+        <span>{t.mock.debitAuthorized}</span>
+        <span className="font-semibold text-brand-navy">{t.mock.verified}</span>
       </div>
     </div>,
     <div key="receive" className="rounded-2xl bg-brand-navy p-3.5 text-brand-white">
@@ -70,13 +70,6 @@ export function HowItWorks({ t, locale, circleName }: { t: T; locale: Locale; ci
             </li>
           ))}
         </ol>
-        {/* Mobile App Carousel Indicator */}
-        <div className="mt-2 flex justify-center gap-1.5 md:hidden" aria-hidden="true">
-          <span className="size-1.5 rounded-full bg-brand-navy" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-          <span className="size-1.5 rounded-full bg-brand-line" />
-        </div>
       </div>
     </section>
   )
