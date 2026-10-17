@@ -19,6 +19,11 @@ const envSchema = z.object({
   DIDIT_WORKFLOW_ID: z.uuid(),
   // Webhook destination's secret_shared_key; without it the webhook answers 503.
   DIDIT_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // Dev only: Stripe-style test clocks for circles (/api/test-clocks). Never on in production.
+  TEST_CLOCKS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;

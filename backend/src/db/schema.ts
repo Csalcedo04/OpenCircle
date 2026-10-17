@@ -199,6 +199,8 @@ export const kycVerifications = pgTable(
 
 export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
+// A period is one calendar week or one calendar month; a circle has one period per member.
+export const CIRCLE_CADENCES = ["WEEKLY", "MONTHLY"] as const;
 // UPCOMING: scheduled but not open yet. The rest follow the round engine.
 export const ROUND_STATES = [
   "UPCOMING",
@@ -214,6 +216,29 @@ export const ROUND_STATES = [
 export const CONTRIBUTION_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"] as const;
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(", "));
+
+// Dev-only simulated time (TEST_CLOCKS_ENABLED). A circle attached to a clock reads its time
+// from `frozenTime` instead of the real clock; advancing it runs the period engine.
+export const testClocks = pgTable(
+  "test_clocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id),
+    frozenTime: timestamp("frozen_time", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("test_clocks_owner_user_id_idx").on(t.ownerUserId),
+    check("test_clocks_name_length", sql`char_length(${t.name}) between 1 and 80`),
+  ],
+).enableRLS();
 
 export const circles = pgTable(
   "circles",
@@ -232,7 +257,9 @@ export const circles = pgTable(
     thresholdValue: bigint("threshold_value", { mode: "bigint" }).notNull().default(sql`0`),
     // Weight of an active recurring grant as coverage of a member's debt, in basis points.
     grantWeightBps: integer("grant_weight_bps").notNull().default(5000),
+    // Legacy: new circles derive it from the cadence (7 or 30). Periods come from `cadence`.
     roundLengthDays: integer("round_length_days").notNull(),
+    cadence: text("cadence").$type<(typeof CIRCLE_CADENCES)[number]>().notNull().default("MONTHLY"),
     // Number of seats, and so of rounds.
     size: integer("size").notNull(),
     // The pot. For now every circle uses OpenCircle's own wallet; pots are told apart in the DB.
@@ -242,6 +269,8 @@ export const circles = pgTable(
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
+    // Set only at creation, and only while test clocks are enabled.
+    testClockId: uuid("test_clock_id").references(() => testClocks.id),
     // Set when the circle fills and its rounds are scheduled.
     startedAt: timestamp("started_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -262,6 +291,8 @@ export const circles = pgTable(
     check("circles_grant_weight_bps_range", sql`${t.grantWeightBps} between 0 and 10000`),
     check("circles_round_length_range", sql`${t.roundLengthDays} between 1 and 365`),
     check("circles_size_range", sql`${t.size} between 2 and 50`),
+    check("circles_cadence", sql`${t.cadence} in (${inList(CIRCLE_CADENCES)})`),
+    index("circles_test_clock_id_idx").on(t.testClockId),
   ],
 ).enableRLS();
 
@@ -308,6 +339,8 @@ export const rounds = pgTable(
       .notNull()
       .references(() => circleMembers.id),
     state: text("state").$type<(typeof ROUND_STATES)[number]>().notNull().default("UPCOMING"),
+    // The period runs from `startsAt` to `deadline`.
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     deadline: timestamp("deadline", { withTimezone: true }).notNull(),
     openedAt: timestamp("opened_at", { withTimezone: true }),
     closedAt: timestamp("closed_at", { withTimezone: true }),
@@ -345,6 +378,14 @@ export const contributions = pgTable(
     status: text("status").$type<(typeof CONTRIBUTION_STATUSES)[number]>().notNull().default("PENDING"),
     // Sent with every Open Payments call for this contribution, so a retry never charges twice.
     idempotencyKey: text("idempotency_key").notNull().unique(),
+    // Open Payments resources, saved as soon as each exists so a retry resumes instead of paying twice.
+    incomingPaymentUrl: text("incoming_payment_url"),
+    quoteUrl: text("quote_url"),
+    outgoingPaymentUrl: text("outgoing_payment_url"),
+    // Set when the payment request starts (PENDING → PROCESSING).
+    requestedAt: timestamp("requested_at", { withTimezone: true }),
+    // Why a contribution FAILED (NO_GRANT, QUOTE_FAILED, PAYMENT_REFUSED, DEADLINE_MISSED).
+    failureCode: text("failure_code"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true })

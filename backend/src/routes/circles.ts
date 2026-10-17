@@ -1,7 +1,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { AppError } from "../errors/app-error";
-import { CIRCLE_STATUSES, GRANT_MODES } from "../db/schema";
+import { CIRCLE_CADENCES, CIRCLE_STATUSES, GRANT_MODES } from "../db/schema";
 import { requireKyc } from "../middleware/require-kyc";
 import { requireUser } from "../middleware/require-user";
 import type { CircleService } from "../services/circle.service";
@@ -27,7 +27,10 @@ export const createCircleSchema = z
     city: z.string().trim().min(1).max(80),
     contributionValue: minorUnits("positive"),
     size: z.int().min(2).max(50),
-    roundLengthDays: z.int().min(1).max(365),
+    // One period per member; each period is a calendar week or month.
+    cadence: z.enum(CIRCLE_CADENCES),
+    // Dev only: rejected with 404 unless test clocks are enabled and the user owns the clock.
+    testClockId: z.uuid().optional(),
     ...seatFields,
   })
   .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" });
