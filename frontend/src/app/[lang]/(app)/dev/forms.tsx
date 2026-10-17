@@ -89,9 +89,6 @@ export function ClockCircleForm({ locale, t, clockId }: { locale: Locale; t: T; 
           ))}
         </select>
       </FormField>
-      <FormField id="payoutRound" label={t.payoutRound} error={bad("payoutRound")}>
-        <Input id="payoutRound" name="payoutRound" type="number" min={1} max={50} required defaultValue={1} className="h-11 text-base" />
-      </FormField>
       <div className="space-y-2 sm:col-span-2">
         <FormError state={state} t={t} />
         <Button type="submit" disabled={pending} className="h-11 px-5 text-base">
@@ -102,19 +99,10 @@ export function ClockCircleForm({ locale, t, clockId }: { locale: Locale; t: T; 
   )
 }
 
-export function JoinForm({ locale, t, circleId, rounds, invite }: { locale: Locale; t: T; circleId: string; rounds: number[]; invite: string | undefined }) {
+export function JoinForm({ locale, t, circleId, invite }: { locale: Locale; t: T; circleId: string; invite: string | undefined }) {
   const [state, action, pending] = useActionState(joinCircleAction.bind(null, locale, circleId, invite), initial)
   return (
     <form action={action} className="space-y-4">
-      <FormField id="join-round" label={t.pickRound}>
-        <select id="join-round" name="payoutRound" className={selectClass}>
-          {rounds.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </FormField>
       <FormError state={state} t={t} />
       <Button type="submit" disabled={pending} className="h-11 px-5 text-base">
         {pending ? t.joining : t.join}

@@ -4,7 +4,7 @@ import type { Circle, ContributionStatus, Member, Review } from "@/lib/domain/ty
 // API data → the UI's domain types. Pure functions, so pages stay unchanged and this is easy to test.
 
 /** Days per round shown in the UI ("7d por turno"); the API speaks in cadences. */
-export const CADENCE_DAYS = { WEEKLY: 7, MONTHLY: 30 } as const
+export const CADENCE_DAYS = { WEEKLY: 7, BIWEEKLY: 14, MONTHLY: 30 } as const
 
 /** The API's payment states → what members see on a round. */
 export function contributionStatus(status: string): ContributionStatus {
@@ -58,6 +58,7 @@ export function toCircle(dto: CircleDto): Circle {
     currentRound: dto.currentRound ?? 0,
     visibility: dto.visibility,
     cadence: dto.cadence,
+    payoutOrder: dto.payoutOrder,
   }
 }
 

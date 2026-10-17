@@ -9,16 +9,16 @@ export type JoinState = { errors: FieldErrors; form: CircleErrorKey | null }
 
 const text = (v: FormDataEntryValue | null) => (typeof v === "string" ? v : "")
 
-/** Takes the chosen seat through the API; on success, shows the circle. */
+/** Takes a seat through the API (the round comes from the payout order); on success, shows the circle. */
 export async function joinCircleAction(
   locale: string,
-  circle: { id: string; size: number; assetScale: number; invite?: string },
+  circle: { id: string; assetScale: number; invite?: string },
   _prev: JoinState,
   formData: FormData,
 ): Promise<JoinState> {
   if (!hasLocale(locale)) return { errors: {}, form: "generic" }
   const parsed = parseJoinForm(
-    { payoutRound: text(formData.get("payoutRound")), collateral: text(formData.get("collateral")), grantMode: text(formData.get("grantMode")) },
+    { collateral: text(formData.get("collateral")), grantMode: text(formData.get("grantMode")) },
     circle,
   )
   if (!parsed.ok) return { errors: parsed.errors, form: null }

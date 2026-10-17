@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react"
 import Link from "next/link"
-import { CheckCircle2, ChevronDown, Coins, Globe, LoaderCircle, Lock, Sparkles, Users, Zap } from "lucide-react"
+import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Minus, Plus, Sparkles, TrendingDown, TrendingUp, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,22 +10,19 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { CIRCLE_VISIBILITIES, type CircleVisibility } from "@/lib/flows/circle-invite"
-import { CADENCES, CIRCLE_ASSET_SCALE, MAX_SIZE, MIN_SIZE } from "@/lib/flows/circles"
+import { CADENCES, CIRCLE_ASSET_SCALE, MAX_SIZE, MIN_SIZE, PAYOUT_ORDERS } from "@/lib/flows/circles"
 import { cn } from "@/lib/utils"
 import { createCircleAction, type CreateState } from "./actions"
 
 const COP = { assetCode: "COP", assetScale: CIRCLE_ASSET_SCALE } as const
 // Shown in the projection; the API applies the real fee.
 const FEE_BPS = 200
-const SIZES = Array.from({ length: MAX_SIZE - MIN_SIZE + 1 }, (_, i) => String(MIN_SIZE + i))
 
 type Props = { locale: Locale; t: Dictionary["create"]; tErr: Dictionary["circleErrors"] }
 
-const chip = (active: boolean) =>
-  cn(
-    "flex h-10 min-w-12 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition-all active:scale-95",
-    active ? "border-brand-violet bg-brand-violet text-brand-white shadow-2xs" : "border-brand-line bg-brand-canvas text-brand-navy hover:border-brand-navy/30",
-  )
+/** Round − / + buttons either side of the member count. */
+const stepper =
+  "grid size-11 shrink-0 place-items-center rounded-full border border-brand-line bg-brand-canvas text-brand-navy outline-none transition-all hover:border-brand-navy/30 focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
 
 /** Larger option cards (cadence, visibility): a title with a short caption. */
 const card = (active: boolean) =>
@@ -38,12 +35,18 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
   const [amountInput, setAmountInput] = useState("20000")
   const [size, setSize] = useState("5")
   const [cadence, setCadence] = useState<(typeof CADENCES)[number]>("WEEKLY")
-  const [payoutRound, setPayoutRound] = useState(1)
+  const [payoutOrder, setPayoutOrder] = useState<(typeof PAYOUT_ORDERS)[number]>("BEST_SCORE_FIRST")
   const [visibility, setVisibility] = useState<CircleVisibility>("PRIVATE")
   const [state, action, pending] = useActionState<CreateState, FormData>(createCircleAction.bind(null, locale), { errors: {}, form: null })
   const err = (field: keyof CreateState["errors"]) => {
     const key = state.errors[field]
     return key ? tErr[key] : undefined
+  }
+
+  const sizeNum = Number(size)
+  const changeSize = (delta: number) => {
+    const next = Math.min(MAX_SIZE, Math.max(MIN_SIZE, sizeNum + delta))
+    setSize(String(next))
   }
 
   const contribution = parseWholeUnits(amountInput, COP.assetScale)
@@ -52,7 +55,11 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
   const fee = applyBps(pot, FEE_BPS)
   const payout = pot - fee
   const money = (v: bigint) => formatAmount(amount(v, COP), locale)
-  const rounds = Array.from({ length: Number(members) }, (_, i) => i + 1)
+  const cadenceLabels = {
+    WEEKLY: [t.weekly, t.cadenceWeekly],
+    BIWEEKLY: [t.biweekly, t.cadenceBiweekly],
+    MONTHLY: [t.monthly, t.cadenceMonthly],
+  } as const satisfies Record<(typeof CADENCES)[number], readonly [string, string]>
 
   return (
     <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
@@ -61,7 +68,7 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
         <form action={action} noValidate className="space-y-6">
           {/* Chip pickers are buttons; their choice travels in hidden fields. */}
           <input type="hidden" name="cadence" value={cadence} />
-          <input type="hidden" name="payoutRound" value={payoutRound} />
+          <input type="hidden" name="payoutOrder" value={payoutOrder} />
           <input type="hidden" name="visibility" value={visibility} />
 
           <FormField id="name" label={t.name} error={err("name")}>
@@ -92,36 +99,49 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
           </FormField>
 
           <FormField id="size" label={t.size} help={t.sizeHelp} error={err("size")}>
-            <div className="relative">
-              <select
-                id="size"
-                name="size"
-                value={size}
-                onChange={(e) => {
-                  setSize(e.target.value)
-                  if (payoutRound > Number(e.target.value)) setPayoutRound(1)
-                }}
-                aria-invalid={err("size") ? true : undefined}
-                aria-describedby={describedBy("size", err("size"))}
-                className="h-11 w-full min-w-0 appearance-none rounded-xl border border-input bg-transparent pr-10 pl-3.5 text-base text-brand-navy outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => changeSize(-1)}
+                disabled={sizeNum <= MIN_SIZE}
+                aria-label={t.sizeDecrease}
+                aria-controls="size"
+                className={stepper}
               >
-                {SIZES.map((s) => (
-                  <option key={s} value={s}>
-                    {fill(t.sizeOption, { count: s })}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 text-brand-slate" aria-hidden="true" />
+                <Minus className="size-4" aria-hidden="true" />
+              </button>
+              <output
+                id="size"
+                aria-live="polite"
+                aria-describedby={describedBy("size", err("size"))}
+                className={cn(
+                  "flex h-11 min-w-0 flex-1 items-center justify-center rounded-xl border text-base font-semibold text-brand-navy tabular-nums",
+                  err("size") ? "border-destructive" : "border-input",
+                )}
+              >
+                {fill(t.sizeOption, { count: size })}
+              </output>
+              <button
+                type="button"
+                onClick={() => changeSize(1)}
+                disabled={sizeNum >= MAX_SIZE}
+                aria-label={t.sizeIncrease}
+                aria-controls="size"
+                className={stepper}
+              >
+                <Plus className="size-4" aria-hidden="true" />
+              </button>
+              <input type="hidden" name="size" value={size} />
             </div>
           </FormField>
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.cadence}</legend>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {CADENCES.map((c) => (
                 <button type="button" key={c} aria-pressed={cadence === c} onClick={() => setCadence(c)} className={card(cadence === c)}>
-                  <span className="text-sm font-semibold text-brand-navy">{c === "WEEKLY" ? t.weekly : t.monthly}</span>
-                  <span className="text-xs text-brand-slate">{c === "WEEKLY" ? t.cadenceWeekly : t.cadenceMonthly}</span>
+                  <span className="text-sm font-semibold text-brand-navy">{cadenceLabels[c][0]}</span>
+                  <span className="text-xs text-brand-slate">{cadenceLabels[c][1]}</span>
                 </button>
               ))}
             </div>
@@ -147,16 +167,22 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
           </fieldset>
 
           <fieldset>
-            <legend className="mb-1 block text-sm font-semibold text-brand-navy">{t.payoutRound}</legend>
-            <p className="mb-2 text-sm text-muted-foreground">{t.payoutRoundHelp}</p>
-            <div className="flex flex-wrap gap-2">
-              {rounds.map((n) => (
-                <button type="button" key={n} aria-pressed={payoutRound === n} onClick={() => setPayoutRound(n)} className={chip(payoutRound === n)}>
-                  {n}
-                </button>
-              ))}
+            <legend className="mb-1 block text-sm font-semibold text-brand-navy">{t.payoutOrder}</legend>
+            <p className="mb-2 text-sm text-muted-foreground">{t.payoutOrderHelp}</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {PAYOUT_ORDERS.map((o) => {
+                const [title, help, Icon] = o === "BEST_SCORE_FIRST" ? [t.bestFirst, t.bestFirstHelp, TrendingUp] : [t.bestLast, t.bestLastHelp, TrendingDown]
+                return (
+                  <button type="button" key={o} aria-pressed={payoutOrder === o} onClick={() => setPayoutOrder(o)} className={card(payoutOrder === o)}>
+                    <span className="flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                      <Icon className={cn("size-4 shrink-0", payoutOrder === o ? "text-brand-violet" : "text-brand-slate")} aria-hidden="true" />
+                      {title}
+                    </span>
+                    <span className="text-xs text-brand-slate">{help}</span>
+                  </button>
+                )
+              })}
             </div>
-            {err("seat") && <p className="oc-fade-in mt-1.5 text-sm font-medium text-brand-violet-ink">{err("seat")}</p>}
           </fieldset>
 
           {state.form && (

@@ -34,11 +34,11 @@ describe("test clock flows", () => {
   })
 
   it("parses the create-circle form into minor units and a cadence", () => {
-    const ok = parseClockCircleForm({ name: " Demo ", city: "Cali", contributionValue: "500", size: "3", cadence: "WEEKLY", payoutRound: "1" }, ID)
-    expect(ok).toEqual({ ok: true, circle: { name: "Demo", city: "Cali", contributionValue: "500", size: 3, cadence: "WEEKLY", payoutRound: 1, testClockId: ID } })
+    const ok = parseClockCircleForm({ name: " Demo ", city: "Cali", contributionValue: "500", size: "3", cadence: "WEEKLY" }, ID)
+    expect(ok).toEqual({ ok: true, circle: { name: "Demo", city: "Cali", contributionValue: "500", size: 3, cadence: "WEEKLY", testClockId: ID } })
 
-    const bad = parseClockCircleForm({ name: "", city: "Cali", contributionValue: "5.5", size: "1", cadence: "DAILY", payoutRound: "4" }, ID)
-    expect(bad).toEqual({ ok: false, errors: ["name", "contributionValue", "size", "cadence", "payoutRound"] })
+    const bad = parseClockCircleForm({ name: "", city: "Cali", contributionValue: "5.5", size: "1", cadence: "DAILY" }, ID)
+    expect(bad).toEqual({ ok: false, errors: ["name", "contributionValue", "size", "cadence"] })
   })
 
   it("reads the datetime input as UTC", () => {

@@ -62,7 +62,6 @@ export async function createClockCircleAction(locale: string, clockId: string, _
     contributionValue: text(formData.get("contributionValue")),
     size: text(formData.get("size")),
     cadence: text(formData.get("cadence")),
-    payoutRound: text(formData.get("payoutRound")),
   }
   const parsed = parseClockCircleForm(fields, clockId)
   if (!parsed.ok) return { error: "invalid", fields: parsed.errors }
@@ -79,14 +78,11 @@ export async function joinCircleAction(
   locale: string,
   circleId: string,
   invite: string | undefined,
-  _prev: DevState,
-  formData: FormData,
 ): Promise<DevState> {
   if (!testClocksEnabled() || !hasLocale(locale)) return { error: "generic" }
-  const payoutRound = Number(text(formData.get("payoutRound")))
-  if (!Number.isInteger(payoutRound) || payoutRound < 1) return { error: "invalid" }
   try {
-    await joinCircle(circleId, { payoutRound }, invite)
+    // The circle's payout order assigns the round when it fills.
+    await joinCircle(circleId, {}, invite)
   } catch (err) {
     return failed("Circle join", err)
   }
