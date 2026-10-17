@@ -16,7 +16,9 @@ import {
 } from "lucide-react"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { MyInvitesCard } from "@/components/invites/my-invites-card"
 import { getMyCircles, getMyKyc, getMyProfile, getMySavings } from "@/lib/api/backend"
+import { getMyInvitations } from "@/lib/api/invites"
 import { amount, formatAmount } from "@/lib/domain/money"
 import { createClient } from "@/lib/supabase/server"
 
@@ -34,11 +36,12 @@ export default async function AccountPage() {
     redirect(`/${locale}/login`)
   }
 
-  const [profile, kyc, savings, myCircles] = await Promise.all([
+  const [profile, kyc, savings, myCircles, invitations] = await Promise.all([
     getMyProfile().catch(() => null),
     getMyKyc().catch(() => null),
     getMySavings().catch(() => null),
     getMyCircles().catch(() => []),
+    getMyInvitations().catch(() => []),
   ])
 
   const userEmail = data.claims.email ?? profile?.email ?? "usuario@ejemplo.com"
@@ -237,7 +240,12 @@ export default async function AccountPage() {
           </div>
         </div>
 
-        {/* Card 4: Savings Activity Summary (6 cols) */}
+        {/* Card 4: Invitations waiting for the user (12 cols) */}
+        <div className="lg:col-span-12">
+          <MyInvitesCard locale={locale} invites={invitations} t={t.myInvites} />
+        </div>
+
+        {/* Card 5: Savings Activity Summary (6 cols) */}
         <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-6 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">

@@ -429,6 +429,14 @@ const en = {
     text: "Join my savings circle {circle} on OpenCircle: {link}",
     close: "Close",
   },
+  myInvites: {
+    title: "Invitations for you",
+    empty: "No pending invitations. When someone invites you to a circle, it shows up here.",
+    from: "Invited by {name}",
+    expires: "Expires {date}",
+    noExpiry: "Never expires",
+    open: "View and take a seat",
+  },
   friends: {
     title: "Friends",
     lead: "The people you save with. Invite them to your circles in one tap.",

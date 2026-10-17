@@ -430,6 +430,14 @@ const es: Dictionary = {
     text: "Únete a mi círculo de ahorro {circle} en OpenCircle: {link}",
     close: "Cerrar",
   },
+  myInvites: {
+    title: "Invitaciones para ti",
+    empty: "No tienes invitaciones pendientes. Cuando alguien te invite a un círculo, aparecerá aquí.",
+    from: "Te invitó {name}",
+    expires: "Vence el {date}",
+    noExpiry: "No vence",
+    open: "Ver y tomar un cupo",
+  },
   friends: {
     title: "Amigos",
     lead: "Las personas con las que ahorras. Invítalas a tus círculos con un toque.",

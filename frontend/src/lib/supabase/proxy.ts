@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
-import { isInAppPath } from "@/lib/return-path"
+import { isInAppPath, withInvite } from "@/lib/return-path"
 import { isSupabaseConfigured, supabasePublicEnv } from "./env"
 
 /**
@@ -38,9 +38,9 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   if (protectedMatch && !data?.claims) {
     const login = request.nextUrl.clone()
     login.pathname = `/${protectedMatch[1]}/login`
-    // Path only: return paths are in-app paths without a query (see isInAppPath).
+    // The path, plus the invite token when the visitor came from an invite link (see isInAppPath).
     login.search = ""
-    login.searchParams.set("next", request.nextUrl.pathname)
+    login.searchParams.set("next", withInvite(request.nextUrl.pathname, request.nextUrl.searchParams.get("invite") ?? undefined))
     return NextResponse.redirect(login)
   }
 
@@ -48,10 +48,8 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   const loginMatch = request.nextUrl.pathname.match(/^\/([a-z]{2})\/login(\/|$)/)
   if (loginMatch && data?.claims) {
     const nextParam = request.nextUrl.searchParams.get("next")
-    const target = request.nextUrl.clone()
-    target.pathname = isInAppPath(nextParam) ? nextParam : `/${loginMatch[1]}/circles`
-    target.search = ""
-    return NextResponse.redirect(target)
+    // A URL, not a pathname assignment: the return path may carry `?invite=`.
+    return NextResponse.redirect(new URL(isInAppPath(nextParam) ? nextParam : `/${loginMatch[1]}/circles`, request.nextUrl.origin))
   }
 
   return response
