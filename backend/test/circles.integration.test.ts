@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomInt, randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
-import { and, asc, eq, inArray, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
 import {
   applicationVotes,
@@ -149,14 +149,25 @@ async function createCircle(token: string, overrides: Record<string, unknown> = 
   return res.body as CircleDto;
 }
 
-// Joins through the creator's invite link (read from the DB) unless the body brings its own
+// The circle's standing invite code (the link the creator shares), read from the DB.
+async function standingCode(circleId: string): Promise<string> {
+  const [row] = await db
+    .select({ token: circleInvites.token })
+    .from(circleInvites)
+    .where(and(eq(circleInvites.circleId, circleId), eq(circleInvites.kind, "CODE"), eq(circleInvites.status, "ACTIVE"), isNull(circleInvites.maxUses)))
+    .orderBy(desc(circleInvites.createdAt))
+    .limit(1);
+  assert.ok(row, "circle has no standing invite code");
+  return row.token;
+}
+
+// Joins through the circle's invite link (read from the DB) unless the body brings its own
 // `invite`; without a link, public circles take applications instead (APPLICATION_REQUIRED).
 async function join(id: string, token: string, body: Record<string, unknown>) {
-  const [row] = "invite" in body ? [] : await db.select({ inviteCode: circles.inviteCode }).from(circles).where(eq(circles.id, id));
   return server.request(`/api/circles/${id}/join`, {
     method: "POST",
     token,
-    body: row ? { ...body, invite: row.inviteCode } : body,
+    body: "invite" in body ? body : { ...body, invite: await standingCode(id) },
   });
 }
 

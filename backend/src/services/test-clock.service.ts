@@ -3,6 +3,7 @@ import type { Db } from "../db/client";
 import { circleMembers, circles, contributions, rounds, testClocks, users } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { displayName } from "./circle.service";
+import { standingCodeOf } from "./circles/invite-access";
 import type { PeriodEngine } from "./circles/period-engine";
 
 export interface CreateTestClockInput {
@@ -97,7 +98,7 @@ export function createTestClockService({ db, engine }: { db: Db; engine: Pick<Pe
       cadence: circle.cadence,
       size: circle.size,
       seatsTaken: seats.length,
-      inviteCode: circle.inviteCode,
+      inviteCode: await standingCodeOf(db, circle.id, frozen),
       currentPeriod: current && {
         number: current.number,
         state: current.state,
