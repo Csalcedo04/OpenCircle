@@ -17,14 +17,8 @@ import type { CircleService } from "../services/circle.service";
 import type { ApplicationService } from "../services/circles/application.service";
 import type { InviteService } from "../services/circles/invite.service";
 import type { KycService } from "../services/kyc.service";
+import { minorUnitsSchema as minorUnits } from "../services/money";
 import { currentUserId, emailSchema, pathId } from "./shared";
-
-// Money in the asset's minor unit as an integer string: never a float. 18 digits stays within bigint.
-const minorUnits = (min: "zero" | "positive") =>
-  z
-    .string()
-    .regex(min === "zero" ? /^(0|[1-9]\d{0,17})$/ : /^[1-9]\d{0,17}$/, "Must be an integer amount in minor units")
-    .transform((v) => BigInt(v));
 
 // No payout round: the circle's payout order assigns rounds by score when it starts.
 const seatFields = {

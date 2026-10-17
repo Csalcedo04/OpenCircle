@@ -8,6 +8,7 @@ import { getDictionary } from "@/i18n/get-dictionary"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getMyProfile, isBackendUnavailable, type Profile } from "@/lib/api/backend"
 import { countryOptions, splitPhone } from "@/lib/countries"
+import { isOnboarded, onboardingStep } from "@/lib/flows/onboarding"
 import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
@@ -41,13 +42,13 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
       </div>
     )
   }
-  if (profile?.walletAddress) {
+  if (isOnboarded(profile)) {
     const next = (await cookies()).get(RETURN_PATH_COOKIE)?.value
     redirect(isInAppPath(next) ? next : `/${locale}/circles`)
   }
 
   const { consent, edit } = await searchParams
-  const step = profile && edit !== "profile" ? 2 : 1
+  const step = onboardingStep(profile, edit)
   const consentError = consentMessageKey(consent)
   const o = t.onboarding
 

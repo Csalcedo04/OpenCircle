@@ -1,6 +1,7 @@
 import "server-only"
 
 import { getMyProfile } from "@/lib/api/backend"
+import { isOnboarded } from "@/lib/flows/onboarding"
 import { isInAppPath } from "@/lib/return-path"
 
 /**
@@ -11,7 +12,7 @@ import { isInAppPath } from "@/lib/return-path"
 export async function landingAfterSignIn(locale: string, returnPath: string | undefined): Promise<string> {
   try {
     const profile = await getMyProfile()
-    if (profile?.walletAddress) return isInAppPath(returnPath) ? returnPath : `/${locale}/circles`
+    if (isOnboarded(profile)) return isInAppPath(returnPath) ? returnPath : `/${locale}/circles`
   } catch {
     // Fall through to onboarding.
   }

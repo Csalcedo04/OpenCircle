@@ -50,10 +50,17 @@ describe("backend client", () => {
 
   it("sends the Supabase access token and parses the profile", async () => {
     fetchMock.mockResolvedValue(json(200, profile))
-    await expect(getMyProfile()).resolves.toEqual(profile)
+    // An API deploy without internal accounts omits the field: it reads as "none".
+    await expect(getMyProfile()).resolves.toEqual({ ...profile, internalAccount: null })
     const [url, init] = fetchMock.mock.calls[0] ?? []
     expect(String(url)).toBe("http://backend.test/api/users/me")
     expect(new Headers(init?.headers).get("authorization")).toBe("Bearer test-access-token")
+  })
+
+  it("parses the internal account when the API reports one", async () => {
+    const internalAccount = { id: "22222222-2222-4222-8222-222222222222", balance: { value: "5000000", assetCode: "COP", assetScale: 2 } }
+    fetchMock.mockResolvedValue(json(200, { ...profile, internalAccount }))
+    await expect(getMyProfile()).resolves.toEqual({ ...profile, internalAccount })
   })
 
   it("returns null for a user without a profile", async () => {

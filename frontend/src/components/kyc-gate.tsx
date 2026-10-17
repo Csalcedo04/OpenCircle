@@ -9,6 +9,7 @@ import type { Dictionary } from "@/i18n/dictionaries/en"
 import { ServiceUnavailable } from "@/components/service-unavailable"
 import { getMyKyc, getMyProfile, isBackendUnavailable } from "@/lib/api/backend"
 import { isKycPending, kycGateState } from "@/lib/flows/kyc-gate"
+import { isOnboarded } from "@/lib/flows/onboarding"
 import { createClient } from "@/lib/supabase/server"
 
 type Props = {
@@ -55,12 +56,12 @@ export async function KycGate({ locale, t, tc, returnPath, children }: Props) {
   let profile, kyc
   try {
     profile = await getMyProfile()
-    kyc = profile?.walletAddress ? await getMyKyc() : null
+    kyc = isOnboarded(profile) ? await getMyKyc() : null
   } catch (err) {
     if (!isBackendUnavailable(err)) throw err
     return <ServiceUnavailable t={tc} retryHref={returnPath} />
   }
-  if (!profile?.walletAddress || !kyc) {
+  if (!isOnboarded(profile) || !kyc) {
     return (
       <Panel icon={icon} title={t.title}>
         <p className="mt-3 text-muted-foreground">{t.needsOnboarding}</p>

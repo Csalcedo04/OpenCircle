@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   check,
@@ -99,22 +100,27 @@ export const creditProfiles = pgTable(
 ).enableRLS();
 
 // Append-only log of state changes. Never store PII, tokens, keys or raw webhook payloads here.
+// Every event belongs to a wallet (external) or an internal ledger account, or both.
 export const auditEvents = pgTable(
   "audit_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     // No cascade: deleting a wallet must not erase its audit history.
-    walletId: uuid("wallet_id")
-      .notNull()
-      .references(() => wallets.id),
+    walletId: uuid("wallet_id").references(() => wallets.id),
+    // Internal ledger account (see ledger_accounts); no cascade either.
+    accountId: uuid("account_id").references((): AnyPgColumn => ledgerAccounts.id),
     eventType: text("event_type").notNull(),
     // Source event id (e.g. Rafiki webhook id); unique so a retried event is applied once.
     externalId: text("external_id").unique(),
-    // Signed delta in the wallet asset's minor unit; null for events that move no funds.
+    // Signed delta in the asset's minor unit; null for events that move no funds.
     amount: bigint("amount", { mode: "bigint" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("audit_events_wallet_id_created_at_idx").on(t.walletId, t.createdAt)],
+  (t) => [
+    index("audit_events_wallet_id_created_at_idx").on(t.walletId, t.createdAt),
+    index("audit_events_account_id_created_at_idx").on(t.accountId, t.createdAt),
+    check("audit_events_subject", sql`${t.walletId} is not null or ${t.accountId} is not null`),
+  ],
 ).enableRLS();
 
 // One interactive GNAP grant request in flight. `state` ties the wallet's redirect back
@@ -205,6 +211,9 @@ export const kycVerifications = pgTable(
 
 export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
+// Where a seat's contributions come from: the member's OpenCircle ledger account, or their own
+// Open Payments wallet through a GNAP grant.
+export const FUNDING_SOURCES = ["INTERNAL_ACCOUNT", "EXTERNAL_WALLET"] as const;
 // A period is one or two calendar weeks, or one calendar month; a circle has one period per member.
 export const CIRCLE_CADENCES = ["WEEKLY", "BIWEEKLY", "MONTHLY"] as const;
 // Who receives the pot first, by reliability score (ICS). Set by the creator; joining means agreeing.
@@ -338,8 +347,10 @@ export const circleMembers = pgTable(
     payoutRound: integer("payout_round").notNull(),
     // Held in the pot as coverage for debt after the member's own payout.
     collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
-    // How the member authorized contributions; null until they choose.
+    // How the member authorized contributions; null until they choose. Only meaningful for EXTERNAL_WALLET seats.
     grantMode: text("grant_mode").$type<(typeof GRANT_MODES)[number]>(),
+    // Seats that existed before internal accounts were all paid from the member's own wallet.
+    fundingSource: text("funding_source").$type<(typeof FUNDING_SOURCES)[number]>().notNull().default("EXTERNAL_WALLET"),
     // May accept or reject applicants when the circle uses DELEGATES. The creator always can.
     isApprover: boolean("is_approver").notNull().default(false),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
@@ -351,6 +362,7 @@ export const circleMembers = pgTable(
     check("circle_members_payout_round_positive", sql`${t.payoutRound} >= 1`),
     check("circle_members_collateral_non_negative", sql`${t.collateralValue} >= 0`),
     check("circle_members_grant_mode", sql`${t.grantMode} is null or ${t.grantMode} in (${inList(GRANT_MODES)})`),
+    check("circle_members_funding_source", sql`${t.fundingSource} in (${inList(FUNDING_SOURCES)})`),
   ],
 ).enableRLS();
 
@@ -589,6 +601,125 @@ export const reviews = pgTable(
     check("reviews_rating_range", sql`${t.rating} between 1 and 5`),
     check("reviews_not_self", sql`${t.authorId} <> ${t.subjectId}`),
     check("reviews_comment_length", sql`${t.comment} is null or char_length(${t.comment}) <= 1000`),
+  ],
+).enableRLS();
+
+// ── Internal accounts and ledger ─────────────────────────────────────────────
+// OpenCircle cannot create Open Payments wallet addresses (only an ASE can), so a user's
+// "OpenCircle account" is a balance on this ledger, backed by OpenCircle's single real wallet.
+// Every transfer has two legs (from, to) in one row, so the ledger is balanced by construction.
+// SYSTEM accounts are the counterparts of money entering the ledger: DEMO_SEED for seeded test
+// funds and OP_WALLET for funds that really reached OpenCircle's wallet. Only they may go negative,
+// so Σ balances per asset is always 0 and -balance(OP_WALLET) is the part backed by real funds.
+// Amounts are integers in the account asset's minor unit; never floats.
+
+export const LEDGER_ACCOUNT_KINDS = ["USER", "CIRCLE_POOL", "SYSTEM"] as const;
+export const SYSTEM_ACCOUNT_CODES = ["DEMO_SEED", "OP_WALLET"] as const;
+export const LEDGER_TRANSFER_KINDS = ["SEED", "DEPOSIT", "CONTRIBUTION"] as const;
+export const DEPOSIT_STATUSES = ["PENDING", "COMPLETED", "FAILED"] as const;
+
+// `balance` is a cache kept in the same transaction as every transfer:
+// balance = Σ transfers.to_account_id = id − Σ transfers.from_account_id = id.
+// No cascades: a user or circle with ledger history can't be deleted.
+export const ledgerAccounts = pgTable(
+  "ledger_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").$type<(typeof LEDGER_ACCOUNT_KINDS)[number]>().notNull(),
+    // USER: the owner. One internal account per user.
+    ownerUserId: uuid("owner_user_id")
+      .unique()
+      .references(() => users.id),
+    // CIRCLE_POOL: the circle whose pot this is. One per circle.
+    circleId: uuid("circle_id")
+      .unique()
+      .references(() => circles.id),
+    // SYSTEM: which counterpart; one per code and asset.
+    systemCode: text("system_code").$type<(typeof SYSTEM_ACCOUNT_CODES)[number]>(),
+    assetCode: text("asset_code").notNull(),
+    assetScale: integer("asset_scale").notNull(),
+    balance: bigint("balance", { mode: "bigint" }).notNull().default(sql`0`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    unique("ledger_accounts_system_unique").on(t.systemCode, t.assetCode, t.assetScale),
+    check("ledger_accounts_kind", sql`${t.kind} in (${inList(LEDGER_ACCOUNT_KINDS)})`),
+    check("ledger_accounts_user_owner", sql`(${t.kind} = 'USER') = (${t.ownerUserId} is not null)`),
+    check("ledger_accounts_pool_circle", sql`(${t.kind} = 'CIRCLE_POOL') = (${t.circleId} is not null)`),
+    check("ledger_accounts_system_code", sql`(${t.kind} = 'SYSTEM') = (${t.systemCode} is not null)`),
+    check("ledger_accounts_system_code_values", sql`${t.systemCode} is null or ${t.systemCode} in (${inList(SYSTEM_ACCOUNT_CODES)})`),
+    check("ledger_accounts_balance_non_negative", sql`${t.kind} = 'SYSTEM' or ${t.balance} >= 0`),
+    check("ledger_accounts_asset_scale_range", sql`${t.assetScale} between 0 and 255`),
+  ],
+).enableRLS();
+
+// One balanced movement: debit `from`, credit `to`. Idempotent by key: a repeat with the same key
+// (e.g. the contribution's idempotency key) finds this row and moves nothing.
+export const ledgerTransfers = pgTable(
+  "ledger_transfers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    kind: text("kind").$type<(typeof LEDGER_TRANSFER_KINDS)[number]>().notNull(),
+    fromAccountId: uuid("from_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    toAccountId: uuid("to_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    value: bigint("value", { mode: "bigint" }).notNull(),
+    // Copied from the accounts so history stays exact; the service checks all three agree.
+    assetCode: text("asset_code").notNull(),
+    assetScale: integer("asset_scale").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ledger_transfers_from_account_created_idx").on(t.fromAccountId, t.createdAt),
+    index("ledger_transfers_to_account_created_idx").on(t.toAccountId, t.createdAt),
+    check("ledger_transfers_kind", sql`${t.kind} in (${inList(LEDGER_TRANSFER_KINDS)})`),
+    check("ledger_transfers_value_positive", sql`${t.value} > 0`),
+    check("ledger_transfers_distinct_accounts", sql`${t.fromAccountId} <> ${t.toAccountId}`),
+    check("ledger_transfers_asset_scale_range", sql`${t.assetScale} between 0 and 255`),
+  ],
+).enableRLS();
+
+// A deposit into an internal account from any test-network wallet: a real Open Payments incoming
+// payment on OpenCircle's wallet, one per deposit. COMPLETED only once OpenCircle reads the payment
+// as received; the matching ledger transfer is keyed `deposit:<id>`.
+export const accountDeposits = pgTable(
+  "account_deposits",
+  {
+    // Generated by the service before the Open Payments call, so the payment metadata can carry it.
+    id: uuid("id").primaryKey().defaultRandom(),
+    accountId: uuid("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    value: bigint("value", { mode: "bigint" }).notNull(),
+    assetCode: text("asset_code").notNull(),
+    assetScale: integer("asset_scale").notNull(),
+    status: text("status").$type<(typeof DEPOSIT_STATUSES)[number]>().notNull().default("PENDING"),
+    // Why a deposit FAILED (EXPIRED).
+    failureCode: text("failure_code"),
+    incomingPaymentUrl: text("incoming_payment_url").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    index("account_deposits_account_id_created_idx").on(t.accountId, t.createdAt),
+    check("account_deposits_status", sql`${t.status} in (${inList(DEPOSIT_STATUSES)})`),
+    check("account_deposits_value_positive", sql`${t.value} > 0`),
+    check("account_deposits_asset_scale_range", sql`${t.assetScale} between 0 and 255`),
+    check("account_deposits_completed_at", sql`(${t.status} = 'COMPLETED') = (${t.completedAt} is not null)`),
+    check("account_deposits_failure_code", sql`${t.failureCode} is null or ${t.status} = 'FAILED'`),
   ],
 ).enableRLS();
 

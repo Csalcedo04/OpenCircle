@@ -13,6 +13,7 @@ import {
   circles,
   contributions,
   creditProfiles,
+  ledgerAccounts,
   reviews,
   rounds,
   testClocks,
@@ -567,6 +568,9 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
           })
           .returning({ id: circles.id });
         if (!circle) throw new Error("Circle insert returned no row");
+        // The pot on the internal ledger: contributions from internal accounts land here, and
+        // external ones are mirrored into it when they complete (see period-engine).
+        await tx.insert(ledgerAccounts).values({ kind: "CIRCLE_POOL", circleId: circle.id, assetCode: pool.assetCode, assetScale: pool.assetScale });
         // The creator always approves applicants.
         await tx.insert(circleMembers).values({
           circleId: circle.id,

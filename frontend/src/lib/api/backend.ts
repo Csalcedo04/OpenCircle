@@ -50,7 +50,13 @@ const profileSchema = z.object({
   fullName: z.string().nullable(),
   phone: z.string().nullable(),
   dob: z.string().nullable(),
+  // External Open Payments wallet, if the user linked one.
   walletAddress: z.string().nullable(),
+  // OpenCircle internal account, if the user created one. Absent on API deploys that predate it.
+  internalAccount: z
+    .object({ id: z.uuid(), balance: z.object({ value: z.string().regex(/^\d+$/), assetCode: z.string(), assetScale: z.number().int() }) })
+    .nullable()
+    .default(null),
 })
 
 export type Profile = z.infer<typeof profileSchema>
