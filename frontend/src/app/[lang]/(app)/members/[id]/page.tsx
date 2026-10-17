@@ -6,7 +6,7 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Stars, TrustDial, formatTenths } from "@/components/trust"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { circlesForMember, getMember, listCircles, listMembers, listReviews } from "@/lib/data"
+import { getMember, getMemberFull, listCircles, listMembers } from "@/lib/data"
 import { currentRound } from "@/lib/domain/rounds"
 import { trustFor } from "@/lib/domain/trust"
 import { formatDate } from "@/lib/view"
@@ -24,15 +24,14 @@ export async function generateMetadata({ params }: PageProps<"/[lang]/members/[i
 export default async function MemberPage({ params }: PageProps<"/[lang]/members/[id]">) {
   const { id } = await params
   const { locale, t } = await getDictionary()
-  const [member, members, reviews, circles, allCircles] = await Promise.all([
-    getMember(id),
+  const [profile, members, allCircles] = await Promise.all([
+    getMemberFull(id),
     listMembers(),
-    listReviews(),
-    circlesForMember(id),
     listCircles(),
   ])
-  if (!member) notFound()
+  if (!profile) notFound()
 
+  const { member, reviews, circles } = profile
   const byId = new Map(members.map((m) => [m.id, m]))
   const circleName = new Map(allCircles.map((c) => [c.id, c.name]))
   const trust = trustFor(member, reviews)

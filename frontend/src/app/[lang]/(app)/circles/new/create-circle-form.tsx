@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
-import { CheckCircle2, CircleCheck, Coins, Sparkles, Users, Zap } from "lucide-react"
+import { useActionState, useState } from "react"
+import { CheckCircle2, Coins, Globe, Lock, LoaderCircle, Sparkles, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,24 +9,30 @@ import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { cn } from "@/lib/utils"
+import { createCircleAction, type CreateCircleActionState } from "../actions"
 
 const COP = { assetCode: "COP", assetScale: 2 } as const
 const FEE_BPS = 200
-const MIN = parseWholeUnits("1000", COP.assetScale) ?? 0n
-const MAX = parseWholeUnits("10000000", COP.assetScale) ?? 0n
 
 type Props = { locale: Locale; t: Dictionary["create"] }
-type Field = "name" | "amount" | "size" | "frequency"
 
 const SIZES = ["3", "5", "8", "10", "12"]
+const CITIES = ["Medellín", "Bogotá", "Cali", "Barranquilla", "Bucaramanga", "Cartagena", "Pereira", "Manizales", "Otra"]
+
+const selectClass =
+  "h-11 w-full rounded-xl border border-brand-line bg-brand-white px-3 text-base text-brand-navy outline-none transition-colors focus-visible:border-brand-violet focus-visible:ring-3 focus-visible:ring-brand-violet/20"
 
 export function CreateCircleForm({ locale, t }: Props) {
   const [name, setName] = useState("")
+  const [city, setCity] = useState("Medellín")
   const [amountInput, setAmountInput] = useState("20000")
   const [size, setSize] = useState("5")
-  const [frequency, setFrequency] = useState("7")
-  const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
-  const [created, setCreated] = useState(false)
+  const [cadence, setCadence] = useState<"WEEKLY" | "MONTHLY">("WEEKLY")
+  const [visibility, setVisibility] = useState<"PRIVATE" | "PUBLIC">("PUBLIC")
+  const [payoutRound, setPayoutRound] = useState("1")
+
+  const actionWithLocale = createCircleAction.bind(null, locale)
+  const [state, formAction, isPending] = useActionState<CreateCircleActionState, FormData>(actionWithLocale, { error: null })
 
   const contribution = parseWholeUnits(amountInput, COP.assetScale)
   const members = /^\d{1,2}$/.test(size) ? BigInt(size) : 0n
@@ -35,57 +41,64 @@ export function CreateCircleForm({ locale, t }: Props) {
   const payout = pot - fee
   const money = (v: bigint) => formatAmount(amount(v, COP), locale)
 
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const next: Partial<Record<Field, string>> = {}
-
-    if (name.trim().length < 3 || name.trim().length > 60) next.name = t.errors.name
-    if (!contribution || contribution < MIN || contribution > MAX) next.amount = t.errors.amount
-    const sizeNum = Number(size)
-    if (!sizeNum || sizeNum < 3 || sizeNum > 12) next.size = t.errors.size
-    const freqNum = Number(frequency)
-    if (!freqNum || freqNum < 1 || freqNum > 60) next.frequency = t.errors.frequency
-
-    if (Object.keys(next).length > 0) {
-      setErrors(next)
-      setCreated(false)
-      return
-    }
-
-    setErrors({})
-    setCreated(true)
-  }
+  const sizeNum = Number(size) || 5
+  const rounds = Array.from({ length: sizeNum }, (_, i) => String(i + 1))
 
   return (
     <div className="grid gap-8 lg:grid-cols-12 items-start">
       {/* Form Parameters Bento Card */}
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
-        <form onSubmit={onSubmit} noValidate className="space-y-6">
-          <FormField id="name" label={t.name} error={errors.name}>
+        <form action={formAction} noValidate className="space-y-6">
+          <input type="hidden" name="size" value={size} />
+          <input type="hidden" name="cadence" value={cadence} />
+          <input type="hidden" name="visibility" value={visibility} />
+          <input type="hidden" name="payoutRound" value={payoutRound} />
+
+          <FormField id="name" label={t.name} error={state.error === "name" ? t.errors.name : undefined}>
             <Input
               id="name"
+              name="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t.namePlaceholder}
-              aria-invalid={errors.name ? true : undefined}
-              aria-describedby={describedBy("name", errors.name)}
+              aria-invalid={state.error === "name" ? true : undefined}
+              aria-describedby={describedBy("name", state.error === "name" ? t.errors.name : undefined)}
               className="h-11 rounded-xl text-base"
+              required
             />
           </FormField>
 
-          <FormField id="amount" label={t.amount} help={t.amountHelp} error={errors.amount}>
+          <FormField id="city" label={t.city}>
+            <select
+              id="city"
+              name="city"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className={selectClass}
+            >
+              {CITIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          <FormField id="amount" label={t.amount} help={t.amountHelp} error={state.error === "amount" ? t.errors.amount : undefined}>
             <div className="relative">
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-sm text-brand-slate">
                 $
               </span>
               <Input
                 id="amount"
+                name="amount"
                 inputMode="numeric"
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                aria-invalid={errors.amount ? true : undefined}
-                aria-describedby={describedBy("amount", errors.amount)}
+                aria-invalid={state.error === "amount" ? true : undefined}
+                aria-describedby={describedBy("amount", state.error === "amount" ? t.errors.amount : undefined)}
                 className="h-11 rounded-xl pl-8 text-base tabular-nums font-mono"
+                required
               />
             </div>
           </FormField>
@@ -98,7 +111,12 @@ export function CreateCircleForm({ locale, t }: Props) {
                 <button
                   type="button"
                   key={s}
-                  onClick={() => setSize(s)}
+                  onClick={() => {
+                    setSize(s)
+                    if (Number(payoutRound) > Number(s)) {
+                      setPayoutRound("1")
+                    }
+                  }}
                   className={cn(
                     "flex h-10 min-w-12 items-center justify-center rounded-xl border px-3 text-sm font-semibold transition-all active:scale-95",
                     size === s
@@ -110,41 +128,124 @@ export function CreateCircleForm({ locale, t }: Props) {
                 </button>
               ))}
             </div>
-            {errors.size && <p className="mt-1 text-xs text-destructive">{errors.size}</p>}
+            {state.error === "size" && <p className="mt-1 text-xs text-destructive">{t.errors.size}</p>}
           </div>
 
-          <FormField id="frequency" label={t.frequency} error={errors.frequency}>
-            <div className="flex items-center gap-2">
-              <Input
-                id="frequency"
-                type="number"
-                min={1}
-                max={60}
-                value={frequency}
-                onChange={(e) => setFrequency(e.target.value)}
-                aria-invalid={errors.frequency ? true : undefined}
-                aria-describedby={describedBy("frequency", errors.frequency)}
-                className="h-11 w-32 rounded-xl text-base font-mono"
-              />
-              <span className="text-sm text-brand-slate">{locale === "es" ? "días por turno" : "days per round"}</span>
+          {/* Cadence Selector Chips */}
+          <div>
+            <label className="text-sm font-semibold text-brand-navy block mb-2">{t.cadence}</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setCadence("WEEKLY")}
+                className={cn(
+                  "flex flex-col items-start gap-1 rounded-2xl border p-3.5 text-left transition-all active:scale-95",
+                  cadence === "WEEKLY"
+                    ? "border-brand-violet bg-brand-violet/5 ring-1 ring-brand-violet"
+                    : "border-brand-line bg-brand-canvas hover:border-brand-navy/30",
+                )}
+              >
+                <span className="text-sm font-semibold text-brand-navy">{t.cadenceWeekly}</span>
+                <span className="text-xs text-brand-slate">{locale === "es" ? "7 días por periodo" : "7 days per round"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCadence("MONTHLY")}
+                className={cn(
+                  "flex flex-col items-start gap-1 rounded-2xl border p-3.5 text-left transition-all active:scale-95",
+                  cadence === "MONTHLY"
+                    ? "border-brand-violet bg-brand-violet/5 ring-1 ring-brand-violet"
+                    : "border-brand-line bg-brand-canvas hover:border-brand-navy/30",
+                )}
+              >
+                <span className="text-sm font-semibold text-brand-navy">{t.cadenceMonthly}</span>
+                <span className="text-xs text-brand-slate">{locale === "es" ? "30 días por periodo" : "30 days per round"}</span>
+              </button>
             </div>
-          </FormField>
+          </div>
+
+          {/* Visibility Selector Chips */}
+          <div>
+            <label className="text-sm font-semibold text-brand-navy block mb-2">{t.visibility}</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setVisibility("PRIVATE")}
+                className={cn(
+                  "flex items-center gap-2 rounded-2xl border p-3.5 text-left transition-all active:scale-95",
+                  visibility === "PRIVATE"
+                    ? "border-brand-violet bg-brand-violet/5 ring-1 ring-brand-violet"
+                    : "border-brand-line bg-brand-canvas hover:border-brand-navy/30",
+                )}
+              >
+                <Lock className="size-4 shrink-0 text-brand-violet" />
+                <span className="text-sm font-semibold text-brand-navy">{t.visibilityPrivate}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setVisibility("PUBLIC")}
+                className={cn(
+                  "flex items-center gap-2 rounded-2xl border p-3.5 text-left transition-all active:scale-95",
+                  visibility === "PUBLIC"
+                    ? "border-brand-violet bg-brand-violet/5 ring-1 ring-brand-violet"
+                    : "border-brand-line bg-brand-canvas hover:border-brand-navy/30",
+                )}
+              >
+                <Globe className="size-4 shrink-0 text-brand-slate" />
+                <span className="text-sm font-semibold text-brand-navy">{t.visibilityPublic}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Preferred Payout Round */}
+          <div>
+            <label className="text-sm font-semibold text-brand-navy block mb-1">{t.payoutRound}</label>
+            <p className="text-xs text-brand-slate mb-2">{t.payoutRoundHelp}</p>
+            <div className="flex flex-wrap gap-2">
+              {rounds.map((r) => (
+                <button
+                  type="button"
+                  key={r}
+                  onClick={() => setPayoutRound(r)}
+                  className={cn(
+                    "flex h-9 min-w-10 items-center justify-center rounded-xl border px-3 text-xs font-semibold transition-all active:scale-95",
+                    payoutRound === r
+                      ? "border-brand-violet bg-brand-violet text-brand-white shadow-2xs"
+                      : "border-brand-line bg-brand-canvas text-brand-navy hover:border-brand-navy/30",
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <Button
             type="submit"
+            disabled={isPending}
             className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
           >
-            <Sparkles className="size-4 shrink-0" />
-            <span>{t.submit}</span>
+            {isPending ? (
+              <>
+                <LoaderCircle className="size-4 shrink-0 animate-spin" />
+                <span>{t.creating}</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4 shrink-0" />
+                <span>{t.submit}</span>
+              </>
+            )}
           </Button>
 
-          {created && (
+          {state.error && (
             <div
-              role="status"
-              className="flex items-start gap-3 rounded-2xl bg-brand-mint/40 border border-brand-mint p-4 text-xs font-semibold text-brand-navy animate-in fade-in zoom-in-95"
+              role="alert"
+              className="flex items-start gap-3 rounded-2xl bg-destructive/10 border border-destructive/20 p-4 text-xs font-semibold text-destructive animate-in fade-in zoom-in-95"
             >
-              <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span>{t.created}</span>
+              <span>{state.error}</span>
             </div>
           )}
         </form>

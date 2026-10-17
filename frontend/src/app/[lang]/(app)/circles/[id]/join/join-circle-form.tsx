@@ -19,12 +19,11 @@ type Props = {
   tc: Pick<Dictionary["circle"], "owes" | "collateral" | "grant" | "uncovered" | "threshold" | "eligible" | "seat">
   notCovered: string
 }
-type Field = "wallet" | "seat" | "collateral"
+type Field = "seat" | "collateral"
 
 export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
   const taken = new Set(circle.seats.map((s) => s.payoutRound))
   const free = Array.from({ length: circle.size }, (_, i) => i + 1).filter((n) => !taken.has(n))
-  const [wallet, setWallet] = useState("")
   const [seat, setSeat] = useState<number | null>(free[0] ?? null)
   const [grant, setGrant] = useState<GrantMode>("RECURRING")
   const [collateral, setCollateral] = useState("")
@@ -40,8 +39,6 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
     event.preventDefault()
     const next: Partial<Record<Field, string>> = {}
 
-    const isValidWallet = /^\$[\w.-]+(\/[\w./-]*)?$/.test(wallet.trim()) || wallet.trim().startsWith("https://")
-    if (!isValidWallet) next.wallet = t.errors.wallet
     if (!seat || !free.includes(seat)) next.seat = t.errors.seat
     if (collateral.trim() !== "" && parseWholeUnits(collateral, circle.contribution.assetScale) === null) {
       next.collateral = t.errors.collateral
@@ -70,23 +67,21 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
       {/* Configuration Form Bento Card */}
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
         <form onSubmit={onSubmit} noValidate className="space-y-6">
-          <FormField id="wallet" label={t.wallet} help={t.walletHelp} error={errors.wallet}>
-            <div className="relative">
-              <Wallet className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-brand-slate" />
-              <Input
-                id="wallet"
-                type="text"
-                autoComplete="off"
-                spellCheck={false}
-                value={wallet}
-                onChange={(e) => setWallet(e.target.value)}
-                placeholder={t.walletPlaceholder}
-                aria-invalid={errors.wallet ? true : undefined}
-                aria-describedby={describedBy("wallet", errors.wallet)}
-                className="h-11 rounded-xl pl-10 text-base font-mono"
-              />
+          <div className="rounded-2xl border border-brand-line/80 bg-brand-canvas p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-brand-navy flex items-center gap-1.5">
+                <Wallet className="size-4 text-brand-violet" />
+                <span>{t.wallet}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-mint px-2.5 py-0.5 text-[11px] font-semibold text-brand-navy">
+                <CheckCircle2 className="size-3" />
+                <span>GNAP Verificado</span>
+              </span>
             </div>
-          </FormField>
+            <p className="mt-1 text-xs text-brand-slate leading-relaxed">
+              {t.walletHelp}
+            </p>
+          </div>
 
           {/* Seat Picker Grid with Bento Buttons */}
           <div>

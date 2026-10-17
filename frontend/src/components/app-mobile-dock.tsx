@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { CircleDot, PlusCircle, Compass, ShieldCheck } from "lucide-react"
+import { CircleDot, PlusCircle, Compass, ShieldCheck, UserRound } from "lucide-react"
 import type { Locale } from "@/i18n/config"
 import { cn } from "@/lib/utils"
 
@@ -11,6 +11,7 @@ interface AppMobileDockProps {
   t: {
     circles: string
     create: string
+    account?: string
     appQuickNavAria?: string
     interledger?: string
     safety?: string
@@ -45,6 +46,12 @@ export function AppMobileDock({ locale, t }: AppMobileDockProps) {
       label: t.safety ?? "Seguridad",
       icon: ShieldCheck,
       isActive: false,
+    },
+    {
+      href: `/${locale}/account`,
+      label: t.account ?? "Cuenta",
+      icon: UserRound,
+      isActive: pathname.startsWith(`/${locale}/account`),
     },
   ]
 

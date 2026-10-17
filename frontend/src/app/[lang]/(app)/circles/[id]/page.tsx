@@ -10,6 +10,7 @@ import {
   Coins,
   Lock,
   MapPin,
+  Receipt,
   ShieldCheck,
   Undo2,
   Users,
@@ -20,6 +21,7 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Avatar, PEOPLE } from "@/components/landing/shared"
 import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ShareInviteDialog } from "./share-invite-dialog"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { getCircle, listCircles, listMembers, listReviews } from "@/lib/data"
@@ -45,8 +47,11 @@ export async function generateStaticParams() {
   return circles.map((c) => ({ id: c.id }))
 }
 
-export async function generateMetadata({ params }: PageProps<"/[lang]/circles/[id]">): Promise<Metadata> {
-  const circle = await getCircle((await params).id)
+export async function generateMetadata({ params, searchParams }: PageProps<"/[lang]/circles/[id]">): Promise<Metadata> {
+  const { id } = await params
+  const sp = await searchParams
+  const invite = typeof sp?.invite === "string" ? sp.invite : undefined
+  const circle = await getCircle(id, invite ? { invite } : undefined)
   return { title: circle?.name ?? "OpenCircle" }
 }
 
@@ -60,14 +65,26 @@ const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
   REFUNDED: Undo2,
 }
 
-export default async function CirclePage({ params }: PageProps<"/[lang]/circles/[id]">) {
+export default async function CirclePage({ params, searchParams }: PageProps<"/[lang]/circles/[id]">) {
   const { id } = await params
+  const sp = await searchParams
+  const invite = typeof sp?.invite === "string" ? sp.invite : undefined
   const { locale, t } = await getDictionary()
-  const [circle, members, reviews] = await Promise.all([getCircle(id), listMembers(), listReviews()])
+  const [circle, members, reviews] = await Promise.all([
+    getCircle(id, invite ? { invite } : undefined),
+    listMembers(),
+    listReviews(),
+  ])
   if (!circle) notFound()
 
   const byId = new Map(members.map((m) => [m.id, m]))
-  const nameOf = (memberId: string) => byId.get(memberId)?.name ?? memberId
+  const nameOf = (memberId: string) => {
+    const fromMock = byId.get(memberId)?.name
+    if (fromMock) return fromMock
+    const seat = circle.seats.find((s) => s.memberId === memberId)
+    if (seat?.displayName) return seat.displayName
+    return memberId
+  }
   const money = (v: bigint) => formatAmount(amount(v, circle.contribution), locale)
   const round = currentRound(circle)
   const pot = potFor(circle)
@@ -79,6 +96,9 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://opencircle.co"
+  const inviteQuery = circle.inviteCode ? `?invite=${encodeURIComponent(circle.inviteCode)}` : ""
+  const shareUrl = circle.inviteUrl ?? `${baseUrl}/${locale}/circles/${circle.id}${inviteQuery}`
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -102,12 +122,22 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
                 <Calendar className="size-3 text-brand-slate" aria-hidden="true" />
-                <span>{circle.roundLengthDays}d {locale === "es" ? "por turno" : "per round"}</span>
+                <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
                 <Users className="size-3 text-brand-slate" aria-hidden="true" />
                 <span>{fill(t.circles.members, { count: circle.size })}</span>
               </span>
+              {circle.visibility === "PRIVATE" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-violet/20 bg-brand-violet/10 px-3 py-1 text-xs font-semibold text-brand-violet">
+                  <Lock className="size-3" aria-hidden="true" />
+                  <span>{t.circles.inviteBadge}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-mint/40 bg-brand-mint/20 px-3 py-1 text-xs font-semibold text-brand-navy">
+                  <span>{t.circles.publicBadge}</span>
+                </span>
+              )}
             </div>
 
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-brand-navy sm:text-4xl">
@@ -123,7 +153,8 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
             </div>
           </div>
 
-          <div className="shrink-0">
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <ShareInviteDialog url={shareUrl} circleName={circle.name} t={t.circle} locale={locale} />
             {circle.status === "OPEN" ? (
               <Link
                 href={`/${locale}/circles/${circle.id}/join`}
@@ -385,6 +416,58 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
                 <p className="mt-2 text-xs text-brand-slate">{t.circle.noEngine}</p>
               )}
             </div>
+
+            {/* Pot Payout Receipt Card */}
+            {(round.status === "PAYING_OUT" || round.status === "PAID_OUT" || coverage?.eligible) && (
+              <div className="rounded-[32px] border border-brand-mint/60 bg-brand-mint/10 p-6 sm:p-7 shadow-2xs animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-8 items-center justify-center rounded-full bg-brand-mint text-brand-navy">
+                      <Receipt className="size-4.5" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <h3 className="text-base font-bold text-brand-navy">
+                        {locale === "es" ? "Comprobante de Desembolso del Pozo" : "Pot Payout Receipt"}
+                      </h3>
+                      <p className="text-xs text-brand-slate">
+                        {locale === "es" ? "Liquidación criptográfica vía Open Payments / STREAM" : "Cryptographic settlement via Open Payments / STREAM"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brand-mint px-2.5 py-0.5 text-xs font-semibold text-brand-navy">
+                    <CheckCircle2 className="size-3 text-brand-navy" />
+                    <span>{locale === "es" ? "Verificado" : "Verified"}</span>
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-2xl bg-brand-white p-4 border border-brand-line/60">
+                  <div>
+                    <span className="text-[11px] font-medium text-brand-slate block">
+                      {locale === "es" ? "Pozo Bruto Recaudado" : "Gross Pot Collected"}
+                    </span>
+                    <span className="font-mono text-base font-bold text-brand-navy tabular-nums">
+                      {money(pot)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-brand-slate block">
+                      {locale === "es" ? "Comisión OpenCircle (2%)" : "OpenCircle Fee (2%)"}
+                    </span>
+                    <span className="font-mono text-base font-bold text-brand-slate tabular-nums">
+                      − {money(feeFor(circle))}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-medium text-brand-slate block">
+                      {locale === "es" ? "Desembolso Neto a" : "Net Payout to"} {beneficiaryName}
+                    </span>
+                    <span className="font-mono text-lg font-extrabold text-brand-violet tabular-nums">
+                      {money(payoutFor(circle))}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}

@@ -3,7 +3,9 @@ import "server-only"
 import { z } from "zod"
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 import { createClient } from "@/lib/supabase/server"
-import { apiCircleSchema, testClockSchema, type ApiCircle, type NewCircle, type TestClock } from "@/lib/api/test-clocks"
+import { apiCircleSchema, testClockSchema, CIRCLE_CADENCES, type ApiCircle, type NewCircle, type TestClock } from "@/lib/api/test-clocks"
+
+export type { ApiCircle, NewCircle, TestClock }
 
 /**
  * Server-only client for the Express API. Forwards the signed-in user's
@@ -64,17 +66,24 @@ export interface NewProfile {
 /** Identity fields (document, email) are fixed once the profile exists. */
 export type ProfilePatch = Partial<Pick<NewProfile, "fullName" | "phone" | "dob" | "nationality">>
 
-async function backendFetch<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
+export interface BackendFetchOptions extends RequestInit {
+  auth?: "required" | "optional"
+}
+
+async function backendFetch<T>(path: string, schema: z.ZodType<T>, options: BackendFetchOptions = {}): Promise<T> {
+  const { auth = "required", ...init } = options
   const supabase = await createClient()
   // getSession() reads the cookie without re-verifying it; that's fine here
   // because the API verifies the token itself before trusting it.
   const {
     data: { session },
   } = await supabase.auth.getSession()
-  if (!session) throw new BackendError(401, "UNAUTHORIZED", "Not signed in")
+  if (auth === "required" && !session) throw new BackendError(401, "UNAUTHORIZED", "Not signed in")
 
   const headers = new Headers(init.headers)
-  headers.set("authorization", `Bearer ${session.access_token}`)
+  if (session) {
+    headers.set("authorization", `Bearer ${session.access_token}`)
+  }
   if (init.body !== undefined) headers.set("content-type", "application/json")
 
   const base = backendUrl.safeParse(process.env.BACKEND_API_URL)
@@ -188,3 +197,134 @@ export function joinCircle(id: string, payoutRound: number, invite?: string): Pr
     body: JSON.stringify(invite ? { payoutRound, invite } : { payoutRound }),
   })
 }
+
+const amountDtoSchema = z.object({ value: z.string(), assetCode: z.string(), assetScale: z.int() })
+
+export const circleSummarySchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  city: z.string(),
+  status: z.string(),
+  contribution: amountDtoSchema,
+  size: z.int(),
+  seatsTaken: z.int(),
+  cadence: z.enum(CIRCLE_CADENCES),
+  visibility: z.enum(["PRIVATE", "PUBLIC"]),
+  createdAt: z.string(),
+})
+
+export type ApiCircleSummary = z.infer<typeof circleSummarySchema>
+
+export const savingsSchema = z.object({
+  walletAddress: z.string(),
+  balance: amountDtoSchema,
+  ics: z.number().nullable(),
+})
+
+export type Savings = z.infer<typeof savingsSchema>
+
+export async function getMySavings(): Promise<Savings | null> {
+  try {
+    return await backendFetch("/users/me/savings", savingsSchema)
+  } catch (err) {
+    if (err instanceof BackendError && err.code === "PROFILE_NOT_FOUND") return null
+    throw err
+  }
+}
+
+export function getMyCircles(): Promise<ApiCircleSummary[]> {
+  return backendFetch("/users/me/circles", z.array(circleSummarySchema))
+}
+
+export function listApiCircles(status?: string): Promise<ApiCircleSummary[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : ""
+  return backendFetch(`/circles${query}`, z.array(circleSummarySchema), { auth: "optional" })
+}
+
+export const fullCircleDtoSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  city: z.string(),
+  status: z.enum(["OPEN", "ACTIVE", "COMPLETED"]),
+  contribution: amountDtoSchema,
+  size: z.int(),
+  seatsTaken: z.int(),
+  cadence: z.enum(CIRCLE_CADENCES),
+  visibility: z.enum(["PRIVATE", "PUBLIC"]),
+  createdAt: z.string(),
+  feeBps: z.number(),
+  threshold: amountDtoSchema,
+  grantWeightBps: z.number(),
+  poolWalletAddress: z.string(),
+  startedAt: z.string().nullable(),
+  testClockId: z.string().nullable().optional(),
+  inviteUrl: z.string().nullable().optional(),
+  currentRound: z.number().nullable(),
+  seats: z.array(
+    z.object({
+      memberId: z.uuid(),
+      userId: z.uuid(),
+      displayName: z.string(),
+      payoutRound: z.int(),
+      collateral: amountDtoSchema,
+      grantMode: z.enum(["RECURRING", "PER_ROUND"]).nullable(),
+    }),
+  ),
+  rounds: z.array(
+    z.object({
+      number: z.int(),
+      state: z.string(),
+      beneficiaryMemberId: z.uuid(),
+      startsAt: z.string(),
+      deadline: z.string(),
+      contributions: z.array(
+        z.object({
+          memberId: z.uuid(),
+          status: z.string(),
+        }),
+      ),
+    }),
+  ),
+})
+
+export type FullCircleDto = z.infer<typeof fullCircleDtoSchema>
+
+export function getCircleDetails(id: string, invite?: string): Promise<FullCircleDto> {
+  const query = invite ? `?invite=${encodeURIComponent(invite)}` : ""
+  return backendFetch(`/circles/${encodeURIComponent(id)}${query}`, fullCircleDtoSchema, { auth: "optional" })
+}
+
+export const apiReviewSchema = z.object({
+  id: z.string(),
+  authorId: z.string(),
+  authorName: z.string(),
+  subjectId: z.string(),
+  circleId: z.string(),
+  circleName: z.string(),
+  rating: z.number(),
+  comment: z.string().nullable(),
+  createdAt: z.string(),
+})
+
+export const apiMemberSchema = z.object({
+  id: z.string(),
+  displayName: z.string(),
+  walletAddress: z.string().nullable(),
+  payments: z.object({
+    onTime: z.number(),
+    late: z.number(),
+    missed: z.number(),
+  }),
+  circlesCompleted: z.number(),
+  memberSince: z.string().nullable(),
+  reviews: z.array(apiReviewSchema),
+  circles: z.array(circleSummarySchema),
+})
+
+export type ApiMember = z.infer<typeof apiMemberSchema>
+
+export function getApiMember(id: string): Promise<ApiMember> {
+  return backendFetch(`/members/${encodeURIComponent(id)}`, apiMemberSchema)
+}
+
+
