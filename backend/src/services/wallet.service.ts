@@ -4,17 +4,14 @@ import { uniqueViolation } from "../db/errors";
 import { auditEvents, creditProfiles, users, walletBalances, wallets } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { icsFromStored } from "./credit/credit-score";
+import type { AmountDto } from "./money";
+
+// Monetary amount: integer in the asset's minor unit, serialized as a string (see money.ts).
+export type { AmountDto };
 
 export interface WalletDto {
   id: string;
   addressUrl: string;
-  assetCode: string;
-  assetScale: number;
-}
-
-// Monetary amount: integer in the asset's minor unit, serialized as a string.
-export interface AmountDto {
-  value: string;
   assetCode: string;
   assetScale: number;
 }
