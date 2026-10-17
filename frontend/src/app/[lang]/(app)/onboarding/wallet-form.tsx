@@ -12,13 +12,16 @@ import { connectWallet, type WalletState } from "./actions"
 
 type Props = {
   locale: Locale
-  t: Dictionary["onboarding"]
+  t: Pick<Dictionary["onboarding"], "wallet" | "walletHelp" | "walletPlaceholder" | "connect" | "connecting" | "errors">
+  /** Where the consent callback lands afterwards (an in-app path), or null for the default. */
+  returnPath: string | null
   /** Error from a failed consent round trip (e.g. the user declined in their wallet). */
   initialError: WalletState["error"]
 }
 
-export function WalletForm({ locale, t, initialError }: Props) {
-  const [state, action, pending] = useActionState<WalletState, FormData>(connectWallet.bind(null, locale), {
+/** Links the user's own Open Payments wallet; used in onboarding and on the account page. */
+export function WalletForm({ locale, t, returnPath, initialError }: Props) {
+  const [state, action, pending] = useActionState<WalletState, FormData>(connectWallet.bind(null, locale, returnPath), {
     error: initialError,
   })
   const error = state.error ? t.errors[state.error] : undefined

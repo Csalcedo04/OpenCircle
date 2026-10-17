@@ -14,13 +14,20 @@ https://wallet.interledger-test.dev that is **not** OpenCircle's own.
 - [ ] Optional: open the same link on another device. With the `token_hash` email template it
       signs in there too; with Supabase's default template it shows "enlace no válido".
 
-## 2. Onboarding and wallet consent (Interledger test network)
-- [ ] Step 1: fill in name, document, birth date, nationality, phone → "Paso 2 de 2".
-- [ ] Step 2: enter your test wallet (`$ilp.interledger-test.dev/<you>`) → the wallet's consent page opens.
+## 2a. Onboarding with an OpenCircle account (automated by `internal-account.spec.ts`)
+- [ ] Step 1: fill in name, document, birth date, nationality, phone → "Paso 2 de 2 · Cómo pagarás".
+- [ ] "Abrir mi cuenta OpenCircle" → `/es/circles`; `GET /api/users/me` shows `internalAccount`
+      with the balance from the backend's `DEMO_SEED_VALUE` (a `SEED` movement on `/es/account`).
+
+## 2b. Onboarding with your own wallet (Interledger test network)
+- [ ] Step 2: "Conectar mi billetera" → enter your test wallet (`$ilp.interledger-test.dev/<you>`)
+      → the wallet's consent page opens.
 - [ ] It names OpenCircle and asks for **outgoing payments and quotes, with no amount limit**.
 - [ ] **Approve** → back on OpenCircle at `/es/circles`; `GET /api/users/me` shows your `walletAddress`.
-- [ ] Repeat with a second account and **decline** → back on onboarding with
+- [ ] Repeat with a second account and **decline** → back on onboarding's wallet step with
       "La conexión con la billetera no fue aprobada".
+- [ ] From `/es/account`, a user with only an OpenCircle account links a wallet in the wallet card;
+      after approving, they land back on `/es/account` with the wallet shown as connected.
 
 ## 3. Identity verification (Didit)
 - [ ] `/es/circles/new` → "Verifica tu identidad" → "Verificar mi identidad" opens `verify.didit.me`.

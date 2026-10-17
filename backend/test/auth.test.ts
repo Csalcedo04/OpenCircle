@@ -26,6 +26,7 @@ before(async () => {
           phone: null,
           dob: null,
           walletAddress: null,
+          internalAccount: null,
         }),
         createProfile: async () => {
           throw new Error("not used");

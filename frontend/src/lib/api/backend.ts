@@ -433,6 +433,46 @@ export function getMyCircles(): Promise<CircleSummaryDto[]> {
   return backendFetch("/users/me/circles", z.array(circleSummarySchema))
 }
 
+// ── OpenCircle internal account: a ledger balance in OpenCircle's wallet asset ─
+
+export const MOVEMENT_KINDS = ["SEED", "DEPOSIT", "CONTRIBUTION"] as const
+export const SYSTEM_ACCOUNT_CODES = ["DEMO_SEED", "OP_WALLET"] as const
+
+const counterpartySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("SYSTEM"), code: z.enum(SYSTEM_ACCOUNT_CODES) }),
+  z.object({ kind: z.literal("CIRCLE_POOL"), circleId: z.uuid() }),
+  z.object({ kind: z.literal("USER") }),
+])
+
+export const movementSchema = z.object({
+  id: z.uuid(),
+  kind: z.enum(MOVEMENT_KINDS),
+  direction: z.enum(["IN", "OUT"]),
+  amount: amountSchema,
+  counterparty: counterpartySchema,
+  createdAt: z.string(),
+})
+
+export const internalAccountSchema = z.object({ id: z.uuid(), balance: amountSchema, createdAt: z.string() })
+
+export type InternalAccount = z.infer<typeof internalAccountSchema>
+export type Movement = z.infer<typeof movementSchema>
+
+/** Opens the caller's OpenCircle account (seeded with demo funds when the API is configured to). */
+export function createMyInternalAccount(): Promise<InternalAccount> {
+  return backendFetch("/users/me/internal-account", internalAccountSchema, { method: "POST" })
+}
+
+/** The caller's OpenCircle account, or null if they never opened one. */
+export async function getMyInternalAccount(): Promise<InternalAccount | null> {
+  try {
+    return await backendFetch("/users/me/internal-account", internalAccountSchema)
+  } catch (err) {
+    if (err instanceof BackendError && err.code === "INTERNAL_ACCOUNT_NOT_FOUND") return null
+    throw err
+  }
+}
+
 // ── The account page: one read of the user's money, circles and record ─────
 
 const contributionStatusSchema = z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])
@@ -447,6 +487,8 @@ const dashboardSchema = z.object({
       authorization: z.object({ status: z.enum(["ACTIVE", "REVOKED", "NONE"]), since: isoDate.nullable() }),
     })
     .nullable(),
+  // Absent on API deploys that predate internal accounts.
+  internalAccount: internalAccountSchema.extend({ movements: z.array(movementSchema) }).nullable().default(null),
   ics: z.number().nullable(),
   record: recordSchema,
   contributed: z.array(amountSchema),

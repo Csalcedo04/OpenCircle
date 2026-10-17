@@ -22,10 +22,13 @@ import {
   Wallet,
   type LucideIcon,
 } from "lucide-react"
+import { CreateAccountForm } from "@/app/[lang]/(app)/onboarding/create-account-form"
+import { WalletForm } from "@/app/[lang]/(app)/onboarding/wallet-form"
 import { CreditPassportModal } from "@/components/credit-passport-modal"
 import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
-import type { Activity, Dashboard, DashboardCircle, PaymentStatus, Profile } from "@/lib/api/backend"
+import type { Activity, Dashboard, DashboardCircle, Movement, PaymentStatus, Profile } from "@/lib/api/backend"
+import type { ProfileErrorKey } from "@/lib/flows/profile-form"
 import { flagOf } from "@/lib/countries"
 import { amount, formatAmount, percent, toBig } from "@/lib/domain/money"
 import {
@@ -701,10 +704,21 @@ function WalletRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-export function ConnectedWalletCard({ data, t, locale }: { data: Dashboard; t: T; locale: Locale }) {
+type WalletCardProps = {
+  data: Dashboard
+  t: T
+  /** The wallet form's copy lives with onboarding, where the same form is used. */
+  onboarding: Dictionary["onboarding"]
+  /** From `?consent=` after a failed link attempt that started on this page. */
+  consentError: ProfileErrorKey | null
+  locale: Locale
+}
+
+export function ConnectedWalletCard({ data, t, onboarding, consentError, locale }: WalletCardProps) {
   const w = t.wallet
   const wallet = data.wallet
-  const consentHref = `/${locale}/onboarding?edit=wallet`
+  // Linking (or re-authorizing) happens right here; the consent callback returns to this page.
+  const returnPath = `/${locale}/account`
 
   if (!wallet) {
     return (
@@ -714,9 +728,9 @@ export function ConnectedWalletCard({ data, t, locale }: { data: Dashboard; t: T
         </SectionLabel>
         <p className="mt-5 text-xl font-semibold text-brand-navy">{w.noneTitle}</p>
         <p className="mt-1 text-sm text-brand-slate">{w.noneBody}</p>
-        <Link href={consentHref} className={cn(primaryLink, "mt-5")}>
-          {w.link}
-        </Link>
+        <div className="mt-5">
+          <WalletForm locale={locale} t={onboarding} returnPath={returnPath} initialError={consentError} />
+        </div>
       </section>
     )
   }
@@ -762,10 +776,98 @@ export function ConnectedWalletCard({ data, t, locale }: { data: Dashboard; t: T
 
       <p className="mt-3 text-xs leading-relaxed text-brand-slate">{w.authHelp}</p>
       <p className="mt-1 text-xs leading-relaxed text-brand-slate">{w.oneWallet}</p>
-      <Link href={consentHref} className={cn(authorized ? secondaryLink : primaryLink, "mt-5")}>
-        <KeyRound className="size-4" aria-hidden="true" />
-        {authorized ? w.renew : w.authorize}
-      </Link>
+      <details className="group mt-5" open={consentError !== null}>
+        <summary className={cn(authorized ? secondaryLink : primaryLink, "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
+          <KeyRound className="size-4" aria-hidden="true" />
+          {authorized ? w.renew : w.authorize}
+          <ChevronDown className="size-4 transition-transform group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <div className="mt-4">
+          <WalletForm locale={locale} t={onboarding} returnPath={returnPath} initialError={consentError} />
+        </div>
+      </details>
+    </section>
+  )
+}
+
+// ── OpenCircle internal account ─────────────────────────────────────────────
+
+function counterpartyLabel(movement: Movement, i: T["internal"]): string {
+  const cp = movement.counterparty
+  return i.counterparties[cp.kind === "SYSTEM" ? cp.code : cp.kind]
+}
+
+const MOVEMENT_ROWS = 6
+
+export function InternalAccountCard({
+  data,
+  t,
+  onboarding,
+  locale,
+}: {
+  data: Dashboard
+  t: T
+  onboarding: Dictionary["onboarding"]
+  locale: Locale
+}) {
+  const i = t.internal
+  const account = data.internalAccount
+
+  if (!account) {
+    return (
+      <section id="internal-account" aria-labelledby="internal-account-title" className={cn(card, "scroll-mt-24 lg:col-span-5")}>
+        <SectionLabel icon={Coins}>
+          <span id="internal-account-title">{i.title}</span>
+        </SectionLabel>
+        <p className="mt-5 text-xl font-semibold text-brand-navy">{i.noneTitle}</p>
+        <p className="mt-1 text-sm text-brand-slate">{i.noneBody}</p>
+        <div className="mt-5">
+          <CreateAccountForm locale={locale} returnPath={`/${locale}/account`} t={onboarding} />
+        </div>
+      </section>
+    )
+  }
+
+  return (
+    <section id="internal-account" aria-labelledby="internal-account-title" className={cn(card, "scroll-mt-24 lg:col-span-5")}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SectionLabel icon={Coins}>
+          <span id="internal-account-title">{i.title}</span>
+        </SectionLabel>
+        <span className={cn(chip, "bg-brand-mist text-brand-navy")}>
+          <FlaskConical className="size-3.5" aria-hidden="true" />
+          {t.demoBadge}
+        </span>
+      </div>
+
+      <p className="mt-5 text-xs font-medium text-brand-slate">{i.balance}</p>
+      <p className="mt-1 text-3xl font-semibold tracking-[-0.03em] text-brand-navy tabular-nums">{formatAmount(account.balance, locale)}</p>
+      <p className="mt-2 text-xs text-brand-slate">
+        {i.idLabel} · <code className="font-mono font-semibold text-brand-navy">{account.id.slice(0, 8).toUpperCase()}</code>
+      </p>
+      <p className="mt-3 text-xs leading-relaxed text-brand-slate">{i.custody}</p>
+
+      <h3 className="mt-6 text-xs font-semibold uppercase tracking-[0.08em] text-brand-slate">{i.movementsTitle}</h3>
+      {account.movements.length === 0 ? (
+        <p className="mt-2 text-sm text-brand-slate">{i.movementsEmpty}</p>
+      ) : (
+        <ol className="mt-2 divide-y divide-brand-line">
+          {account.movements.slice(0, MOVEMENT_ROWS).map((m) => (
+            <li key={m.id} className="flex items-center justify-between gap-4 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-brand-navy">{i.kinds[m.kind]}</p>
+                <p className="truncate text-xs text-brand-slate">
+                  {counterpartyLabel(m, i)} · {formatDate(m.createdAt, locale)}
+                </p>
+              </div>
+              <span className={cn("shrink-0 text-sm font-semibold tabular-nums", m.direction === "IN" ? "text-brand-navy" : "text-brand-slate")}>
+                {m.direction === "IN" ? "+" : "−"}
+                {formatAmount(m.amount, locale)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   )
 }

@@ -2,10 +2,11 @@ import { and, eq, exists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
-import { circleApplications, circleInvites, circleMembers, creditProfiles, documentType, friendships, users, wallets } from "../db/schema";
+import { circleApplications, circleInvites, circleMembers, creditProfiles, documentType, friendships, ledgerAccounts, users, wallets } from "../db/schema";
 import type { Tx } from "./wallet.service";
 import { AppError } from "../errors/app-error";
 import { icsFromStored } from "./credit/credit-score";
+import type { AmountDto } from "./money";
 
 export const DOCUMENT_TYPES = documentType.enumValues;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
@@ -34,13 +35,17 @@ export interface ProfileDto {
   fullName: string | null;
   phone: string | null;
   dob: string | null;
+  /** External Open Payments wallet, once linked. */
   walletAddress: string | null;
+  /** OpenCircle internal account, once created. A user is onboarded with either or both. */
+  internalAccount: { id: string; balance: AmountDto } | null;
 }
 
 // What other members see about an applicant to a savings circle: no contact or identity data.
 export interface PublicProfileDto {
   fullName: string | null;
-  walletAddress: string;
+  /** Null for members who pay from their OpenCircle account and never linked a wallet. */
+  walletAddress: string | null;
   // Payment-reliability score (ICS), 0..100; null until it is first computed.
   ics: number | null;
 }
@@ -54,7 +59,7 @@ export const publicProfileColumns = {
   score: creditProfiles.internalCreditScore,
 };
 
-export const toPublicProfile = (row: { fullName: string | null; walletAddress: string; score: number | null }): PublicProfileDto => ({
+export const toPublicProfile = (row: { fullName: string | null; walletAddress: string | null; score: number | null }): PublicProfileDto => ({
   fullName: row.fullName,
   walletAddress: row.walletAddress,
   ics: icsFromStored(row.score),
@@ -138,12 +143,25 @@ export function createUserService(db: Db) {
         phone: users.phone,
         dob: users.dob,
         walletAddress: wallets.addressUrl,
+        accountId: ledgerAccounts.id,
+        accountBalance: ledgerAccounts.balance,
+        accountAssetCode: ledgerAccounts.assetCode,
+        accountAssetScale: ledgerAccounts.assetScale,
       })
       .from(users)
       .leftJoin(wallets, eq(users.opWallet, wallets.id))
+      .leftJoin(ledgerAccounts, eq(ledgerAccounts.ownerUserId, users.id))
       .where(eq(users.id, id))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    const { accountId, accountBalance, accountAssetCode, accountAssetScale, ...profile } = row;
+    return {
+      ...profile,
+      internalAccount:
+        accountId !== null && accountBalance !== null && accountAssetCode !== null && accountAssetScale !== null
+          ? { id: accountId, balance: { value: accountBalance.toString(), assetCode: accountAssetCode, assetScale: accountAssetScale } }
+          : null,
+    };
   }
 
   async function getProfile(id: string): Promise<ProfileDto> {
@@ -155,14 +173,13 @@ export function createUserService(db: Db) {
   /**
    * Visible only to the user themselves, to members of a circle they share, and to members
    * of a circle the user has a pending application to. Anyone else gets the same 404 as for
-   * an unknown user. Users without a linked wallet have no ICS and cannot apply, so they are
-   * not found either.
+   * an unknown user. Members who pay from their OpenCircle account may have no wallet.
    */
   async function getPublicProfile(viewerId: string, lookup: PublicProfileLookup): Promise<PublicProfileDto> {
     const [row] = await db
       .select(publicProfileColumns)
       .from(users)
-      .innerJoin(wallets, eq(users.opWallet, wallets.id))
+      .leftJoin(wallets, eq(users.opWallet, wallets.id))
       .leftJoin(creditProfiles, eq(creditProfiles.walletId, wallets.id))
       .where(
         and(

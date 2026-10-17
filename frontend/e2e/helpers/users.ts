@@ -52,6 +52,8 @@ export async function signIn(
 export interface SeedOptions {
   /** Link a test wallet, as completed wallet consent would. */
   wallet?: boolean
+  /** Open an OpenCircle internal account (a ledger row), as the onboarding button would; `balance` in minor units. */
+  internalAccount?: boolean | { balance: string }
   /** Didit status of the user's latest KYC session. */
   kyc?: "Approved" | "In Progress" | "In Review" | "Declined" | "Not Started"
 }
@@ -83,6 +85,14 @@ export async function seedProfile(user: TestUser, options: SeedOptions = {}): Pr
     )
     if (!wallet) throw new Error("insert wallet: no row returned")
     must(await db.from("users").update({ op_wallet: wallet.id }).eq("id", user.id), "link wallet")
+  }
+  if (options.internalAccount) {
+    // A balance without a transfer behind it is fine for UI tests; the API's own suite checks the ledger.
+    const balance = typeof options.internalAccount === "object" ? options.internalAccount.balance : "0"
+    must(
+      await db.from("ledger_accounts").insert({ kind: "USER", owner_user_id: user.id, asset_code: "COP", asset_scale: 2, balance }),
+      "insert internal account",
+    )
   }
   if (options.kyc) {
     must(await db.from("kyc_verifications").insert({ user_id: user.id, session_id: randomUUID(), status: options.kyc }), "insert kyc")
@@ -230,10 +240,34 @@ export async function deleteTestUser(user: TestUser): Promise<void> {
     must(await db.from(table).delete().eq("user_id", user.id), `delete ${table}`)
   }
   if (walletId) must(await db.from("audit_events").delete().eq("wallet_id", walletId), "delete audit events")
+  await deleteInternalAccount(user)
   must(await db.from("users").delete().eq("id", user.id), "delete profile")
   if (walletId) must(await db.from("wallets").delete().eq("id", walletId), "delete wallet")
   const { error } = await db.auth.admin.deleteUser(user.id)
   if (error) throw new Error(`delete auth user: ${error.message}`)
+}
+
+/** Removes the user's internal account with its transfers and audit rows (SYSTEM counterparts stay). */
+async function deleteInternalAccount(user: TestUser): Promise<void> {
+  const db = admin()
+  const account = (await db.from("ledger_accounts").select("id").eq("owner_user_id", user.id).maybeSingle()).data as { id: string } | null
+  if (!account) return
+  const transfers = must(
+    await db.from("ledger_transfers").select("idempotency_key").or(`from_account_id.eq.${account.id},to_account_id.eq.${account.id}`),
+    "read transfers",
+  ) as { idempotency_key: string }[]
+  const auditKeys = transfers.flatMap((t) => [`ledger.debit:${t.idempotency_key}`, `ledger.credit:${t.idempotency_key}`])
+  if (auditKeys.length > 0) must(await db.from("audit_events").delete().in("external_id", auditKeys), "delete transfer audit")
+  must(await db.from("audit_events").delete().eq("account_id", account.id), "delete account audit")
+  must(await db.from("account_deposits").delete().eq("account_id", account.id), "delete deposits")
+  must(await db.from("ledger_transfers").delete().or(`from_account_id.eq.${account.id},to_account_id.eq.${account.id}`), "delete transfers")
+  must(await db.from("ledger_accounts").delete().eq("id", account.id), "delete internal account")
+}
+
+/** The user's internal account as stored, for assertions. */
+export async function storedInternalAccount(user: TestUser): Promise<Record<string, unknown> | null> {
+  const { data } = await admin().from("ledger_accounts").select("*").eq("owner_user_id", user.id).maybeSingle()
+  return data as Record<string, unknown> | null
 }
 
 /** The profile as stored, for assertions. */

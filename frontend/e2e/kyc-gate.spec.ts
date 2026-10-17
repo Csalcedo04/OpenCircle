@@ -3,7 +3,7 @@ import { seedCircle, seedProfile, signIn } from "./helpers/users"
 
 // Creating or joining a circle: signed in → onboarded → KYC approved → form.
 test.describe("KYC gate on create and join", () => {
-  test("a signed-in user without a wallet is sent to finish onboarding", async ({ page, user }) => {
+  test("a signed-in user without a funding source is sent to finish onboarding", async ({ page, user }) => {
     await seedProfile(user)
     await signIn(page, user)
     await page.goto("/es/circles/new")
@@ -19,6 +19,21 @@ test.describe("KYC gate on create and join", () => {
     await expect(page.getByRole("heading", { name: "Verifica tu identidad" })).toBeVisible()
     await expect(page.getByRole("button", { name: "Verificar mi identidad" })).toBeVisible()
     await expect(page.getByLabel("Nombre del círculo")).toHaveCount(0)
+  })
+
+  test("an OpenCircle account counts as onboarded for the gate", async ({ page, user }) => {
+    await seedProfile(user, { internalAccount: true })
+    await signIn(page, user, { lands: "circles" })
+    await page.goto("/es/circles/new")
+    await expect(page.getByRole("heading", { name: "Verifica tu identidad" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Verificar mi identidad" })).toBeVisible()
+  })
+
+  test("approved with only an OpenCircle account → the create form appears", async ({ page, user }) => {
+    await seedProfile(user, { internalAccount: true, kyc: "Approved" })
+    await signIn(page, user, { lands: "circles" })
+    await page.goto("/es/circles/new")
+    await expect(page.getByLabel("Nombre del círculo")).toBeVisible()
   })
 
   test("verification in review → a waiting message, no button", async ({ page, user, newUser }) => {

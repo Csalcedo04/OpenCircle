@@ -6,6 +6,7 @@ import { MyInvitesCard } from "@/components/invites/my-invites-card"
 import { getMyDashboard, getMyKyc, getMyProfile, isBackendUnavailable, isFeatureUnavailable } from "@/lib/api/backend"
 import { getMyInvitations } from "@/lib/api/invites"
 import { nextAction } from "@/lib/flows/account-dashboard"
+import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { createClient } from "@/lib/supabase/server"
 import {
   AccountHeader,
@@ -14,6 +15,7 @@ import {
   ConnectedWalletCard,
   DemoNotice,
   FinancialOverview,
+  InternalAccountCard,
   MyCirclesSummary,
   NextActionCard,
   PersonalProfileCard,
@@ -26,11 +28,13 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t.account.title }
 }
 
-export default async function AccountPage() {
+export default async function AccountPage({ searchParams }: PageProps<"/[lang]/account">) {
   const { locale, t } = await getDictionary()
   const supabase = await createClient()
   const { data } = await supabase.auth.getClaims()
   if (!data?.claims) redirect(`/${locale}/login`)
+  // A failed wallet link that started here comes back with `?consent=<reason>`.
+  const consentError = consentMessageKey((await searchParams).consent)
 
   let loaded
   try {
@@ -82,7 +86,8 @@ export default async function AccountPage() {
           <CircleFundingProgress data={dashboard} t={a} locale={locale} />
         </div>
 
-        <ConnectedWalletCard data={dashboard} t={a} locale={locale} />
+        <InternalAccountCard data={dashboard} t={a} onboarding={t.onboarding} locale={locale} />
+        <ConnectedWalletCard data={dashboard} t={a} onboarding={t.onboarding} consentError={consentError} locale={locale} />
         <PersonalProfileCard profile={profile} email={email} kycApproved={kycApproved} t={a} locale={locale} />
       </div>
 

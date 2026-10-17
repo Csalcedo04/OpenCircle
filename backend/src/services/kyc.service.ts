@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import type { Db } from "../db/client";
-import { auditEvents, kycVerifications, users } from "../db/schema";
+import { auditEvents, kycVerifications, ledgerAccounts, users } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { FINAL_KYC_STATUSES, type DiditClient, type KycStatus } from "./didit/client";
 import type { DocumentType } from "./user.service";
@@ -41,9 +41,23 @@ export function createKycService({ db, didit, frontendUrl }: { db: Db; didit: Di
     return row ?? null;
   }
 
+  // The user's funding sources: an external wallet, an internal account, or both.
+  async function funding(userId: string): Promise<{ wallet: string | null; account: string | null } | null> {
+    const [row] = await db
+      .select({ wallet: users.opWallet, account: ledgerAccounts.id })
+      .from(users)
+      .leftJoin(ledgerAccounts, eq(ledgerAccounts.ownerUserId, users.id))
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  // Audited against the wallet when there is one, else against the internal account.
   async function audit(userId: string, status: KycStatus): Promise<void> {
-    const [user] = await db.select({ wallet: users.opWallet }).from(users).where(eq(users.id, userId)).limit(1);
-    if (user?.wallet) await db.insert(auditEvents).values({ walletId: user.wallet, eventType: auditType(status) });
+    const sources = await funding(userId);
+    if (!sources) return;
+    if (sources.wallet) await db.insert(auditEvents).values({ walletId: sources.wallet, eventType: auditType(status) });
+    else if (sources.account) await db.insert(auditEvents).values({ accountId: sources.account, eventType: auditType(status) });
   }
 
   // Webhooks can arrive late or out of order: a final status only moves to Kyc Expired.
@@ -82,14 +96,19 @@ export function createKycService({ db, didit, frontendUrl }: { db: Db; didit: Di
       const [user] = await db
         .select({
           wallet: users.opWallet,
+          account: ledgerAccounts.id,
           documentType: users.documentType,
           documentNumber: users.documentNumber,
           dob: users.dob,
         })
         .from(users)
+        .leftJoin(ledgerAccounts, eq(ledgerAccounts.ownerUserId, users.id))
         .where(eq(users.id, userId))
         .limit(1);
-      if (!user?.wallet) throw new AppError(409, "ONBOARDING_REQUIRED", "Finish onboarding before verifying your identity");
+      // Onboarded means a way to pay contributions: an internal account or a linked wallet.
+      if (!user || (!user.wallet && !user.account)) {
+        throw new AppError(409, "ONBOARDING_REQUIRED", "Finish onboarding before verifying your identity");
+      }
       if ((await getStatus(userId)).approved) throw new AppError(409, "KYC_ALREADY_APPROVED", "Identity already verified");
 
       const callback = new URL(`/${locale}/kyc/callback`, frontendUrl);

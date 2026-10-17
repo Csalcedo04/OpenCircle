@@ -60,21 +60,21 @@ const landing = {
   },
   trust: [
     "Transferencias punto a punto por Interledger",
-    "Autorizas cada débito desde tu billetera (GNAP)",
+    "Pagas desde tu cuenta OpenCircle o autorizas cada débito en tu billetera (GNAP)",
     "Liquidación confirmada con firmas de Rafiki",
   ],
   benefits: {
     title: "Ahorro colectivo con reglas claras y cuentas exactas.",
-    lead: "Sin comprobantes por chat, sin hojas de cálculo manuales y sin intermediarios que retengan el dinero.",
+    lead: "Sin comprobantes por chat, sin hojas de cálculo manuales y con un libro contable que muestra cada movimiento.",
     kicker: "Estándares abiertos.",
     cards: [
       {
-        title: "Tu billetera habitual, sin exclusividades",
-        body: "Usa cualquier billetera compatible con Open Payments ($billetera/usuario). No necesitas abrir otra cuenta bancaria ni descargar una app propietaria.",
+        title: "Empieza sin billetera, o trae la tuya",
+        body: "Abre una cuenta OpenCircle con un clic, o conecta cualquier billetera compatible con Open Payments ($billetera/usuario). Nada propietario que instalar.",
       },
       {
-        title: "Tú apruebas cada cobro",
-        body: "Cada cuota pide tu autorización antes de moverse, con un tope máximo que nadie puede cambiar. Nada sale de tu cuenta a escondidas.",
+        title: "Tú controlas cada cobro",
+        body: "Desde tu billetera, cada cuota se cobra bajo la autorización y el tope que tú fijaste. Desde tu cuenta OpenCircle, cada aporte queda registrado y lo ves al instante.",
       },
       {
         title: "Seguimiento abierto en el ledger",
@@ -106,16 +106,16 @@ const landing = {
     lead: "El proceso paso a paso, desde que te unes hasta que recibes tu turno.",
     steps: [
       {
-        title: "Ingresa tu Wallet Address",
-        body: "Escribe tu identificador ($billetera.dev/usuario). Funciona como un correo electrónico para dinero, sin compartir números de tarjeta ni cuentas privadas.",
+        title: "Abre tu cuenta OpenCircle o conecta tu billetera",
+        body: "Un clic abre tu cuenta con fondos de prueba. Si ya tienes una billetera Open Payments ($billetera.dev/usuario), conéctala: funciona como un correo electrónico para dinero.",
       },
       {
         title: "Acuerda la cuota y los turnos",
         body: "El grupo fija el monto de cada aporte, la frecuencia de las rondas y el orden en que cada miembro recibe el pozo acumulado.",
       },
       {
-        title: "Autoriza tu cuota en tu billetera",
-        body: "Al llegar el ciclo de pago, tu billetera te muestra una solicitud GNAP con el monto pactado para que des el visto bueno.",
+        title: "Tu cuota sale sola en cada ciclo",
+        body: "Al llegar el ciclo, el aporte se descuenta de tu cuenta OpenCircle o se cobra en tu billetera con la autorización GNAP que diste.",
       },
       {
         title: "El conector liquida en segundos",
@@ -156,14 +156,14 @@ const landing = {
   },
   safety: {
     eyebrow: "Auditoría & Criptografía",
-    title: "Tus fondos nunca pasan por nuestras manos",
-    lead: "El dinero viaja de billetera a billetera mediante estándares criptográficos, sin cuentas intermedias ni retenciones sorpresa.",
+    title: "Cada peso de prueba, trazable",
+    lead: "Los saldos de la demo viven en un libro contable auditable: cada movimiento tiene contraparte, y cada pago externo, una prueba verificable en la red.",
     contractTitle: "Contrato de Seguridad Inmutable",
     disclaimer: "Demostración técnica en testnet. OpenCircle utiliza estándares abiertos de Open Payments y liquidación simulada a través de Rafiki.",
     items: [
       {
-        title: "Sin custodia intermedia",
-        body: "OpenCircle no guarda tu saldo ni administra cuentas puente. Los pagos se mueven directo entre las billeteras de los participantes mediante Interledger.",
+        title: "Custodia transparente en la demo",
+        body: "OpenCircle guarda los saldos de prueba en un libro contable interno, con auditoría por movimiento. Si prefieres conservar la custodia, conecta tu propia billetera y paga desde ella.",
       },
       {
         title: "Pagos con prueba criptográfica",
@@ -181,7 +181,7 @@ const landing = {
     specs: [
       {
         protocol: "Interledger STREAM",
-        detail: "Cero retención de saldos; transferencias punto a punto entre conectores.",
+        detail: "Transferencias punto a punto entre conectores para depósitos y pagos externos.",
       },
       {
         protocol: "HMAC SHA-256",
@@ -250,7 +250,7 @@ const landing = {
   },
   faq: {
     title: "¿Tienes dudas sobre OpenCircle?",
-    lead: "Respuestas directas sobre la arquitectura de Open Payments, custodia descentralizada y liquidación multilateral en Rafiki.",
+    lead: "Respuestas directas sobre la arquitectura de Open Payments, el modelo híbrido de custodia y la liquidación multilateral en Rafiki.",
     exploreAction: "Ver desglose técnico y protocolo",
     modalBadge: "Protocolo & Arquitectura",
     modalClose: "Cerrar",
@@ -270,12 +270,12 @@ const landing = {
       {
         id: "custody",
         q: "¿Quién guarda el dinero?",
-        a: "OpenCircle no tiene cuentas donde retenga fondos de usuarios. El dinero permanece en las billeteras de cada persona y viaja directamente entre ellas cuando se completa una ronda.",
-        tag: "Custodia No Centralizada",
-        summary: "Arquitectura descentralizada donde cada participante conserva la custodia de sus fondos en su propio proveedor de cuenta hasta el momento exacto del débito.",
-        bullet1: "OpenCircle nunca retiene claves privadas ni fondos de los usuarios",
-        bullet2: "Las transferencias se ejecutan directamente entre los nodos Rafiki de las billeteras",
-        bullet3: "Cada débito requiere consentimiento explícito vía GNAP",
+        a: "Tú eliges. Con una cuenta OpenCircle, el saldo de prueba lo guarda OpenCircle en un libro contable auditado, respaldado por su billetera en la red de pruebas. Con tu propia billetera Open Payments, el dinero no sale de ella hasta cada cobro autorizado.",
+        tag: "Custodia híbrida (demo)",
+        summary: "Cuentas internas en un libro contable con origen y destino por movimiento, o custodia propia en tu billetera. En producción, una entidad financiera autorizada custodiaría los fondos.",
+        bullet1: "OpenCircle nunca retiene claves privadas de las billeteras externas",
+        bullet2: "Cada movimiento interno tiene origen, destino e identificador único",
+        bullet3: "Cada débito desde una billetera requiere consentimiento explícito vía GNAP",
         technicalNote: "La liquidación multilateral se orquesta mediante paquetes STREAM que garantizan atomicidad: o el paquete se liquida por completo o se cancela sin pérdidas.",
       },
       {
@@ -349,7 +349,7 @@ const landing = {
     demo: "Explorar demo",
     privacy: "Privacidad",
     terms: "Términos",
-    disclosure: "OpenCircle es un prototipo técnico sobre Open Payments y Rafiki. Opera con fondos simulados en testnet y no custodia dinero real.",
+    disclosure: "OpenCircle es un prototipo técnico sobre Open Payments y Rafiki. Opera con fondos simulados en testnet y guarda únicamente saldos de prueba.",
     source: "Código en GitHub",
   },
 }

@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
-import { CheckCircle2, User, Wallet } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Coins, User, Wallet } from "lucide-react"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { ServiceUnavailable } from "@/components/service-unavailable"
@@ -12,6 +12,7 @@ import { isOnboarded, onboardingStep } from "@/lib/flows/onboarding"
 import { consentMessageKey } from "@/lib/flows/wallet-consent"
 import { RETURN_PATH_COOKIE, isInAppPath } from "@/lib/return-path"
 import { createClient } from "@/lib/supabase/server"
+import { FundingChoice } from "./funding-choice"
 import { ProfileForm } from "./profile-form"
 import { Stepper } from "./stepper"
 import { WalletForm } from "./wallet-form"
@@ -47,31 +48,32 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
     redirect(isInAppPath(next) ? next : `/${locale}/circles`)
   }
 
-  const { consent, edit } = await searchParams
+  const { consent, edit, source } = await searchParams
   const step = onboardingStep(profile, edit)
   const consentError = consentMessageKey(consent)
+  // Step 2 is a choice; `?source=wallet` (or coming back from a failed consent) shows the wallet form.
+  const walletStep = step === 2 && (source === "wallet" || consentError !== null)
   const o = t.onboarding
+  const title = step === 1 ? o.profileTitle : walletStep ? o.walletTitle : o.fundingTitle
+  const lead = step === 1 ? o.lead : walletStep ? o.walletLead : o.fundingLead
+  const StepIcon = step === 1 ? User : walletStep ? Wallet : Coins
 
   return (
     <div className="mx-auto max-w-xl px-4 py-10 sm:px-6 sm:py-14">
       {/* Progress: fills on arrival, honours reduced motion, marks the current step for screen readers. */}
       <div className="mb-8">
-        <Stepper current={step} labels={[o.profileTitle, o.walletTitle]} stepText={o.step} />
+        <Stepper current={step} labels={[o.profileTitle, o.fundingTitle]} stepText={o.step} />
       </div>
 
       {/* Main Bento Card */}
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
         <div className="flex items-center gap-2.5">
           <span className="flex size-9 items-center justify-center rounded-full bg-brand-violet/10 text-brand-violet-ink">
-            {step === 1 ? <User className="size-4.5" /> : <Wallet className="size-4.5" />}
+            <StepIcon className="size-4.5" />
           </span>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-brand-navy">
-              {step === 1 ? o.profileTitle : o.walletTitle}
-            </h1>
-            <p className="text-xs text-brand-slate">
-              {step === 1 ? o.lead : o.walletLead}
-            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-brand-navy">{title}</h1>
+            <p className="text-xs text-brand-slate">{lead}</p>
           </div>
         </div>
 
@@ -101,9 +103,19 @@ export default async function OnboardingPage({ searchParams }: PageProps<"/[lang
               </Link>
             </div>
 
-            <div className="mt-6">
-              <WalletForm locale={locale} t={o} initialError={consentError} />
-            </div>
+            {walletStep ? (
+              <div className="mt-6 space-y-5">
+                <WalletForm locale={locale} t={o} returnPath={null} initialError={consentError} />
+                <Link href={`/${locale}/onboarding`} className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-navy underline underline-offset-2 hover:opacity-80">
+                  <ArrowLeft className="size-4" aria-hidden="true" />
+                  {o.backToChoice}
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-6">
+                <FundingChoice locale={locale} returnPath={null} t={o} />
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { consentFailureReason, consentMessageKey, walletAddressFromInput, walletErrorKey } from "./wallet-consent"
+import { consentFailurePath, consentFailureReason, consentMessageKey, walletAddressFromInput, walletErrorKey } from "./wallet-consent"
 
 describe("walletAddressFromInput", () => {
   it("turns the username users remember into a test-network wallet address", () => {
@@ -44,5 +44,18 @@ describe("consent round trip", () => {
     expect(consentMessageKey(undefined)).toBeNull()
     expect(consentMessageKey("<script>")).toBeNull()
     expect(consentMessageKey(["rejected"])).toBeNull()
+  })
+})
+
+describe("consentFailurePath", () => {
+  it("returns to onboarding's wallet step by default", () => {
+    expect(consentFailurePath(undefined, "es", "rejected")).toBe("/es/onboarding?source=wallet&consent=rejected")
+    expect(consentFailurePath("/es/circles/abc/join", "es", "expired")).toBe("/es/onboarding?source=wallet&consent=expired")
+  })
+
+  it("returns to the account page when linking started there", () => {
+    expect(consentFailurePath("/en/account", "en", "taken")).toBe("/en/account?consent=taken")
+    // A return path for another locale is not this page.
+    expect(consentFailurePath("/es/account", "en", "taken")).toBe("/en/onboarding?source=wallet&consent=taken")
   })
 })

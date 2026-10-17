@@ -34,8 +34,8 @@ test.describe("sign-in and onboarding", () => {
     await page.getByRole("button", { name: "Continuar" }).click()
 
     await expect(page.getByText("Paso 2 de 2")).toBeVisible()
-    await expect(page.getByRole("heading", { name: "Conecta tu billetera" })).toBeVisible()
-    await expect(page.locator('li[aria-current="step"]')).toContainText("Conecta tu billetera")
+    await expect(page.getByRole("heading", { name: "Cómo pagarás" })).toBeVisible()
+    await expect(page.locator('li[aria-current="step"]')).toContainText("Cómo pagarás")
     const profile = await storedProfile(user)
     expect(profile).toMatchObject({
       email: user.email,
@@ -89,9 +89,22 @@ test.describe("sign-in and onboarding", () => {
     await expect(code).toHaveValue("US")
   })
 
+  test("step 2 offers an OpenCircle account or the user's own wallet", async ({ page, user }) => {
+    await seedProfile(user)
+    await signIn(page, user)
+    await expect(page.getByRole("heading", { name: "Abrir mi cuenta OpenCircle" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Ya tengo una billetera Interledger" })).toBeVisible()
+    await page.getByRole("link", { name: "Conectar mi billetera" }).click()
+    await expect(page).toHaveURL(/\/es\/onboarding\?source=wallet$/)
+    await expect(page.getByRole("heading", { name: "Conecta tu billetera" })).toBeVisible()
+    await page.getByRole("link", { name: "Elegir otra opción" }).click()
+    await expect(page).toHaveURL(/\/es\/onboarding$/)
+  })
+
   test("the wallet step rejects addresses off the test network", async ({ page, user }) => {
     await seedProfile(user)
     await signIn(page, user)
+    await page.goto("/es/onboarding?source=wallet")
     // A pasted full address still works, and is checked by the API.
     await page.getByLabel("Usuario de tu billetera").fill("$wallet.example.com/ana")
     await page.getByRole("button", { name: "Continuar a mi billetera" }).click()
@@ -101,6 +114,7 @@ test.describe("sign-in and onboarding", () => {
   test("a test-network wallet sends the user to that wallet's real consent screen", async ({ page, user }) => {
     await seedProfile(user)
     await signIn(page, user)
+    await page.goto("/es/onboarding?source=wallet")
     // Just the username: the field adds $ilp.interledger-test.dev/.
     await expect(page.getByText("$ilp.interledger-test.dev/")).toBeVisible()
     await page.getByLabel("Usuario de tu billetera").fill("opencircle")
@@ -113,8 +127,14 @@ test.describe("sign-in and onboarding", () => {
     await seedProfile(user)
     await signIn(page, user)
     await page.goto("/consent/callback/0123456789abcdef0123456789abcdef0123456789a")
-    await expect(page).toHaveURL(/\/es\/onboarding\?consent=rejected$/)
+    await expect(page).toHaveURL(/\/es\/onboarding\?source=wallet&consent=rejected$/)
     await expect(page.getByText("La conexión con la billetera no fue aprobada. Puedes intentarlo de nuevo.")).toBeVisible()
+  })
+
+  test("a user with only an OpenCircle account is onboarded too", async ({ page, user }) => {
+    await seedProfile(user, { internalAccount: true })
+    await signIn(page, user, { lands: "circles" })
+    await expect(page).toHaveURL(/\/es\/circles$/)
   })
 
   test("an onboarded user goes straight to circles, never loading onboarding", async ({ page, user }) => {

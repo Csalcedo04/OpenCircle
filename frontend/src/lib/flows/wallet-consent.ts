@@ -53,3 +53,12 @@ export function consentMessageKey(param: unknown): ProfileErrorKey | null {
     ? reasonMessages[param as ConsentReason]
     : null
 }
+
+/**
+ * Where a failed consent lands: back on the account page when linking started there (the
+ * saved return path), otherwise onboarding's wallet step. Both show the reason.
+ */
+export function consentFailurePath(returnPath: unknown, locale: string, reason: ConsentReason): string {
+  if (returnPath === `/${locale}/account`) return `/${locale}/account?consent=${reason}`
+  return `/${locale}/onboarding?source=wallet&consent=${reason}`
+}

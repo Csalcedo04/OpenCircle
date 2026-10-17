@@ -31,6 +31,13 @@ export const envSchema = z.object({
   // otherwise they are only logged. EMAIL_FROM is a sender on a domain verified in Resend.
   RESEND_API_KEY: z.string().min(1).optional(),
   EMAIL_FROM: z.string().min(3).optional(),
+  // Dev/demo only: test funds credited to every new internal account, in minor units of
+  // OpenCircle's wallet asset. "0" (the default) disables seeding.
+  DEMO_SEED_VALUE: z
+    .string()
+    .regex(/^(0|[1-9]\d{0,17})$/, "Must be an integer amount in minor units")
+    .default("0")
+    .transform((v) => BigInt(v)),
 }).refine((env) => (env.RESEND_API_KEY === undefined) === (env.EMAIL_FROM === undefined), {
   path: ["EMAIL_FROM"],
   message: "RESEND_API_KEY and EMAIL_FROM go together",

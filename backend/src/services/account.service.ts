@@ -17,6 +17,8 @@ import { AppError } from "../errors/app-error";
 import type { CircleStatus } from "./circle.service";
 import type { Cadence } from "./circles/period-schedule";
 import { icsFromStored } from "./credit/credit-score";
+import { toInternalAccountDto, userAccountInTx, type InternalAccountDto } from "./ledger/internal-account.service";
+import { movementsOf, type MovementDto } from "./ledger/ledger.service";
 import { emptyRecord, memberRecords, type MemberRecord } from "./member.service";
 import type { AmountDto } from "./wallet.service";
 
@@ -92,7 +94,10 @@ export interface ActivityDto {
 }
 
 export interface DashboardDto {
+  /** External Open Payments wallet, if linked. */
   wallet: DashboardWalletDto | null;
+  /** OpenCircle internal account, if created, with its latest movements (newest first). */
+  internalAccount: (InternalAccountDto & { movements: MovementDto[] }) | null;
   ics: number | null;
   record: MemberRecord;
   /** COMPLETED contributions only, one entry per asset: amounts in different assets are never summed. */
@@ -318,14 +323,17 @@ export function createAccountService({ db, now = () => new Date() }: { db: Db; n
   return {
     async getDashboard(userId: string): Promise<DashboardDto> {
       const { wallet: linked, ics } = await wallet(userId);
-      const [circleList, recent, totals, records] = await Promise.all([
+      const [circleList, recent, totals, records, account] = await Promise.all([
         myCircles(userId),
         activity(userId),
         contributed(userId),
         memberRecords(db, [userId]),
+        userAccountInTx(db, userId),
       ]);
+      const internalAccount = account ? { ...toInternalAccountDto(account), movements: await movementsOf(db, account.id, ACTIVITY_LIMIT) } : null;
       return {
         wallet: linked,
+        internalAccount,
         ics,
         record: records.get(userId) ?? emptyRecord(),
         contributed: totals,

@@ -36,6 +36,10 @@ const legal = {
         p: "La demostración usa billeteras y fondos de prueba. El sitio no acepta depósitos de dinero real; no intentes enviarlo.",
       },
       {
+        h: "Cuentas OpenCircle",
+        p: "La cuenta OpenCircle es un saldo de prueba en un libro contable interno de la demostración, respaldado por la billetera de OpenCircle en la red de pruebas. No es una cuenta bancaria ni una dirección de billetera Open Payments, no genera intereses y puede reiniciarse en cualquier momento.",
+      },
+      {
         h: "No somos una entidad financiera",
         p: "OpenCircle no es un banco ni una entidad vigilada, y no ofrece productos de ahorro, crédito ni inversión. Una versión con dinero real necesitaría una entidad financiera autorizada que custodie los fondos.",
       },

@@ -27,6 +27,7 @@ import { createUserService } from "./services/user.service";
 import { createWalletConsentService } from "./services/wallet-consent.service";
 import { createWalletService } from "./services/wallet.service";
 import { createAccountService } from "./services/account.service";
+import { createInternalAccountService } from "./services/ledger/internal-account.service";
 
 async function main(): Promise<void> {
   const db = createDb(env.DATABASE_URL);
@@ -74,6 +75,12 @@ async function main(): Promise<void> {
       users,
       wallets: createWalletService(db),
       account: createAccountService({ db }),
+      // Internal accounts are in OpenCircle's wallet asset; demo seeding is off unless configured.
+      internalAccounts: createInternalAccountService({
+        db,
+        resolveAsset: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
+        seedValue: env.DEMO_SEED_VALUE,
+      }),
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,

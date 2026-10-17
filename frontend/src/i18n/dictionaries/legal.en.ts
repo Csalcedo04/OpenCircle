@@ -38,6 +38,10 @@ const legal: LegalDictionary = {
         p: "The demo uses test wallets and test funds. The site does not accept real-money deposits; don't try to send any.",
       },
       {
+        h: "OpenCircle accounts",
+        p: "An OpenCircle account is a test balance on the demo's internal ledger, backed by OpenCircle's wallet on the test network. It is not a bank account or an Open Payments wallet address, it earns no interest, and it may be reset at any time.",
+      },
+      {
         h: "We are not a financial institution",
         p: "OpenCircle is not a bank or a supervised entity, and it does not offer savings, credit or investment products. A real-money version would need a licensed financial institution to hold the funds.",
       },

@@ -62,21 +62,21 @@ const landing: LandingDictionary = {
   },
   trust: [
     "Peer-to-peer transfers over Interledger",
-    "You authorize each debit from your wallet (GNAP)",
+    "Pay from your OpenCircle account, or authorize each debit in your wallet (GNAP)",
     "Settlements confirmed by signed Rafiki webhooks",
   ],
   benefits: {
     title: "Group savings with clear rules and exact math.",
-    lead: "No chasing receipts over chat, no manual spreadsheets, and no middleman holding the pot.",
+    lead: "No chasing receipts over chat, no manual spreadsheets, and a ledger that shows every movement.",
     kicker: "Open standards.",
     cards: [
       {
-        title: "Your usual wallet, no lock-in",
-        body: "Use any Open Payments wallet ($wallet/user). You don't need to open another bank account or install a proprietary app.",
+        title: "Start without a wallet, or bring your own",
+        body: "Open an OpenCircle account in one click, or connect any Open Payments wallet ($wallet/user). Nothing proprietary to install.",
       },
       {
-        title: "You approve every debit",
-        body: "Each contribution asks for your authorization before moving, with a strict cap no one can modify. Nothing leaves your balance unexpectedly.",
+        title: "You control every debit",
+        body: "From your wallet, each contribution is charged under the authorization and cap you set. From your OpenCircle account, every contribution is recorded and visible at once.",
       },
       {
         title: "Live ledger tracking",
@@ -108,16 +108,16 @@ const landing: LandingDictionary = {
     lead: "Step by step, from joining a circle to receiving your payout.",
     steps: [
       {
-        title: "Enter your Wallet Address",
-        body: "Provide your handle ($wallet.dev/user). It works like an email address for money, without sharing card numbers or private accounts.",
+        title: "Open your OpenCircle account or connect your wallet",
+        body: "One click opens your account with test funds. Already have an Open Payments wallet ($wallet.dev/user)? Connect it: it works like an email address for money.",
       },
       {
         title: "Agree on contribution and turns",
         body: "The group sets the contribution amount, the round schedule, and the order in which each member takes the pot.",
       },
       {
-        title: "Authorize the debit in your wallet",
-        body: "When the round opens, your wallet displays a GNAP consent request with the exact amount so you can confirm.",
+        title: "Your contribution goes out each cycle",
+        body: "When the round opens, the contribution is debited from your OpenCircle account, or charged to your wallet under the GNAP authorization you gave.",
       },
       {
         title: "The connector settles in seconds",
@@ -158,14 +158,14 @@ const landing: LandingDictionary = {
   },
   safety: {
     eyebrow: "Audit & Cryptography",
-    title: "Your funds never pass through our hands",
-    lead: "Money travels from wallet to wallet over cryptographic standards, with no pooled accounts or hidden holds.",
+    title: "Every test peso, traceable",
+    lead: "Demo balances live on an auditable ledger: every movement has a counterpart, and every external payment a verifiable proof on the network.",
     contractTitle: "Immutable Security Contract",
     disclaimer: "Technical demonstration on testnet. OpenCircle operates with Open Payments standards and simulated Rafiki settlement.",
     items: [
       {
-        title: "No intermediate custody",
-        body: "OpenCircle does not hold user balances or bridge accounts. Transfers route directly between member wallets over Interledger.",
+        title: "Transparent custody in the demo",
+        body: "OpenCircle keeps test balances on an internal ledger, audited movement by movement. Prefer to keep custody? Connect your own wallet and pay from it.",
       },
       {
         title: "Cryptographically verified settlement",
@@ -183,7 +183,7 @@ const landing: LandingDictionary = {
     specs: [
       {
         protocol: "Interledger STREAM",
-        detail: "Zero balance retention; peer-to-peer transfers between connectors.",
+        detail: "Peer-to-peer transfers between connectors for deposits and external payments.",
       },
       {
         protocol: "HMAC SHA-256",
@@ -252,7 +252,7 @@ const landing: LandingDictionary = {
   },
   faq: {
     title: "Have questions about OpenCircle?",
-    lead: "Direct answers on Open Payments architecture, decentralized custody, and multilateral Rafiki settlement.",
+    lead: "Direct answers on Open Payments architecture, the hybrid custody model, and multilateral Rafiki settlement.",
     exploreAction: "View technical breakdown and protocol",
     modalBadge: "Protocol & Architecture",
     modalClose: "Close",
@@ -272,12 +272,12 @@ const landing: LandingDictionary = {
       {
         id: "custody",
         q: "How is money custodied?",
-        a: "OpenCircle does not hold user balances. Money stays in each member's wallet and travels directly between them when a round completes.",
-        tag: "Non-Custodial Architecture",
-        summary: "Decentralized architecture where each participant maintains custody of their funds in their own account provider until the exact moment of debit.",
-        bullet1: "OpenCircle never holds user private keys or pooled cash balances",
-        bullet2: "Transfers execute directly between Rafiki nodes of participating wallets",
-        bullet3: "Every debit strictly requires explicit user consent via GNAP",
+        a: "You choose. With an OpenCircle account, OpenCircle holds your test balance on an audited ledger backed by its wallet on the test network. With your own Open Payments wallet, money stays there until each authorized charge.",
+        tag: "Hybrid custody (demo)",
+        summary: "Internal accounts on a ledger with a source and destination for every movement, or self-custody in your wallet. In production a licensed financial institution would hold the funds.",
+        bullet1: "OpenCircle never holds the private keys of external wallets",
+        bullet2: "Every internal movement has a source, a destination and a unique id",
+        bullet3: "Every debit from a wallet strictly requires explicit user consent via GNAP",
         technicalNote: "Multilateral settlement is orchestrated via STREAM packets guaranteeing atomicity: either the packet settles in full or fails without capital loss.",
       },
       {
@@ -351,7 +351,7 @@ const landing: LandingDictionary = {
     demo: "Explore demo",
     privacy: "Privacy",
     terms: "Terms",
-    disclosure: "OpenCircle is an active prototype on Open Payments and Rafiki. Uses testnet assets and does not custody real fiat money.",
+    disclosure: "OpenCircle is an active prototype on Open Payments and Rafiki. It uses testnet assets and holds test balances only.",
     source: "Source on GitHub",
   },
 }
