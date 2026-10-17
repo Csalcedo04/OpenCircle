@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { fill, type Locale } from "@/i18n/config"
 import type { Dictionary } from "@/i18n/dictionaries/en"
 import { amount, applyBps, formatAmount, parseWholeUnits } from "@/lib/domain/money"
+import { CIRCLE_VISIBILITIES, type CircleVisibility } from "@/lib/flows/circle-invite"
 import { CADENCES, CIRCLE_ASSET_SCALE } from "@/lib/flows/circles"
 import { cn } from "@/lib/utils"
 import { createCircleAction, type CreateState } from "./actions"
@@ -30,6 +31,7 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
   const [size, setSize] = useState("5")
   const [cadence, setCadence] = useState<(typeof CADENCES)[number]>("WEEKLY")
   const [payoutRound, setPayoutRound] = useState(1)
+  const [visibility, setVisibility] = useState<CircleVisibility>("PRIVATE")
   const [state, action, pending] = useActionState<CreateState, FormData>(createCircleAction.bind(null, locale), { errors: {}, form: null })
   const err = (field: keyof CreateState["errors"]) => {
     const key = state.errors[field]
@@ -53,6 +55,7 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
           <input type="hidden" name="size" value={size} />
           <input type="hidden" name="cadence" value={cadence} />
           <input type="hidden" name="payoutRound" value={payoutRound} />
+          <input type="hidden" name="visibility" value={visibility} />
 
           <FormField id="name" label={t.name} error={err("name")}>
             <Input
@@ -124,6 +127,18 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
               ))}
             </div>
             {err("cadence") && <p className="oc-fade-in mt-1.5 text-sm font-medium text-brand-violet-ink">{err("cadence")}</p>}
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.visibility}</legend>
+            <div className="flex flex-wrap gap-2">
+              {CIRCLE_VISIBILITIES.map((v) => (
+                <button type="button" key={v} aria-pressed={visibility === v} onClick={() => setVisibility(v)} className={chip(visibility === v)}>
+                  {v === "PRIVATE" ? t.visibilityPrivate : t.visibilityPublic}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-sm text-muted-foreground">{visibility === "PRIVATE" ? t.visibilityPrivateHelp : t.visibilityPublicHelp}</p>
           </fieldset>
 
           <fieldset>

@@ -22,6 +22,7 @@ import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
+import { InviteLink } from "@/components/invite-link"
 import { getCircleView } from "@/lib/data"
 import { amount, formatAmount, percent } from "@/lib/domain/money"
 import {
@@ -55,12 +56,15 @@ const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
   REFUNDED: Undo2,
 }
 
-export default async function CirclePage({ params }: PageProps<"/[lang]/circles/[id]">) {
+export default async function CirclePage({ params, searchParams }: PageProps<"/[lang]/circles/[id]">) {
   const { id } = await params
+  // A private circle's link carries its invite code; keep it for the join page too.
+  const inviteParam = (await searchParams).invite
+  const invite = typeof inviteParam === "string" ? inviteParam : undefined
   const { locale, t } = await getDictionary()
-  const view = await getCircleView(id)
+  const view = await getCircleView(id, invite)
   if (!view) notFound()
-  const { circle, members, reviews: circleReviews } = view
+  const { circle, members, reviews: circleReviews, access } = view
 
   const byId = new Map(members.map((m) => [m.id, m]))
   const nameOf = (memberId: string) => byId.get(memberId)?.name ?? memberId
@@ -121,7 +125,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
           <div className="shrink-0">
             {circle.status === "OPEN" ? (
               <Link
-                href={`/${locale}/circles/${circle.id}/join`}
+                href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
                 className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
               >
                 {t.circle.joinCta}
@@ -165,6 +169,19 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
           </div>
         </div>
       </header>
+
+      {access.inviteUrl && (
+        <div className="mt-8">
+          <InviteLink
+            locale={locale}
+            circleId={circle.id}
+            inviteUrl={access.inviteUrl}
+            visibility={access.visibility}
+            open={circle.status === "OPEN"}
+            t={t.invite}
+          />
+        </div>
+      )}
 
       {/* Main Interactive Round Arena */}
       {circle.status === "OPEN" || !round ? (
