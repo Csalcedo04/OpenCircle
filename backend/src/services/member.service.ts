@@ -1,9 +1,10 @@
-import { desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { circleMembers, circles, contributions, reviews, rounds, users, wallets } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import type { CircleService, CircleSummaryDto } from "./circle.service";
 import { displayName } from "./display-name";
+import { profileVisibleTo } from "./user.service";
 
 /** How a member has paid, from their contributions in every circle. */
 export interface PaymentRecord {
@@ -146,15 +147,17 @@ export async function findReviews(db: Db, where: SQL): Promise<ReviewDto[]> {
 export function createMemberService({ db, circles: circleService }: { db: Db; circles: Pick<CircleService, "listForUser" | "visibleIds"> }) {
   return {
     /**
-     * A member's profile for signed-in users: record, reviews received and their circles.
-     * Private circles the viewer can't see are left out, and so are reviews from them.
+     * A member's profile: record, reviews received and their circles. Visible only to the
+     * member, to members of a circle they share, and to members of a circle they applied to
+     * (same rule as the public profile); anyone else gets 404. Private circles the viewer
+     * can't see are left out, and so are reviews from them.
      */
     async get(userId: string, viewerId: string): Promise<MemberDto> {
       const [user] = await db
         .select({ id: users.id, fullName: users.fullName, walletAddress: wallets.addressUrl })
         .from(users)
         .leftJoin(wallets, eq(users.opWallet, wallets.id))
-        .where(eq(users.id, userId))
+        .where(and(eq(users.id, userId), profileVisibleTo(db, viewerId)))
         .limit(1);
       if (!user) throw new AppError(404, "MEMBER_NOT_FOUND", "Member not found");
 

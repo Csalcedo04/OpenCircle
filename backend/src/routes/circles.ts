@@ -1,10 +1,19 @@
 import { Router, type RequestHandler, type Response } from "express";
 import { z } from "zod";
 import { AppError } from "../errors/app-error";
-import { CIRCLE_CADENCES, CIRCLE_STATUSES, CIRCLE_VISIBILITIES, GRANT_MODES } from "../db/schema";
+import {
+  APPLICATION_STATUSES,
+  APPROVAL_MODES,
+  CIRCLE_CADENCES,
+  CIRCLE_STATUSES,
+  CIRCLE_VISIBILITIES,
+  GRANT_MODES,
+  VOTE_DECISIONS,
+} from "../db/schema";
 import { requireKyc } from "../middleware/require-kyc";
 import { optionalUser, requireUser } from "../middleware/require-user";
 import type { CircleService } from "../services/circle.service";
+import type { ApplicationService } from "../services/circles/application.service";
 import type { KycService } from "../services/kyc.service";
 
 // Money in the asset's minor unit as an integer string: never a float. 18 digits stays within bigint.
@@ -33,6 +42,8 @@ export const createCircleSchema = z
     testClockId: z.uuid().optional(),
     // Private (invite only) by default.
     visibility: z.enum(CIRCLE_VISIBILITIES).default("PRIVATE"),
+    // Who accepts applicants to a public circle.
+    approvalMode: z.enum(APPROVAL_MODES).default("DELEGATES"),
     ...seatFields,
   })
   .refine((c) => c.payoutRound <= c.size, { path: ["payoutRound"], message: "Must be between 1 and size" });
@@ -48,21 +59,38 @@ export const getCircleQuerySchema = z.object({ invite: inviteCode.optional() });
 
 export const visibilitySchema = z.strictObject({ visibility: z.enum(CIRCLE_VISIBILITIES) });
 
+// Seat preferences; without a payout round the applicant gets the next free one when accepted.
+export const applySchema = z.strictObject({ ...seatFields, payoutRound: seatFields.payoutRound.nullable().default(null) });
+
+export const voteSchema = z.strictObject({ decision: z.enum(VOTE_DECISIONS) });
+
+export const setApproversSchema = z.strictObject({ memberIds: z.array(z.uuid()).max(50) });
+
+export const listApplicationsQuerySchema = z.strictObject({ status: z.enum(APPLICATION_STATUSES).optional() });
+
 export type CreateCircleBody = z.infer<typeof createCircleSchema>;
 export type JoinCircleBody = z.infer<typeof joinCircleSchema>;
 export type VisibilityBody = z.infer<typeof visibilitySchema>;
+export type ApplyBody = z.infer<typeof applySchema>;
+export type VoteBody = z.infer<typeof voteSchema>;
+export type SetApproversBody = z.infer<typeof setApproversSchema>;
 
 export interface CircleRouteServices {
   circles: CircleService;
+  applications: ApplicationService;
   kyc: KycService;
 }
 
-// A malformed id can't match any circle: same answer as an unknown one.
-function circleId(id: unknown): string {
+// A malformed id can't match anything: same answer as an unknown one.
+function pathId(id: unknown, notFound: () => AppError): string {
   const parsed = z.uuid().safeParse(id);
-  if (!parsed.success) throw new AppError(404, "CIRCLE_NOT_FOUND", "Circle not found");
+  if (!parsed.success) throw notFound();
   return parsed.data;
 }
+
+const circleId = (id: unknown) => pathId(id, () => new AppError(404, "CIRCLE_NOT_FOUND", "Circle not found"));
+const applicationId = (id: unknown) =>
+  pathId(id, () => new AppError(404, "APPLICATION_NOT_FOUND", "Application not found"));
 
 function currentUserId(res: Response): string {
   const user = res.locals.user;
@@ -70,7 +98,7 @@ function currentUserId(res: Response): string {
   return user.id;
 }
 
-export function circleRoutes({ circles, kyc }: CircleRouteServices): Router {
+export function circleRoutes({ circles, applications, kyc }: CircleRouteServices): Router {
   // Public circles are open to browse; private ones need membership or the invite link.
   // Creating and joining need a signed-in, KYC-approved user.
   const list: RequestHandler = async (req, res) => {
@@ -104,6 +132,32 @@ export function circleRoutes({ circles, kyc }: CircleRouteServices): Router {
     res.json(await circles.rotateInviteCode(currentUserId(res), circleId(req.params.id)));
   };
 
+  // Public circles: apply, and the circle's approvers (or majority) decide.
+  const apply: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const body: ApplyBody = applySchema.parse(req.body);
+    res.status(201).json(await applications.apply(currentUserId(res), id, body));
+  };
+
+  const listApplications: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const { status } = listApplicationsQuerySchema.parse(req.query);
+    res.json(await applications.list(currentUserId(res), id, status));
+  };
+
+  const vote: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const appId = applicationId(req.params.applicationId);
+    const { decision }: VoteBody = voteSchema.parse(req.body);
+    res.json(await applications.vote(currentUserId(res), id, appId, decision));
+  };
+
+  const setApprovers: RequestHandler = async (req, res) => {
+    const id = circleId(req.params.id);
+    const { memberIds }: SetApproversBody = setApproversSchema.parse(req.body);
+    res.json(await applications.setApprovers(currentUserId(res), id, memberIds));
+  };
+
   const verified = [requireUser, requireKyc(kyc)];
   return Router()
     .get("/", list)
@@ -111,5 +165,9 @@ export function circleRoutes({ circles, kyc }: CircleRouteServices): Router {
     .post("/", ...verified, create)
     .post("/:id/join", ...verified, join)
     .patch("/:id/visibility", requireUser, setVisibility)
-    .post("/:id/invite-code", requireUser, rotateInvite);
+    .post("/:id/invite-code", requireUser, rotateInvite)
+    .post("/:id/applications", ...verified, apply)
+    .get("/:id/applications", requireUser, listApplications)
+    .post("/:id/applications/:applicationId/votes", requireUser, vote)
+    .put("/:id/approvers", requireUser, setApprovers);
 }

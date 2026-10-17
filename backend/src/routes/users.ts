@@ -157,12 +157,12 @@ export function userRoutes({ users, wallets, walletConsent, kyc, circles }: User
 
   const getPublicById: RequestHandler = async (req, res) => {
     const { id }: PublicProfileParams = publicProfileParamsSchema.parse(req.params);
-    res.json(await users.getPublicProfile({ id }));
+    res.json(await users.getPublicProfile(currentUserId(res), { id }));
   };
 
   const getPublicByWallet: RequestHandler = async (req, res) => {
     const { walletAddress }: PublicProfileQuery = publicProfileQuerySchema.parse(req.query);
-    res.json(await users.getPublicProfile({ walletAddress }));
+    res.json(await users.getPublicProfile(currentUserId(res), { walletAddress }));
   };
 
   const getMySavings: RequestHandler = async (_req, res) => {

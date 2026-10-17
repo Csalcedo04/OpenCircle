@@ -37,12 +37,7 @@ async function deleteTestData(): Promise<void> {
   if (walletIds.length > 0) {
     await db.delete(auditEvents).where(inArray(auditEvents.walletId, walletIds));
   }
-  // Consent and KYC rows reference users without cascade.
-  if (createdUserIds.length > 0) {
-    await db.delete(walletGrants).where(inArray(walletGrants.userId, createdUserIds));
-    await db.delete(consentChallenges).where(inArray(consentChallenges.userId, createdUserIds));
-    await db.delete(kycVerifications).where(inArray(kycVerifications.userId, createdUserIds));
-  }
+  // Consent, grant and KYC rows go with their user (ON DELETE CASCADE).
   const userFilters = [like(users.fullName, `${TEST_NAME_PREFIX}%`)];
   if (createdUserIds.length > 0) userFilters.push(inArray(users.id, createdUserIds));
   if (walletIds.length > 0) userFilters.push(inArray(users.opWallet, walletIds));
@@ -127,8 +122,10 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       }),
       kyc: createKycService({ db, didit: unusedDidit, frontendUrl: "http://localhost:3001" }),
       circles: fakeServices().circles,
+      applications: fakeServices().applications,
       members: fakeServices().members,
       testClocks: null,
+      circleTick: fakeServices().circleTick,
     });
   });
 
@@ -420,6 +417,42 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     });
   });
 
+  describe("deleting a user", () => {
+    test("cascades to consent, grants and KYC; the wallet and its audit history stay", async () => {
+      const { id } = await userWithProfile();
+      const { wallet } = await link(id, testWalletUrl());
+      const expiresAt = new Date(Date.now() + 600_000);
+      await db.insert(consentChallenges).values({
+        userId: id,
+        state: randomUUID(),
+        walletAddressUrl: wallet.addressUrl,
+        grantEndpoint: `https://${TEST_WALLET_HOST}/auth`,
+        clientNonce: "client-nonce",
+        finishNonce: "finish-nonce",
+        continueUri: `https://${TEST_WALLET_HOST}/continue`,
+        continueTokenCiphertext: "ciphertext",
+        expiresAt,
+      });
+      await db.insert(walletGrants).values({
+        userId: id,
+        walletId: wallet.id,
+        accessTokenCiphertext: "ciphertext",
+        manageUri: `https://${TEST_WALLET_HOST}/token`,
+        continueUri: `https://${TEST_WALLET_HOST}/continue`,
+      });
+      await db.insert(kycVerifications).values({ userId: id, sessionId: randomUUID(), status: "Approved" });
+
+      await db.delete(users).where(eq(users.id, id));
+
+      assert.equal((await db.select().from(users).where(eq(users.id, id))).length, 0);
+      assert.equal((await db.select().from(consentChallenges).where(eq(consentChallenges.userId, id))).length, 0);
+      assert.equal((await db.select().from(walletGrants).where(eq(walletGrants.userId, id))).length, 0);
+      assert.equal((await db.select().from(kycVerifications).where(eq(kycVerifications.userId, id))).length, 0);
+      assert.equal((await db.select().from(wallets).where(eq(wallets.id, wallet.id))).length, 1);
+      assert.equal(await auditCount(wallet.id), 1);
+    });
+  });
+
   describe("POST /me/wallet/consent", () => {
     test("PUT /me/wallet no longer exists → 404", async () => {
       const { token } = await userWithProfile();
@@ -576,11 +609,11 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     });
   });
 
+  // Who may see whom is covered in circles.integration.test.ts; here the user views themselves.
   describe("GET /:id/public and /public (savings-circle applicant)", () => {
     const byWallet = (walletAddress: string) => `/api/users/public?walletAddress=${encodeURIComponent(walletAddress)}`;
 
     test("by id and by wallet → only name, wallet and ICS on the 0..100 scale", async () => {
-      const viewer = await newUser();
       const applicant = await userWithProfile();
       const url = testWalletUrl("applicant");
       const walletId = (await link(applicant.id, url)).wallet.id;
@@ -588,7 +621,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
 
       const expected = { fullName: `${TEST_NAME_PREFIX}Ana Gómez`, walletAddress: url, ics: 87.34 };
       for (const path of [`/api/users/${applicant.id}/public`, byWallet(url), byWallet(`$${url.slice("https://".length)}`)]) {
-        const res = await server.request(path, { token: viewer.token });
+        const res = await server.request(path, { token: applicant.token });
         assert.equal(res.status, 200, path);
         assert.deepEqual(res.body, expected, path);
         assert.ok(!res.text.includes("987654321"), "borrowing capacity leaked");
@@ -596,20 +629,18 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
     });
 
     test("no score yet → ics is null", async () => {
-      const viewer = await newUser();
       const applicant = await userWithProfile();
       await link(applicant.id, testWalletUrl("applicant"));
 
-      const res = await server.request(`/api/users/${applicant.id}/public`, { token: viewer.token });
+      const res = await server.request(`/api/users/${applicant.id}/public`, { token: applicant.token });
       assert.equal(res.status, 200);
       assert.equal((res.body as { ics: unknown }).ics, null);
     });
 
     test("unknown user, user without a wallet, or unknown wallet → 404 PROFILE_NOT_FOUND", async () => {
-      const viewer = await newUser();
       const noWallet = await userWithProfile();
       for (const path of [`/api/users/${randomUUID()}/public`, `/api/users/${noWallet.id}/public`, byWallet(testWalletUrl("ghost"))]) {
-        const res = await server.request(path, { token: viewer.token });
+        const res = await server.request(path, { token: noWallet.token });
         assert.equal(res.status, 404, path);
         assert.equal(errorCode(res.body), "PROFILE_NOT_FOUND");
       }

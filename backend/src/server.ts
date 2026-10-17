@@ -2,6 +2,12 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { createDb } from "./db/client";
 import { createCircleService } from "./services/circle.service";
+import { createApplicationNotices } from "./services/circles/application-notices";
+import { createApplicationService } from "./services/circles/application.service";
+import { createCircleCycle, createCircleTick } from "./services/circles/circle-cycle";
+import { createReminders } from "./services/circles/reminders.service";
+import { createScoring } from "./services/circles/scoring.service";
+import { createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
@@ -33,8 +39,17 @@ async function main(): Promise<void> {
   // Contributions: the pool (OpenCircle's wallet) charges each member through their standing grant.
   const payments = createContributionPayments({ client: openPaymentsAuth, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS });
   const engine = createPeriodEngine({ db, payments, memberAccess: createMemberAccess({ db, cipher, payments }) });
-  // Real-time circles have no scheduler yet; only test clocks drive the engine.
-  const testClocks = env.TEST_CLOCKS_ENABLED ? createTestClockService({ db, engine }) : null;
+  // Real providers (email, WhatsApp) come later; until then notifications are only logged.
+  const sender = createLogSender();
+  const notices = createApplicationNotices({ db, sender });
+  // Periods, then scores (ICS), then payment reminders. The scheduler runs it for real-time
+  // circles (POST /api/internal/circles/tick); test clocks run it for theirs.
+  const cycle = createCircleCycle({
+    engine,
+    scoring: createScoring({ db }),
+    reminders: createReminders({ db, sender }),
+  });
+  const testClocks = env.TEST_CLOCKS_ENABLED ? createTestClockService({ db, engine: cycle }) : null;
   const circles = createCircleService({
     db,
     // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
@@ -57,15 +72,17 @@ async function main(): Promise<void> {
         frontendUrl: env.FRONTEND_URL,
       }),
       circles,
+      applications: createApplicationService({ db, circles, notices }),
       members: createMemberService({ db, circles }),
       testClocks,
+      circleTick: createCircleTick({ db, cycle, notices }),
       kyc: createKycService({
         db,
         didit: createDiditClient({ apiKey: env.DIDIT_API_KEY, workflowId: env.DIDIT_WORKFLOW_ID }),
         frontendUrl: env.FRONTEND_URL,
       }),
     },
-    { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET },
+    { diditWebhookSecret: env.DIDIT_WEBHOOK_SECRET, cronSecret: env.CRON_SECRET },
   );
 
   app.listen(env.PORT, () => {

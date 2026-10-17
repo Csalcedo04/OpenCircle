@@ -3,10 +3,31 @@ import { randomInt, randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import { and, asc, eq, inArray, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
-import { auditEvents, circleMembers, circles, contributions, reviews, rounds, users, wallets } from "../src/db/schema";
+import {
+  applicationVotes,
+  auditEvents,
+  circleApplications,
+  circleMembers,
+  circles,
+  contributions,
+  creditProfiles,
+  reviews,
+  rounds,
+  testClocks,
+  users,
+  wallets,
+} from "../src/db/schema";
+import { createCircleTick } from "../src/services/circles/circle-cycle";
+import { createReminders } from "../src/services/circles/reminders.service";
+import { createScoring } from "../src/services/circles/scoring.service";
+import { scoreFromFraction } from "../src/services/credit/credit-score";
+import type { Notification, PaymentReminder } from "../src/services/notifications/sender";
+import { createApplicationNotices } from "../src/services/circles/application-notices";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
+import { createApplicationService, type ApplicationDto } from "../src/services/circles/application.service";
 import { createMemberService, type MemberDto } from "../src/services/member.service";
+import { createUserService } from "../src/services/user.service";
 import { periodEnd, periodStart } from "../src/services/circles/period-schedule";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
 import { fakeServices } from "./helpers/fakes";
@@ -27,6 +48,11 @@ let auth: TestAuth;
 const createdUserIds: string[] = [];
 const approved = new Set<string>();
 
+// Every email the application flow sends; `noticeFailures` makes the next sends throw.
+const outbox: Notification[] = [];
+let noticeFailures = 0;
+let notices: ReturnType<typeof createApplicationNotices>;
+
 async function deleteTestData(): Promise<void> {
   const userFilter = createdUserIds.length > 0 ? inArray(circles.createdBy, createdUserIds) : undefined;
   const testCircles = await db
@@ -35,8 +61,13 @@ async function deleteTestData(): Promise<void> {
     .where(or(like(circles.name, `${PREFIX}%`), userFilter));
   const circleIds = testCircles.map((c) => c.id);
 
-  // FK order: contributions → rounds → seats → reviews → circles; nothing cascades.
+  // FK order: votes → applications → contributions → rounds → seats → reviews → circles; nothing cascades.
   if (circleIds.length > 0) {
+    const appIds = (
+      await db.select({ id: circleApplications.id }).from(circleApplications).where(inArray(circleApplications.circleId, circleIds))
+    ).map((a) => a.id);
+    if (appIds.length > 0) await db.delete(applicationVotes).where(inArray(applicationVotes.applicationId, appIds));
+    await db.delete(circleApplications).where(inArray(circleApplications.circleId, circleIds));
     const roundIds = (await db.select({ id: rounds.id }).from(rounds).where(inArray(rounds.circleId, circleIds))).map((r) => r.id);
     if (roundIds.length > 0) await db.delete(contributions).where(inArray(contributions.roundId, roundIds));
     await db.delete(rounds).where(inArray(rounds.circleId, circleIds));
@@ -44,23 +75,42 @@ async function deleteTestData(): Promise<void> {
     await db.delete(reviews).where(inArray(reviews.circleId, circleIds));
     await db.delete(circles).where(inArray(circles.id, circleIds));
   }
-  const poolWallets = (await db.select({ id: wallets.id }).from(wallets).where(like(wallets.addressUrl, `https://${POOL_HOST}/%`))).map(
+  // Pot and member wallets all live under the suite's host; users reference theirs, so they go first.
+  const testWallets = (await db.select({ id: wallets.id }).from(wallets).where(like(wallets.addressUrl, `https://${POOL_HOST}/%`))).map(
     (w) => w.id,
   );
-  if (poolWallets.length > 0) {
-    await db.delete(auditEvents).where(inArray(auditEvents.walletId, poolWallets));
-    await db.delete(wallets).where(inArray(wallets.id, poolWallets));
-  }
+  if (testWallets.length > 0) await db.delete(auditEvents).where(inArray(auditEvents.walletId, testWallets));
+  if (createdUserIds.length > 0) await db.delete(testClocks).where(inArray(testClocks.ownerUserId, createdUserIds));
   await db.delete(users).where(or(like(users.fullName, `${PREFIX}%`), createdUserIds.length > 0 ? inArray(users.id, createdUserIds) : undefined));
+  if (testWallets.length > 0) await db.delete(wallets).where(inArray(wallets.id, testWallets));
+}
+
+interface Member {
+  id: string;
+  token: string;
+  documentNumber: string;
+  walletAddress: string | null;
 }
 
 // A user with a profile; KYC-approved unless told otherwise (KYC itself is faked here).
-async function member(
-  options: { kyc?: boolean; name?: string } = {},
-): Promise<{ id: string; token: string; documentNumber: string }> {
+// `wallet` links a wallet (needed to apply); `score` stores a credit profile (0..1).
+async function member(options: { kyc?: boolean; name?: string; wallet?: boolean; score?: number } = {}): Promise<Member> {
   const id = randomUUID();
   createdUserIds.push(id);
   const documentNumber = String(randomInt(1_000_000_000, 9_999_999_999));
+  let walletId: string | null = null;
+  let walletAddress: string | null = null;
+  if (options.wallet ?? true) {
+    walletAddress = `https://${POOL_HOST}/member-${id}`;
+    const [wallet] = await db
+      .insert(wallets)
+      .values({ addressUrl: walletAddress, assetCode: "COP", assetScale: 2 })
+      .returning({ id: wallets.id });
+    walletId = wallet?.id ?? null;
+    if (walletId && options.score !== undefined) {
+      await db.insert(creditProfiles).values({ walletId, internalCreditScore: options.score });
+    }
+  }
   await db.insert(users).values({
     id,
     email: `${id}@example.test`,
@@ -68,9 +118,11 @@ async function member(
     documentNumber,
     nationality: "CO",
     fullName: `${PREFIX}${options.name ?? "Ana María Gómez"}`,
+    phone: "+573001112233",
+    opWallet: walletId,
   });
   if (options.kyc ?? true) approved.add(id);
-  return { id, token: await auth.token(id), documentNumber };
+  return { id, token: await auth.token(id), documentNumber, walletAddress };
 }
 
 const validCircle = (overrides: Record<string, unknown> = {}) => ({
@@ -91,11 +143,51 @@ async function createCircle(token: string, overrides: Record<string, unknown> = 
   return res.body as CircleDto;
 }
 
-const join = (id: string, token: string, body: Record<string, unknown>) =>
+// Joins through the creator's invite link (read from the DB) unless the body brings its own
+// `invite`; without a link, public circles take applications instead (APPLICATION_REQUIRED).
+async function join(id: string, token: string, body: Record<string, unknown>) {
+  const [row] = "invite" in body ? [] : await db.select({ inviteCode: circles.inviteCode }).from(circles).where(eq(circles.id, id));
+  return server.request(`/api/circles/${id}/join`, {
+    method: "POST",
+    token,
+    body: row ? { ...body, invite: row.inviteCode } : body,
+  });
+}
+
+const joinWithoutInvite = (id: string, token: string, body: Record<string, unknown>) =>
   server.request(`/api/circles/${id}/join`, { method: "POST", token, body });
 
 // The `invite` query value of a circle's invite link.
 const inviteOf = (circle: CircleDto) => new URL(circle.inviteUrl ?? "http://x").searchParams.get("invite") ?? "";
+
+const applyTo = (circleId: string, token: string, body: Record<string, unknown> = {}) =>
+  server.request(`/api/circles/${circleId}/applications`, { method: "POST", token, body });
+
+const voteOn = (circleId: string, applicationId: string, token: string, decision: "ACCEPT" | "REJECT") =>
+  server.request(`/api/circles/${circleId}/applications/${applicationId}/votes`, {
+    method: "POST",
+    token,
+    body: { decision },
+  });
+
+async function applied(circleId: string, applicant: Member, body: Record<string, unknown> = {}): Promise<ApplicationDto> {
+  const res = await applyTo(circleId, applicant.token, body);
+  assert.equal(res.status, 201, res.text);
+  return res.body as ApplicationDto;
+}
+
+// Applies and has the approver accept.
+async function seated(circleId: string, approver: Member, applicant: Member, body: Record<string, unknown> = {}) {
+  const application = await applied(circleId, applicant, body);
+  const res = await voteOn(circleId, application.id, approver.token, "ACCEPT");
+  assert.equal(res.status, 200, res.text);
+  return res.body as ApplicationDto;
+}
+
+const getCircle = async (id: string, token?: string): Promise<CircleDto> =>
+  (await server.request(`/api/circles/${id}`, token ? { token } : {})).body as CircleDto;
+
+const publicProfile = (target: string, token: string) => server.request(`/api/users/${target}/public`, { token });
 
 describe("display names", () => {
   test("public pages show first name and last initial", () => {
@@ -121,8 +213,26 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "COP", assetScale: 2 }),
       frontendUrl: FRONTEND_URL,
     });
+    notices = createApplicationNotices({
+      db,
+      sender: {
+        send: async (n) => {
+          if (noticeFailures > 0) {
+            noticeFailures--;
+            throw new Error("provider down");
+          }
+          outbox.push(n);
+        },
+      },
+    });
     server = await startServer(
-      fakeServices({ circles: circleService, kyc, members: createMemberService({ db, circles: circleService }) }),
+      fakeServices({
+        circles: circleService,
+        applications: createApplicationService({ db, circles: circleService, notices }),
+        users: createUserService(db),
+        kyc,
+        members: createMemberService({ db, circles: circleService }),
+      }),
     );
   });
 
@@ -432,8 +542,8 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
 
     test("a member who never joined a circle has an empty record", async () => {
       const lone = await member();
-      const viewer = await member();
-      const res = await server.request(`/api/members/${lone.id}`, { token: viewer.token });
+      // Seen by themselves: someone who shares no circle with them can't see the profile at all.
+      const res = await server.request(`/api/members/${lone.id}`, { token: lone.token });
       assert.equal(res.status, 200);
       const profile = res.body as MemberDto;
       assert.deepEqual(profile.payments, { onTime: 0, late: 0, missed: 0 });
@@ -447,6 +557,9 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
     test("profiles need sign-in, never leak identity data, and unknown ids are 404", async () => {
       const subject = await member({ name: "Valentina Restrepo" });
       const viewer = await member();
+      // The viewer shares a circle with the subject, so the profile is visible to them.
+      const shared = await createCircle(viewer.token, { size: 3 });
+      assert.equal((await join(shared.id, subject.token, { payoutRound: 2 })).status, 200);
       assert.equal((await server.request(`/api/members/${subject.id}`)).status, 401);
 
       const res = await server.request(`/api/members/${subject.id}`, { token: viewer.token });
@@ -485,7 +598,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
         await server.request(`/api/circles/${circle.id}`),
         await server.request(`/api/circles/${circle.id}`, { token: stranger.token }),
         await server.request(`/api/circles/${circle.id}?invite=wrong`, { token: stranger.token }),
-        await join(circle.id, stranger.token, { payoutRound: 2 }),
+        await joinWithoutInvite(circle.id, stranger.token, { payoutRound: 2 }),
       ]) {
         assert.equal(res.status, 404);
         assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
@@ -540,6 +653,10 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       assert.equal((await join(hidden.id, bob.token, { payoutRound: 2, invite: inviteOf(hidden) })).status, 200);
       await db.insert(reviews).values({ authorId: owner.id, subjectId: bob.id, circleId: hidden.id, rating: 5, comment: "Cumplido" });
 
+      // "Outside" the private circle, but sharing a public one with Bob, so Bob's profile is visible.
+      const open = await createCircle(stranger.token, { size: 3 });
+      assert.equal((await join(open.id, bob.token, { payoutRound: 2 })).status, 200);
+
       const outside = (await server.request(`/api/members/${bob.id}`, { token: stranger.token })).body as MemberDto;
       assert.ok(!outside.circles.some((c) => c.id === hidden.id), "private circle listed to a stranger");
       assert.ok(!outside.reviews.some((r) => r.circleId === hidden.id), "review from a private circle shown to a stranger");
@@ -558,6 +675,777 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const res = await server.request(`/api/circles/${circle.id}/visibility`, { method: "PATCH", token: owner.token, body: { visibility: "PRIVATE" } });
       assert.equal(res.status, 409);
       assert.equal(errorCode(res.body), "CIRCLE_NOT_OPEN");
+    });
+  });
+
+  describe("approval settings on create", () => {
+    test("DELEGATES by default with the creator as approver; MAJORITY when asked; others → 400", async () => {
+      const { token } = await member();
+      const circle = await createCircle(token);
+      assert.equal(circle.approvalMode, "DELEGATES");
+      assert.equal(circle.seats[0]?.isApprover, true);
+
+      const majority = await createCircle(token, { approvalMode: "MAJORITY" });
+      assert.equal(majority.approvalMode, "MAJORITY");
+
+      const bad = await server.request("/api/circles", { method: "POST", token, body: validCircle({ approvalMode: "CREATOR_ONLY" }) });
+      assert.equal(bad.status, 400);
+      assert.equal(errorCode(bad.body), "VALIDATION_ERROR");
+    });
+  });
+
+  describe("semi-public circles", () => {
+    test("joining a public circle without the creator's link → 403 APPLICATION_REQUIRED; with it → seated", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const bob = await member();
+
+      const direct = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2 });
+      assert.equal(direct.status, 403);
+      assert.equal(errorCode(direct.body), "APPLICATION_REQUIRED");
+      const wrong = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2, invite: "wrong" });
+      assert.equal(wrong.status, 403);
+      assert.equal((await getCircle(circle.id)).seatsTaken, 1);
+
+      const viaLink = await joinWithoutInvite(circle.id, bob.token, { payoutRound: 2, invite: inviteOf(circle) });
+      assert.equal(viaLink.status, 200, viaLink.text);
+      assert.equal((await getCircle(circle.id)).seatsTaken, 2);
+    });
+  });
+
+  describe("member profile access (GET /api/members/:id)", () => {
+    test("visible to co-members and to members of a circle the user applied to; hidden from strangers", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      const [bob, carol, stranger] = await Promise.all([member(), member(), member()]);
+      await seated(circle.id, owner, bob);
+      const carolApp = await applied(circle.id, carol);
+
+      const memberProfile = (target: string, token: string) => server.request(`/api/members/${target}`, { token });
+      assert.equal((await memberProfile(bob.id, owner.token)).status, 200);
+      assert.equal((await memberProfile(carol.id, bob.token)).status, 200);
+      for (const [target, viewer] of [
+        [bob.id, stranger.token],
+        [carol.id, stranger.token],
+        [owner.id, carol.token],
+      ] as const) {
+        const res = await memberProfile(target, viewer);
+        assert.equal(res.status, 404);
+        assert.equal(errorCode(res.body), "MEMBER_NOT_FOUND");
+      }
+
+      await voteOn(circle.id, carolApp.id, owner.token, "REJECT");
+      assert.equal((await memberProfile(carol.id, bob.token)).status, 404);
+    });
+  });
+
+  describe("applications to private circles", () => {
+    test("private circles take no applications: they are joined by invite link", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { visibility: "PRIVATE" });
+      const bob = await member();
+      const res = await applyTo(circle.id, bob.token);
+      assert.equal(res.status, 404);
+      assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
+    });
+  });
+
+  describe("POST /:id/applications (apply)", () => {
+    test("→ 201 PENDING with only the applicant's name, wallet and ICS", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      const bob = await member({ name: "Bob Ruiz", score: 0.8734 });
+
+      const res = await applyTo(circle.id, bob.token, { payoutRound: 3, collateralValue: "500000", grantMode: "RECURRING" });
+      assert.equal(res.status, 201, res.text);
+      const application = res.body as ApplicationDto;
+      assert.equal(application.status, "PENDING");
+      assert.equal(application.decidedAt, null);
+      assert.deepEqual(application.votes, { accept: 0, reject: 0 });
+      assert.deepEqual(application.applicant, { fullName: `${PREFIX}Bob Ruiz`, walletAddress: bob.walletAddress, ics: 87.34 });
+      assert.deepEqual(Object.keys(application).sort(), ["applicant", "createdAt", "decidedAt", "id", "status", "votes"]);
+      assert.ok(!res.text.includes("@example.test") && !res.text.includes("+57"), "contact data leaked");
+
+      const [row] = await db.select().from(circleApplications).where(eq(circleApplications.id, application.id));
+      assert.equal(row?.payoutRound, 3);
+      assert.equal(row?.collateralValue, 500000n);
+      assert.equal(row?.grantMode, "RECURRING");
+      const events = await db.select().from(auditEvents).where(eq(auditEvents.externalId, `application.created:${application.id}`));
+      assert.equal(events.length, 1);
+    });
+
+    test("without a token → 401; without approved KYC → 403 KYC_REQUIRED", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      assert.equal((await server.request(`/api/circles/${circle.id}/applications`, { method: "POST", body: {} })).status, 401);
+      const { token } = await member({ kyc: false });
+      const res = await applyTo(circle.id, token);
+      assert.equal(res.status, 403);
+      assert.equal(errorCode(res.body), "KYC_REQUIRED");
+    });
+
+    test("invalid body → 400 VALIDATION_ERROR", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      const bob = await member();
+      for (const body of [{ payoutRound: 0 }, { collateralValue: "1.5" }, { grantMode: "ALWAYS" }, { status: "ACCEPTED" }]) {
+        const res = await applyTo(circle.id, bob.token, body);
+        assert.equal(res.status, 400, JSON.stringify(body));
+        assert.equal(errorCode(res.body), "VALIDATION_ERROR");
+      }
+    });
+
+    test("unknown or malformed circle → 404; payout round past the size → 422", async () => {
+      const bob = await member();
+      for (const id of [randomUUID(), "not-a-uuid"]) {
+        const res = await applyTo(id, bob.token);
+        assert.equal(res.status, 404, id);
+        assert.equal(errorCode(res.body), "CIRCLE_NOT_FOUND");
+      }
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const res = await applyTo(circle.id, bob.token, { payoutRound: 4 });
+      assert.equal(res.status, 422);
+      assert.equal(errorCode(res.body), "INVALID_PAYOUT_ROUND");
+    });
+
+    test("members, a second pending application and users without a wallet are refused", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+
+      const own = await applyTo(circle.id, owner.token);
+      assert.equal(own.status, 409);
+      assert.equal(errorCode(own.body), "ALREADY_MEMBER");
+
+      const bob = await member();
+      await applied(circle.id, bob);
+      const again = await applyTo(circle.id, bob.token);
+      assert.equal(again.status, 409);
+      assert.equal(errorCode(again.body), "APPLICATION_PENDING");
+
+      const noWallet = await member({ wallet: false });
+      const res = await applyTo(circle.id, noWallet.token);
+      assert.equal(res.status, 409);
+      assert.equal(errorCode(res.body), "WALLET_REQUIRED");
+    });
+
+    test("a rejected applicant may apply again", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      const bob = await member();
+      const first = await applied(circle.id, bob);
+      assert.equal((await voteOn(circle.id, first.id, owner.token, "REJECT")).status, 200);
+      const second = await applyTo(circle.id, bob.token);
+      assert.equal(second.status, 201);
+    });
+  });
+
+  describe("GET /:id/applications (list)", () => {
+    test("members see applications, filtered by status; others get 404", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      const bob = await member();
+      const carol = await member();
+      const bobApp = await applied(circle.id, bob);
+      const carolApp = await applied(circle.id, carol);
+      await voteOn(circle.id, carolApp.id, owner.token, "REJECT");
+
+      const all = await server.request(`/api/circles/${circle.id}/applications`, { token: owner.token });
+      assert.equal(all.status, 200);
+      assert.deepEqual(
+        (all.body as ApplicationDto[]).map((a) => a.id),
+        [bobApp.id, carolApp.id],
+      );
+
+      const pending = await server.request(`/api/circles/${circle.id}/applications?status=PENDING`, { token: owner.token });
+      assert.deepEqual(
+        (pending.body as ApplicationDto[]).map((a) => a.id),
+        [bobApp.id],
+      );
+
+      // Applicants are not members yet: they can't read the list.
+      const outsider = await server.request(`/api/circles/${circle.id}/applications`, { token: bob.token });
+      assert.equal(outsider.status, 404);
+      assert.equal(errorCode(outsider.body), "CIRCLE_NOT_FOUND");
+    });
+
+    test("without a token → 401; bad status → 400", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      assert.equal((await server.request(`/api/circles/${circle.id}/applications`)).status, 401);
+      const bad = await server.request(`/api/circles/${circle.id}/applications?status=DONE`, { token: owner.token });
+      assert.equal(bad.status, 400);
+      assert.equal(errorCode(bad.body), "VALIDATION_ERROR");
+    });
+  });
+
+  describe("POST /:id/applications/:applicationId/votes (DELEGATES)", () => {
+    test("the creator's first decision accepts and seats the applicant in their preferred round", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4, payoutRound: 1 });
+      const bob = await member();
+      const application = await applied(circle.id, bob, { payoutRound: 3, collateralValue: "500000", grantMode: "RECURRING" });
+
+      const res = await voteOn(circle.id, application.id, owner.token, "ACCEPT");
+      assert.equal(res.status, 200, res.text);
+      const decided = res.body as ApplicationDto;
+      assert.equal(decided.status, "ACCEPTED");
+      assert.ok(decided.decidedAt);
+      assert.deepEqual(decided.votes, { accept: 1, reject: 0 });
+
+      const after = await getCircle(circle.id);
+      assert.equal(after.seatsTaken, 2);
+      const seat = after.seats.find((s) => s.payoutRound === 3);
+      assert.deepEqual(seat?.collateral, { value: "500000", assetCode: "COP", assetScale: 2 });
+      assert.equal(seat?.grantMode, "RECURRING");
+      assert.equal(seat?.isApprover, false);
+
+      const events = await db.select().from(auditEvents).where(eq(auditEvents.externalId, `application.accepted:${application.id}`));
+      assert.equal(events.length, 1);
+    });
+
+    test("a taken or missing preferred round falls back to the next free one", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4, payoutRound: 1 });
+      const [bob, carol] = await Promise.all([member(), member()]);
+      await seated(circle.id, owner, bob, { payoutRound: 1 });
+      await seated(circle.id, owner, carol);
+      const rounds = (await getCircle(circle.id)).seats.map((s) => s.payoutRound).sort();
+      assert.deepEqual(rounds, [1, 2, 3]);
+    });
+
+    test("rejecting closes the application without a seat", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      const bob = await member();
+      const application = await applied(circle.id, bob);
+      const res = await voteOn(circle.id, application.id, owner.token, "REJECT");
+      assert.equal(res.status, 200);
+      assert.equal((res.body as ApplicationDto).status, "REJECTED");
+      assert.equal((await getCircle(circle.id)).seatsTaken, 1);
+    });
+
+    test("members who aren't approvers → 403; non-members → 404; decided → 409", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      const [bob, carol, dave] = await Promise.all([member(), member(), member()]);
+      await seated(circle.id, owner, bob);
+      const application = await applied(circle.id, carol);
+
+      const notApprover = await voteOn(circle.id, application.id, bob.token, "ACCEPT");
+      assert.equal(notApprover.status, 403);
+      assert.equal(errorCode(notApprover.body), "NOT_APPROVER");
+
+      const outsider = await voteOn(circle.id, application.id, dave.token, "ACCEPT");
+      assert.equal(outsider.status, 404);
+      assert.equal(errorCode(outsider.body), "APPLICATION_NOT_FOUND");
+
+      await voteOn(circle.id, application.id, owner.token, "REJECT");
+      const decided = await voteOn(circle.id, application.id, owner.token, "ACCEPT");
+      assert.equal(decided.status, 409);
+      assert.equal(errorCode(decided.body), "APPLICATION_DECIDED");
+    });
+
+    test("unknown, malformed or other-circle application → 404; bad decision → 400; no token → 401", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      const other = await createCircle(owner.token);
+      const bob = await member();
+      const elsewhere = await applied(other.id, bob);
+
+      for (const appId of [randomUUID(), "nope", elsewhere.id]) {
+        const res = await voteOn(circle.id, appId, owner.token, "ACCEPT");
+        assert.equal(res.status, 404, appId);
+        assert.equal(errorCode(res.body), "APPLICATION_NOT_FOUND");
+      }
+      const bad = await server.request(`/api/circles/${other.id}/applications/${elsewhere.id}/votes`, {
+        method: "POST",
+        token: owner.token,
+        body: { decision: "MAYBE" },
+      });
+      assert.equal(bad.status, 400);
+      const anon = await server.request(`/api/circles/${other.id}/applications/${elsewhere.id}/votes`, {
+        method: "POST",
+        body: { decision: "ACCEPT" },
+      });
+      assert.equal(anon.status, 401);
+    });
+  });
+
+  describe("POST /:id/applications/:applicationId/votes (MAJORITY)", () => {
+    test("accepts once more than half accept; rejects once acceptance is impossible", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 6, approvalMode: "MAJORITY" });
+      const [a, b, c, d] = await Promise.all([member(), member(), member(), member()]);
+
+      // 1 member: one accept is a majority.
+      await seated(circle.id, owner, a);
+
+      // 2 members: one accept is not enough (2 > 2 is false); the second settles it.
+      const bApp = await applied(circle.id, b);
+      const firstVote = await voteOn(circle.id, bApp.id, owner.token, "ACCEPT");
+      assert.equal((firstVote.body as ApplicationDto).status, "PENDING");
+      assert.deepEqual((firstVote.body as ApplicationDto).votes, { accept: 1, reject: 0 });
+      const twice = await voteOn(circle.id, bApp.id, owner.token, "ACCEPT");
+      assert.equal(twice.status, 409);
+      assert.equal(errorCode(twice.body), "ALREADY_VOTED");
+      const secondVote = await voteOn(circle.id, bApp.id, a.token, "ACCEPT");
+      assert.equal((secondVote.body as ApplicationDto).status, "ACCEPTED");
+
+      // 3 members: one reject keeps it open; the second (2 × 2 ≥ 3) rejects.
+      const cApp = await applied(circle.id, c);
+      assert.equal(((await voteOn(circle.id, cApp.id, owner.token, "REJECT")).body as ApplicationDto).status, "PENDING");
+      assert.equal(((await voteOn(circle.id, cApp.id, a.token, "REJECT")).body as ApplicationDto).status, "REJECTED");
+
+      // Any member may vote, not just approvers.
+      const dApp = await applied(circle.id, d);
+      await voteOn(circle.id, dApp.id, b.token, "ACCEPT");
+      assert.equal(((await voteOn(circle.id, dApp.id, a.token, "ACCEPT")).body as ApplicationDto).status, "ACCEPTED");
+      assert.equal((await getCircle(circle.id)).seatsTaken, 4);
+    });
+  });
+
+  describe("filling the circle", () => {
+    test("accepting the last seat starts it: rounds scheduled, round 1 contributions pending, other applications rejected", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3, payoutRound: 3 });
+      const [bob, carol, dave] = await Promise.all([member(), member(), member()]);
+      await seated(circle.id, owner, bob, { payoutRound: 1 });
+      const daveApp = await applied(circle.id, dave);
+      const last = await seated(circle.id, owner, carol, { payoutRound: 2 });
+      assert.equal(last.status, "ACCEPTED");
+
+      const started = await getCircle(circle.id);
+      assert.equal(started.status, "ACTIVE");
+      assert.ok(started.startedAt);
+      assert.equal(started.currentRound, 1);
+      assert.deepEqual(
+        started.rounds.map((r) => r.state),
+        ["COLLECTING", "UPCOMING", "UPCOMING"],
+      );
+
+      // Round n pays out to the member who holds payout round n.
+      for (const round of started.rounds) {
+        const seat = started.seats.find((s) => s.memberId === round.beneficiaryMemberId);
+        assert.equal(seat?.payoutRound, round.number);
+      }
+
+      // Weekly circle: deadlines are one week apart, starting one week after the start.
+      const start = Date.parse(started.startedAt ?? "");
+      started.rounds.forEach((r) => assert.equal(Date.parse(r.deadline) - start, r.number * 7 * 86_400_000));
+
+      // Everyone pays round 1, the beneficiary included.
+      const first = started.rounds[0];
+      assert.equal(first?.contributions.length, 3);
+      assert.ok(first?.contributions.every((c) => c.status === "PENDING"));
+      assert.ok(started.rounds.slice(1).every((r) => r.contributions.length === 0));
+
+      const roundRows = await db.select().from(rounds).where(eq(rounds.circleId, circle.id)).orderBy(asc(rounds.number));
+      const rows = await db.select().from(contributions).where(eq(contributions.roundId, roundRows[0]?.id ?? ""));
+      for (const c of rows) {
+        assert.equal(c.value, 2000000n);
+        assert.equal(c.assetCode, "COP");
+        assert.equal(c.idempotencyKey, `contribution:${c.roundId}:${c.memberId}`);
+        assert.equal(c.completedAt, null);
+      }
+      const events = await db.select().from(auditEvents).where(eq(auditEvents.externalId, `circle.started:${circle.id}`));
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.eventType, "circle.started");
+
+      // The pending application lost its chance when the circle filled.
+      const [daveRow] = await db.select().from(circleApplications).where(eq(circleApplications.id, daveApp.id));
+      assert.equal(daveRow?.status, "REJECTED");
+
+      const late = await member();
+      const closed = await applyTo(circle.id, late.token);
+      assert.equal(closed.status, 409);
+      assert.equal(errorCode(closed.body), "CIRCLE_NOT_OPEN");
+    });
+
+    test("two acceptances racing for the last seat: one wins, the circle starts once", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 2, payoutRound: 1 });
+      const [bob, carol] = await Promise.all([member(), member()]);
+      const apps = [await applied(circle.id, bob), await applied(circle.id, carol)];
+
+      const results = await Promise.all(apps.map((a) => voteOn(circle.id, a.id, owner.token, "ACCEPT")));
+      assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
+
+      const seats = await db.select().from(circleMembers).where(eq(circleMembers.circleId, circle.id));
+      assert.equal(seats.length, 2);
+      const roundRows = await db.select().from(rounds).where(eq(rounds.circleId, circle.id));
+      assert.equal(roundRows.length, 2);
+      const [row] = await db.select().from(circles).where(and(eq(circles.id, circle.id), eq(circles.status, "ACTIVE")));
+      assert.ok(row, "circle did not start");
+    });
+  });
+
+  describe("PUT /:id/approvers", () => {
+    test("the creator delegates; delegates can decide; an empty list keeps only the creator", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 5 });
+      const [bob, carol, dave] = await Promise.all([member(), member(), member()]);
+      await seated(circle.id, owner, bob);
+      const bobSeat = (await getCircle(circle.id)).seats.find((s) => !s.isApprover);
+      assert.ok(bobSeat);
+
+      const res = await server.request(`/api/circles/${circle.id}/approvers`, {
+        method: "PUT",
+        token: owner.token,
+        body: { memberIds: [bobSeat.memberId] },
+      });
+      assert.equal(res.status, 200, res.text);
+      assert.ok((res.body as CircleDto).seats.every((s) => s.isApprover));
+
+      const carolApp = await applied(circle.id, carol);
+      const byDelegate = await voteOn(circle.id, carolApp.id, bob.token, "ACCEPT");
+      assert.equal((byDelegate.body as ApplicationDto).status, "ACCEPTED");
+
+      const cleared = await server.request(`/api/circles/${circle.id}/approvers`, {
+        method: "PUT",
+        token: owner.token,
+        body: { memberIds: [] },
+      });
+      const approvers = (cleared.body as CircleDto).seats.filter((s) => s.isApprover);
+      assert.equal(approvers.length, 1);
+      const daveApp = await applied(circle.id, dave);
+      assert.equal((await voteOn(circle.id, daveApp.id, bob.token, "ACCEPT")).status, 403);
+    });
+
+    test("non-creators → 403; outsiders → 404; non-member ids → 422; bad body → 400; no token → 401", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token);
+      const [bob, eve] = await Promise.all([member(), member()]);
+      await seated(circle.id, owner, bob);
+      const put = (token: string | undefined, body: unknown) =>
+        server.request(`/api/circles/${circle.id}/approvers`, { method: "PUT", ...(token ? { token } : {}), body });
+
+      const notCreator = await put(bob.token, { memberIds: [] });
+      assert.equal(notCreator.status, 403);
+      assert.equal(errorCode(notCreator.body), "NOT_CREATOR");
+
+      const outsider = await put(eve.token, { memberIds: [] });
+      assert.equal(outsider.status, 404);
+
+      const stranger = await put(owner.token, { memberIds: [randomUUID()] });
+      assert.equal(stranger.status, 422);
+      assert.equal(errorCode(stranger.body), "NOT_MEMBERS");
+
+      assert.equal((await put(owner.token, { memberIds: ["x"] })).status, 400);
+      assert.equal((await put(owner.token, {})).status, 400);
+      assert.equal((await put(undefined, { memberIds: [] })).status, 401);
+    });
+  });
+
+  describe("public profile access (GET /users/:id/public)", () => {
+    test("members see their applicants and co-members; strangers and decided applicants are hidden", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 4 });
+      const [bob, carol, stranger] = await Promise.all([member(), member({ score: 0.5 }), member()]);
+      await seated(circle.id, owner, bob);
+      const carolApp = await applied(circle.id, carol);
+
+      // Members see a pending applicant, by id and by wallet.
+      const byId = await publicProfile(carol.id, bob.token);
+      assert.equal(byId.status, 200);
+      assert.deepEqual(byId.body, { fullName: `${PREFIX}Ana María Gómez`, walletAddress: carol.walletAddress, ics: 50 });
+      const byWallet = await server.request(`/api/users/public?walletAddress=${encodeURIComponent(carol.walletAddress ?? "")}`, {
+        token: owner.token,
+      });
+      assert.equal(byWallet.status, 200);
+
+      // Co-members see each other; everyone sees themselves.
+      assert.equal((await publicProfile(owner.id, bob.token)).status, 200);
+      assert.equal((await publicProfile(stranger.id, stranger.token)).status, 200);
+
+      // Strangers see nobody, and the applicant can't browse the members.
+      for (const [target, viewer] of [
+        [carol.id, stranger.token],
+        [owner.id, stranger.token],
+        [owner.id, carol.token],
+      ] as const) {
+        const res = await publicProfile(target, viewer);
+        assert.equal(res.status, 404);
+        assert.equal(errorCode(res.body), "PROFILE_NOT_FOUND");
+      }
+
+      // Once rejected, the applicant is no longer visible.
+      await voteOn(circle.id, carolApp.id, owner.token, "REJECT");
+      assert.equal((await publicProfile(carol.id, bob.token)).status, 404);
+    });
+  });
+
+  describe("scores, reminders and the scheduler tick", () => {
+    // A weekly circle of two, started: round 1 collects until `deadline`; round 2 ends a week later,
+    // so round 1's penalty time is 5 days before that: deadline + 2 days.
+    async function startedCircle(options: { bobScore?: number } = {}) {
+      const owner = await member();
+      const bob = await member(options.bobScore === undefined ? {} : { score: options.bobScore });
+      const circle = await createCircle(owner.token, { size: 2 });
+      await seated(circle.id, owner, bob);
+      const [round1] = await db.select().from(rounds).where(and(eq(rounds.circleId, circle.id), eq(rounds.number, 1)));
+      assert.ok(round1);
+      const seats = await db
+        .select({ id: circleMembers.id, userId: circleMembers.userId })
+        .from(circleMembers)
+        .where(eq(circleMembers.circleId, circle.id));
+      const contributionOf = async (m: Member) => {
+        const seat = seats.find((s) => s.userId === m.id);
+        const [c] = await db
+          .select()
+          .from(contributions)
+          .where(and(eq(contributions.roundId, round1.id), eq(contributions.memberId, seat?.id ?? "")));
+        assert.ok(c);
+        return c;
+      };
+      return { circle, owner, bob, deadline: round1.deadline, contributionOf };
+    }
+
+    const DAY = 86_400_000;
+    const at = (base: Date, days: number) => new Date(base.getTime() + days * DAY);
+    const complete = (contributionId: string, completedAt: Date) =>
+      db.update(contributions).set({ status: "COMPLETED", completedAt }).where(eq(contributions.id, contributionId));
+    const failUnpaid = (contributionId: string) =>
+      db.update(contributions).set({ status: "FAILED", failureCode: "DEADLINE_MISSED" }).where(eq(contributions.id, contributionId));
+
+    async function scoreOf(m: Member): Promise<number | null> {
+      const [u] = await db.select({ walletId: users.opWallet }).from(users).where(eq(users.id, m.id));
+      const [p] = await db.select().from(creditProfiles).where(eq(creditProfiles.walletId, u?.walletId ?? ""));
+      return p ? scoreFromFraction(p.internalCreditScore) : null;
+    }
+
+    const events = (externalId: string) => db.select().from(auditEvents).where(eq(auditEvents.externalId, externalId));
+
+    test("a payment on time adds the bonus once; a new member starts from the initial score", async () => {
+      const { circle, owner, bob, deadline, contributionOf } = await startedCircle();
+      const ownerPayment = await contributionOf(owner);
+      await complete(ownerPayment.id, at(deadline, -0.5));
+
+      const scoring = createScoring({ db });
+      assert.equal(await scoring.scoreCircle(circle.id, at(deadline, 0.1)), 1);
+      assert.equal(await scoreOf(owner), 55);
+      // Bob hasn't paid but his penalty time hasn't come: nothing yet.
+      assert.equal(await scoreOf(bob), null);
+
+      assert.equal(await scoring.scoreCircle(circle.id, at(deadline, 0.2)), 0);
+      assert.equal(await scoreOf(owner), 55);
+      const recorded = await events(`score.on_time:${ownerPayment.id}`);
+      assert.equal(recorded.length, 1);
+      assert.equal(recorded[0]?.eventType, "score.on_time");
+    });
+
+    test("unpaid at the penalty time counts as missed; paying afterwards re-scores it as late", async () => {
+      const { circle, bob, deadline, contributionOf } = await startedCircle({ bobScore: 0.9 });
+      const bobPayment = await contributionOf(bob);
+      await failUnpaid(bobPayment.id);
+      const scoring = createScoring({ db });
+
+      await scoring.scoreCircle(circle.id, at(deadline, 1));
+      assert.equal(await scoreOf(bob), 90, "penalised before the penalty time");
+
+      await scoring.scoreCircle(circle.id, at(deadline, 2));
+      assert.equal(await scoreOf(bob), 75);
+      await scoring.scoreCircle(circle.id, at(deadline, 2.5));
+      assert.equal(await scoreOf(bob), 75, "missed applied twice");
+
+      await complete(bobPayment.id, at(deadline, 3));
+      await scoring.scoreCircle(circle.id, at(deadline, 3));
+      assert.equal(await scoreOf(bob), 86, "late should replace missed: 90 − 4");
+      await scoring.scoreCircle(circle.id, at(deadline, 4));
+      assert.equal(await scoreOf(bob), 86);
+
+      const [missed] = await events(`score.missed:${bobPayment.id}`);
+      const [late] = await events(`score.late:${bobPayment.id}`);
+      const [bobUser] = await db.select({ walletId: users.opWallet }).from(users).where(eq(users.id, bob.id));
+      assert.equal(missed?.walletId, bobUser?.walletId);
+      assert.equal(late?.walletId, bobUser?.walletId);
+    });
+
+    test("members without a wallet are skipped, not failed", async () => {
+      const { circle, bob, deadline, contributionOf } = await startedCircle();
+      await db.update(users).set({ opWallet: null }).where(eq(users.id, bob.id));
+      const bobPayment = await contributionOf(bob);
+      assert.equal(await createScoring({ db }).scoreCircle(circle.id, at(deadline, 3)), 1, "only the owner's miss is scored");
+      assert.equal((await events(`score.missed:${bobPayment.id}`)).length, 0);
+    });
+
+    test("reminders: due soon, due today and late, by email and WhatsApp, once each, only to who hasn't paid", async () => {
+      const { circle, owner, deadline, contributionOf } = await startedCircle();
+      const sent: PaymentReminder[] = [];
+      const reminders = createReminders({ db, sender: { send: async (n) => void ("contributionId" in n && sent.push(n)) } });
+
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -4)), 0);
+
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 4);
+      assert.deepEqual([...new Set(sent.map((n) => n.kind))], ["DUE_SOON"]);
+      assert.deepEqual(sent.map((n) => n.channel).sort(), ["EMAIL", "EMAIL", "WHATSAPP", "WHATSAPP"]);
+      assert.ok(sent.every((n) => n.circleName === circle.name && n.amount.value === "2000000" && n.deadline.getTime() === deadline.getTime()));
+      assert.ok(sent.some((n) => n.to === `${owner.id}@example.test`));
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -1.5)), 0, "due soon sent twice");
+
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -0.5)), 4);
+      assert.ok(sent.slice(4).every((n) => n.kind === "DUE_TODAY"));
+
+      const ownerPayment = await contributionOf(owner);
+      await complete(ownerPayment.id, at(deadline, -0.2));
+      sent.length = 0;
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, 1)), 2);
+      assert.ok(sent.every((n) => n.kind === "LATE" && n.contributionId !== ownerPayment.id));
+
+      // After the penalty time the score speaks; no more reminders.
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, 2)), 0);
+
+      // Audit rows identify the reminder only: no email or phone.
+      const rows = await db.select().from(auditEvents).where(like(auditEvents.externalId, `notification.sent:%:${ownerPayment.id}:%`));
+      assert.equal(rows.length, 4);
+      assert.ok(rows.every((r) => !r.externalId?.includes("@") && !r.externalId?.includes("+57")));
+    });
+
+    test("a reminder that fails to send is retried on the next run", async () => {
+      const { circle, deadline } = await startedCircle();
+      let failures = 1;
+      const sent: Notification[] = [];
+      const reminders = createReminders({
+        db,
+        sender: {
+          send: async (n) => {
+            if (failures-- > 0) throw new Error("provider down");
+            sent.push(n);
+          },
+        },
+      });
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 3);
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 1);
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 0);
+      assert.equal(sent.length, 4);
+    });
+
+    test("the tick runs the cycle for active real-time circles only, and survives one circle failing", async () => {
+      const { circle: running } = await startedCircle();
+      const { circle: onClock, owner } = await startedCircle();
+      const owner2 = await member();
+      const waiting = await createCircle(owner2.token, { size: 3 });
+      const [clock] = await db
+        .insert(testClocks)
+        .values({ name: `${PREFIX}clock`, ownerUserId: owner.id, frozenTime: new Date() })
+        .returning({ id: testClocks.id });
+      await db.update(circles).set({ testClockId: clock?.id ?? null }).where(eq(circles.id, onClock.id));
+
+      const now = new Date("2026-05-01T00:00:00Z");
+      const seen: string[] = [];
+      const tick = createCircleTick({
+        db,
+        now: () => now,
+        notices: { retryRecent: async () => 0 },
+        cycle: {
+          advanceCircle: async (id, t) => {
+            assert.equal(t.getTime(), now.getTime());
+            seen.push(id);
+            if (id === running.id) throw new Error("boom");
+          },
+        },
+      });
+      const result = await tick.run();
+
+      assert.ok(seen.includes(running.id));
+      assert.ok(!seen.includes(onClock.id), "test-clock circle ticked in real time");
+      assert.ok(!seen.includes(waiting.id), "open circle ticked");
+      assert.equal(result.circles, seen.length);
+      assert.ok(result.failed >= 1);
+    });
+  });
+
+  describe("application emails", () => {
+    const sentFor = (applicationId: string) =>
+      outbox.filter((n): n is Exclude<Notification, PaymentReminder> => "applicationId" in n && n.applicationId === applicationId);
+    const emailOf = (m: Member) => `${m.id}@example.test`;
+
+    test("DELEGATES: applying emails the creator and the delegates; one accepting tells the others who accepted whom", async () => {
+      const owner = await member({ name: "Olga Pérez" });
+      const circle = await createCircle(owner.token, { size: 5 });
+      const [bob, dave] = await Promise.all([member({ name: "Bob Ruiz" }), member({ name: "Dave Mora" })]);
+      await seated(circle.id, owner, bob);
+      await seated(circle.id, owner, dave);
+      const bobSeat = (await getCircle(circle.id)).seats.find((s) => s.userId === bob.id);
+      await server.request(`/api/circles/${circle.id}/approvers`, { method: "PUT", token: owner.token, body: { memberIds: [bobSeat?.memberId] } });
+
+      const carol = await member({ name: "Carol Díaz" });
+      const application = await applied(circle.id, carol);
+      const received = sentFor(application.id);
+      assert.deepEqual(received.map((n) => n.to).sort(), [emailOf(owner), emailOf(bob)].sort(), "only the deciders");
+      for (const n of received) {
+        assert.equal(n.kind, "APPLICATION_RECEIVED");
+        assert.equal(n.channel, "EMAIL");
+        assert.equal(n.circleId, circle.id);
+        assert.equal(n.circleName, circle.name);
+        assert.equal(n.applicantName, displayName(`${PREFIX}Carol Díaz`));
+      }
+
+      assert.equal((await voteOn(circle.id, application.id, bob.token, "ACCEPT")).status, 200);
+      const accepted = sentFor(application.id).filter((n) => n.kind === "APPLICATION_ACCEPTED");
+      assert.deepEqual(
+        accepted.map((n) => n.to),
+        [emailOf(owner)],
+        "the acceptor, the newcomer and non-approvers aren't told",
+      );
+      const notice = accepted[0];
+      assert.ok(notice && notice.kind === "APPLICATION_ACCEPTED");
+      assert.equal(notice.acceptedByName, displayName(`${PREFIX}Bob Ruiz`));
+      assert.equal(notice.applicantName, displayName(`${PREFIX}Carol Díaz`));
+    });
+
+    test("MAJORITY: every member is asked; the one whose vote settles it is named to the others", async () => {
+      const owner = await member({ name: "Olga Pérez" });
+      const circle = await createCircle(owner.token, { size: 4, approvalMode: "MAJORITY" });
+      const ana = await member({ name: "Ana Gómez" });
+      await seated(circle.id, owner, ana);
+
+      const bob = await member({ name: "Bob Ruiz" });
+      const application = await applied(circle.id, bob);
+      assert.deepEqual(
+        sentFor(application.id).map((n) => n.to).sort(),
+        [emailOf(owner), emailOf(ana)].sort(),
+      );
+
+      await voteOn(circle.id, application.id, owner.token, "ACCEPT");
+      assert.equal(sentFor(application.id).filter((n) => n.kind === "APPLICATION_ACCEPTED").length, 0, "told before it was settled");
+      await voteOn(circle.id, application.id, ana.token, "ACCEPT");
+      const accepted = sentFor(application.id).filter((n) => n.kind === "APPLICATION_ACCEPTED");
+      assert.deepEqual(
+        accepted.map((n) => n.to),
+        [emailOf(owner)],
+      );
+      assert.equal(accepted[0]?.kind === "APPLICATION_ACCEPTED" && accepted[0].acceptedByName, displayName(`${PREFIX}Ana Gómez`));
+    });
+
+    test("a rejection sends no acceptance email; repeating a notice sends nothing new", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const bob = await member();
+      const application = await applied(circle.id, bob);
+      assert.equal(sentFor(application.id).length, 1);
+      assert.equal(await notices.received(application.id), 0, "sent twice");
+
+      await voteOn(circle.id, application.id, owner.token, "REJECT");
+      assert.equal(sentFor(application.id).length, 1);
+      assert.equal(await notices.accepted(application.id), 0);
+    });
+
+    test("a failed email doesn't fail the application and is re-sent by the retry", async () => {
+      const owner = await member();
+      const circle = await createCircle(owner.token, { size: 3 });
+      const bob = await member();
+      const since = new Date(Date.now() - 60_000);
+
+      noticeFailures = 1;
+      const res = await applyTo(circle.id, bob.token);
+      assert.equal(res.status, 201, res.text);
+      const application = res.body as ApplicationDto;
+      assert.equal(sentFor(application.id).length, 0);
+
+      assert.ok((await notices.retryRecent(since)) >= 1);
+      assert.equal(sentFor(application.id).length, 1);
+      assert.equal(await notices.received(application.id), 0);
     });
   });
 });

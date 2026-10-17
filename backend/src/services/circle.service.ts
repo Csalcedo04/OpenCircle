@@ -1,8 +1,9 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { and, asc, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
 import {
+  APPROVAL_MODES,
   CIRCLE_STATUSES,
   CIRCLE_VISIBILITIES,
   GRANT_MODES,
@@ -20,6 +21,7 @@ import {
 import { AppError } from "../errors/app-error";
 import { cadenceDays, periodEnd, periodStart, type Cadence } from "./circles/period-schedule";
 import { displayName } from "./display-name";
+import { sameSecret } from "./secret-compare";
 import { emptyRecord, findReviews, memberRecords, type MemberRecord, type ReviewDto } from "./member.service";
 
 export { displayName };
@@ -28,6 +30,7 @@ import type { AmountDto, ResolvedWallet, Tx } from "./wallet.service";
 export type CircleStatus = (typeof CIRCLE_STATUSES)[number];
 export type GrantMode = (typeof GRANT_MODES)[number];
 export type CircleVisibility = (typeof CIRCLE_VISIBILITIES)[number];
+export type ApprovalMode = (typeof APPROVAL_MODES)[number];
 type RoundState = (typeof ROUND_STATES)[number];
 
 // Defaults for new circles, matching the demo data. Placeholder policy until the team sets real values.
@@ -37,13 +40,6 @@ const DEFAULT_GRANT_WEIGHT_BPS = 5_000;
 // 32 random bytes: unguessable, and short enough for a link.
 const newInviteCode = () => randomBytes(32).toString("base64url");
 
-// Constant-time, so response timing doesn't reveal how much of a guessed code matched.
-function sameCode(given: string | undefined, actual: string): boolean {
-  if (given === undefined) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(actual);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 /** Who is asking: a signed-in user, the invite code from a link, or neither. */
 export interface CircleViewer {
@@ -67,7 +63,12 @@ export interface CreateCircleInput extends SeatInput {
   testClockId?: string | undefined;
   /** Private (invite only) unless the creator asks for public. */
   visibility?: CircleVisibility | undefined;
+  /** Who accepts applicants to a public circle; the creator and their delegates by default. */
+  approvalMode?: ApprovalMode | undefined;
 }
+
+// An applicant's seat preferences: with no payout round they get the next free one.
+export type SeatRequest = Omit<SeatInput, "payoutRound"> & { payoutRound: number | null };
 
 export interface CircleSummaryDto {
   id: string;
@@ -93,6 +94,8 @@ export interface SeatDto {
   payoutRound: number;
   collateral: AmountDto;
   grantMode: GrantMode | null;
+  // Accepts or rejects applicants when the circle uses DELEGATES.
+  isApprover: boolean;
 }
 
 export interface RoundDto {
@@ -108,6 +111,7 @@ export interface CircleDto extends CircleSummaryDto {
   feeBps: number;
   threshold: AmountDto;
   grantWeightBps: number;
+  approvalMode: ApprovalMode;
   poolWalletAddress: string;
   startedAt: string | null;
   // Dev only (TEST_CLOCKS_ENABLED): the test clock this circle runs on.
@@ -176,7 +180,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
 
   // Public, or a member, or holding the current invite code. Anyone else can't tell it exists.
   async function canSee(circle: { id: string; visibility: CircleVisibility; inviteCode: string }, viewer: CircleViewer): Promise<boolean> {
-    return circle.visibility === "PUBLIC" || sameCode(viewer.invite, circle.inviteCode) || (await isMember(circle.id, viewer.userId));
+    return circle.visibility === "PUBLIC" || sameSecret(viewer.invite, circle.inviteCode) || (await isMember(circle.id, viewer.userId));
   }
   const summaryColumns = {
     id: circles.id,
@@ -227,6 +231,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         feeBps: circles.feeBps,
         thresholdValue: circles.thresholdValue,
         grantWeightBps: circles.grantWeightBps,
+        approvalMode: circles.approvalMode,
         startedAt: circles.startedAt,
         testClockId: circles.testClockId,
         createdBy: circles.createdBy,
@@ -247,6 +252,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         payoutRound: circleMembers.payoutRound,
         collateralValue: circleMembers.collateralValue,
         grantMode: circleMembers.grantMode,
+        isApprover: circleMembers.isApprover,
       })
       .from(circleMembers)
       .innerJoin(users, eq(circleMembers.userId, users.id))
@@ -281,6 +287,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       feeBps: circle.feeBps,
       threshold: amount(circle.thresholdValue, assetCode, assetScale),
       grantWeightBps: circle.grantWeightBps,
+      approvalMode: circle.approvalMode,
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
@@ -294,6 +301,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         payoutRound: s.payoutRound,
         collateral: amount(s.collateralValue, assetCode, assetScale),
         grantMode: s.grantMode ?? null,
+        isApprover: s.isApprover,
       })),
       rounds: roundRows.map((r) => ({
         number: r.number,
@@ -411,6 +419,45 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       .values({ walletId: circle.poolWalletId, eventType: "circle.started", externalId: `circle.started:${circle.id}` });
   }
 
+  /**
+   * Seats a user in an OPEN circle the caller has locked (FOR UPDATE), so seats are counted
+   * one at a time. A null payout round takes the lowest free one. Filling the last seat
+   * starts the circle; returns whether it did, so the caller runs afterStarted once committed.
+   */
+  async function takeSeat(tx: Tx, circle: CircleRow, userId: string, seat: SeatRequest): Promise<boolean> {
+    if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+    if (seat.payoutRound !== null && seat.payoutRound > circle.size) {
+      throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
+    }
+    const taken = (
+      await tx.select({ payoutRound: circleMembers.payoutRound }).from(circleMembers).where(eq(circleMembers.circleId, circle.id))
+    ).map((m) => m.payoutRound);
+    const payoutRound = seat.payoutRound ?? Array.from({ length: circle.size }, (_, i) => i + 1).find((n) => !taken.includes(n));
+    if (payoutRound === undefined) throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
+
+    try {
+      await tx.insert(circleMembers).values({
+        circleId: circle.id,
+        userId,
+        payoutRound,
+        collateralValue: seat.collateralValue,
+        grantMode: seat.grantMode,
+      });
+    } catch (err) {
+      throw seatConflict(err) ?? err;
+    }
+
+    if (taken.length + 1 < circle.size) return false;
+    await start(tx, circle, await circleNow(tx, circle));
+    return true;
+  }
+
+  async function afterStarted(circleId: string): Promise<void> {
+    if (!onStarted) return;
+    // The seat is taken either way; a failed first collection is retried by the next run.
+    await onStarted(circleId).catch(() => console.error("Circle start hook failed", circleId));
+  }
+
   return {
     get,
 
@@ -474,15 +521,18 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
             testClockId: input.testClockId ?? null,
             visibility: input.visibility ?? "PRIVATE",
             inviteCode: newInviteCode(),
+            approvalMode: input.approvalMode ?? "DELEGATES",
           })
           .returning({ id: circles.id });
         if (!circle) throw new Error("Circle insert returned no row");
+        // The creator always approves applicants.
         await tx.insert(circleMembers).values({
           circleId: circle.id,
           userId,
           payoutRound: input.payoutRound,
           collateralValue: input.collateralValue,
           grantMode: input.grantMode,
+          isApprover: true,
         });
         return circle.id;
       });
@@ -491,44 +541,24 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
 
     /** Takes a free seat; filling the last one starts the circle. */
     async join(userId: string, circleId: string, input: SeatInput, invite?: string): Promise<CircleDto> {
-      let started = false;
-      try {
-        await db.transaction(async (tx) => {
-          // Lock the circle so concurrent joins count seats one at a time.
-          const [circle] = await tx.select().from(circles).where(eq(circles.id, circleId)).for("update");
-          // A non-member can only join a private circle through its current invite link.
-          if (!circle || !(await canSee(circle, { userId, invite }))) throw notFound();
-          if (circle.status !== "OPEN") throw new AppError(409, "CIRCLE_NOT_OPEN", "This circle is no longer taking members");
-          if (input.payoutRound > circle.size) {
-            throw new AppError(422, "INVALID_PAYOUT_ROUND", "Payout round must be between 1 and the circle size");
-          }
-
-          await tx.insert(circleMembers).values({
-            circleId,
-            userId,
-            payoutRound: input.payoutRound,
-            collateralValue: input.collateralValue,
-            grantMode: input.grantMode,
-          });
-
-          const [{ taken } = { taken: 0 }] = await tx
-            .select({ taken: sql<number>`count(*)::int` })
-            .from(circleMembers)
-            .where(eq(circleMembers.circleId, circleId));
-          if (taken === circle.size) {
-            await start(tx, circle, await circleNow(tx, circle));
-            started = true;
-          }
-        });
-      } catch (err) {
-        throw seatConflict(err) ?? err;
-      }
-      if (started && onStarted) {
-        // The seat is taken either way; a failed first collection is retried by the next run.
-        await onStarted(circleId).catch(() => console.error("Circle start hook failed", circleId));
-      }
+      const started = await db.transaction(async (tx) => {
+        // Lock the circle so concurrent joins count seats one at a time.
+        const [circle] = await tx.select().from(circles).where(eq(circles.id, circleId)).for("update");
+        // A non-member can only join a private circle through its current invite link.
+        if (!circle || !(await canSee(circle, { userId, invite }))) throw notFound();
+        // Public circles are semi-public: without the creator's invite link, applicants are
+        // accepted by the creator and their delegates (POST /circles/:id/applications).
+        if (circle.visibility === "PUBLIC" && !sameSecret(invite, circle.inviteCode)) {
+          throw new AppError(403, "APPLICATION_REQUIRED", "Apply to join this circle; its approvers decide");
+        }
+        return takeSeat(tx, circle, userId, input);
+      });
+      if (started) await afterStarted(circleId);
       return get(circleId, { userId });
     },
+
+    takeSeat,
+    afterStarted,
 
     /** Creator only, while the circle still takes members. */
     async setVisibility(userId: string, circleId: string, visibility: CircleVisibility): Promise<CircleDto> {

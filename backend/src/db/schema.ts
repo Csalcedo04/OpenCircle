@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   check,
   date,
   index,
@@ -8,9 +9,11 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -35,7 +38,10 @@ export const wallets = pgTable(
 // cc: cédula de ciudadanía, ti: tarjeta de identidad, ce: cédula de extranjería, pp: pasaporte.
 export const documentType = pgEnum("document_type", ["cc", "ti", "ce", "pp"]);
 
-// `id` is the Supabase Auth user id (auth.users.id), so it has no default.
+// `id` is the Supabase Auth user id (auth.users.id), so it has no default. Deleting the Auth
+// user deletes this row (trigger on auth.users, migration 0009), and deleting this row cascades
+// to the user's consent, grants, KYC, applications and reviews. It never cascades into circles:
+// deleting a user who created a circle or holds a seat fails. The wallet and its audit history stay.
 export const users = pgTable(
   "users",
   {
@@ -77,7 +83,6 @@ export const creditProfiles = pgTable(
     walletId: uuid("wallet_id")
       .primaryKey()
       .references(() => wallets.id, { onDelete: "cascade" }),
-    // Fraction between 0 and 1 (percentage); exact decimal, returned as string by Drizzle.
     // Payment-reliability fraction, 0..1 with 4 decimals; read as a JS number. The ICS is this × 100.
     internalCreditScore: numeric("internal_credit_score", { precision: 5, scale: 4, mode: "number" }).notNull(),
     // Maximum debt the user may take, in the wallet asset's minor unit.
@@ -121,7 +126,7 @@ export const consentChallenges = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     state: text("state").notNull().unique(),
     walletAddressUrl: text("wallet_address_url").notNull(),
     grantEndpoint: text("grant_endpoint").notNull(),
@@ -147,7 +152,7 @@ export const walletGrants = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     walletId: uuid("wallet_id")
       .notNull()
       .references(() => wallets.id),
@@ -180,7 +185,7 @@ export const kycVerifications = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     sessionId: uuid("session_id").notNull().unique(),
     status: text("status").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -195,7 +200,8 @@ export const kycVerifications = pgTable(
 // ── Savings circles (natilleras) ─────────────────────────────────────────────
 // Pool model: every member pays the contribution into the circle's pot each round,
 // and one member (the round's beneficiary) receives the pot. Amounts are integers in
-// the minor unit of the circle's asset. No cascades: a circle's history is never erased.
+// the minor unit of the circle's asset. No cascades from circles or seats: a circle's history
+// is never erased. Only a user's own applications and reviews go with the user.
 
 export const CIRCLE_STATUSES = ["OPEN", "ACTIVE", "COMPLETED"] as const;
 export const GRANT_MODES = ["RECURRING", "PER_ROUND"] as const;
@@ -216,6 +222,11 @@ export const ROUND_STATES = [
 ] as const;
 // The project's payment state machine; COMPLETED only with verifiable proof (signed webhook).
 export const CONTRIBUTION_STATUSES = ["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"] as const;
+// DELEGATES: the creator and the members they delegate decide; the first decision wins.
+// MAJORITY: more than half of the members must accept.
+export const APPROVAL_MODES = ["DELEGATES", "MAJORITY"] as const;
+export const APPLICATION_STATUSES = ["PENDING", "ACCEPTED", "REJECTED", "WITHDRAWN"] as const;
+export const VOTE_DECISIONS = ["ACCEPT", "REJECT"] as const;
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(", "));
 
@@ -276,6 +287,8 @@ export const circles = pgTable(
       .references(() => users.id),
     // Set only at creation, and only while test clocks are enabled.
     testClockId: uuid("test_clock_id").references(() => testClocks.id),
+    // Who accepts applicants; chosen by the creator.
+    approvalMode: text("approval_mode").$type<(typeof APPROVAL_MODES)[number]>().notNull().default("DELEGATES"),
     // Set when the circle fills and its rounds are scheduled.
     startedAt: timestamp("started_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -298,6 +311,7 @@ export const circles = pgTable(
     check("circles_size_range", sql`${t.size} between 2 and 50`),
     check("circles_cadence", sql`${t.cadence} in (${inList(CIRCLE_CADENCES)})`),
     check("circles_visibility", sql`${t.visibility} in (${inList(CIRCLE_VISIBILITIES)})`),
+    check("circles_approval_mode", sql`${t.approvalMode} in (${inList(APPROVAL_MODES)})`),
     index("circles_test_clock_id_idx").on(t.testClockId),
   ],
 ).enableRLS();
@@ -319,6 +333,8 @@ export const circleMembers = pgTable(
     collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
     // How the member authorized contributions; null until they choose.
     grantMode: text("grant_mode").$type<(typeof GRANT_MODES)[number]>(),
+    // May accept or reject applicants when the circle uses DELEGATES. The creator always can.
+    isApprover: boolean("is_approver").notNull().default(false),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -328,6 +344,61 @@ export const circleMembers = pgTable(
     check("circle_members_payout_round_positive", sql`${t.payoutRound} >= 1`),
     check("circle_members_collateral_non_negative", sql`${t.collateralValue} >= 0`),
     check("circle_members_grant_mode", sql`${t.grantMode} is null or ${t.grantMode} in (${inList(GRANT_MODES)})`),
+  ],
+).enableRLS();
+
+// A request to take a seat in an OPEN circle, decided by the circle's approvers or majority.
+export const circleApplications = pgTable(
+  "circle_applications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    circleId: uuid("circle_id")
+      .notNull()
+      .references(() => circles.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Seat preferences, copied to circle_members on acceptance. Null payout round: next free one.
+    payoutRound: integer("payout_round"),
+    collateralValue: bigint("collateral_value", { mode: "bigint" }).notNull().default(sql`0`),
+    grantMode: text("grant_mode").$type<(typeof GRANT_MODES)[number]>(),
+    status: text("status").$type<(typeof APPLICATION_STATUSES)[number]>().notNull().default("PENDING"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One open application per user and circle; decided ones stay as history.
+    uniqueIndex("circle_applications_pending_unique")
+      .on(t.circleId, t.userId)
+      .where(sql`${t.status} = 'PENDING'`),
+    index("circle_applications_user_id_idx").on(t.userId),
+    check("circle_applications_status", sql`${t.status} in (${inList(APPLICATION_STATUSES)})`),
+    check("circle_applications_payout_round_positive", sql`${t.payoutRound} is null or ${t.payoutRound} >= 1`),
+    check("circle_applications_collateral_non_negative", sql`${t.collateralValue} >= 0`),
+    check(
+      "circle_applications_grant_mode",
+      sql`${t.grantMode} is null or ${t.grantMode} in (${inList(GRANT_MODES)})`,
+    ),
+    check("circle_applications_decided_at", sql`(${t.status} = 'PENDING') = (${t.decidedAt} is null)`),
+  ],
+).enableRLS();
+
+// One member's decision on one application.
+export const applicationVotes = pgTable(
+  "application_votes",
+  {
+    applicationId: uuid("application_id")
+      .notNull()
+      .references(() => circleApplications.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => circleMembers.id),
+    decision: text("decision").$type<(typeof VOTE_DECISIONS)[number]>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: "application_votes_pkey", columns: [t.applicationId, t.memberId] }),
+    check("application_votes_decision", sql`${t.decision} in (${inList(VOTE_DECISIONS)})`),
   ],
 ).enableRLS();
 
@@ -416,10 +487,10 @@ export const reviews = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     authorId: uuid("author_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     subjectId: uuid("subject_id")
       .notNull()
-      .references(() => users.id),
+      .references(() => users.id, { onDelete: "cascade" }),
     circleId: uuid("circle_id")
       .notNull()
       .references(() => circles.id),
