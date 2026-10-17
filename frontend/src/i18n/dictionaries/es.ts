@@ -77,6 +77,8 @@ const es: Dictionary = {
     grantModes: { RECURRING: "Aprobación recurrente", PER_ROUND: "Aprueba cada ronda", NONE: "Sin aprobación aún" },
     noReviews: "Aún no hay reseñas. Los miembros se califican después de que una ronda se entrega.",
     joinCta: "Tomar un cupo",
+    applyCta: "Postularme a un cupo",
+    applicationSent: "Tu solicitud fue enviada. Los miembros del círculo decidirán; tendrás tu cupo si la aceptan.",
     openSeats: "{count} de {size} cupos libres",
     legend: { verified: "Verificado", pending: "Esperando", beneficiary: "Recibe en esta ronda" },
     states: {
@@ -178,6 +180,10 @@ const es: Dictionary = {
     joining: "Uniéndote…",
     submit: "Continuar a la aprobación",
     full: "Este círculo está lleno.",
+    applyTitle: "Postularme a {circle}",
+    applyLead: "Este círculo público recibe miembros por solicitud. Elige cómo aprobaría los pagos tu billetera; los miembros del círculo deciden.",
+    applying: "Enviando solicitud…",
+    applySubmit: "Enviar solicitud",
   },
   auth: {
     title: "Inicia sesión en OpenCircle",

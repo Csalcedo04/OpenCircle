@@ -76,6 +76,8 @@ const en = {
     grantModes: { RECURRING: "Recurring approval", PER_ROUND: "Approves each round", NONE: "No approval yet" },
     noReviews: "No reviews yet. Members can review each other after a round pays out.",
     joinCta: "Take a seat",
+    applyCta: "Apply for a seat",
+    applicationSent: "Your application was sent. The circle’s members will decide; you’ll get a seat if they accept.",
     openSeats: "{count} of {size} seats open",
     legend: { verified: "Verified", pending: "Waiting", beneficiary: "This round’s beneficiary" },
     states: {
@@ -177,6 +179,10 @@ const en = {
     joining: "Joining…",
     submit: "Continue to wallet approval",
     full: "This circle is full.",
+    applyTitle: "Apply to {circle}",
+    applyLead: "This public circle takes members by application. Choose how your wallet would approve payments; the circle’s members decide.",
+    applying: "Sending application…",
+    applySubmit: "Send application",
   },
   auth: {
     title: "Sign in to OpenCircle",

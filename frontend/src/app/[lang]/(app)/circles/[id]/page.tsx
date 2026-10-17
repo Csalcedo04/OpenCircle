@@ -64,7 +64,7 @@ const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
 export default async function CirclePage({ params, searchParams }: PageProps<"/[lang]/circles/[id]">) {
   const { id } = await params
   // A private circle's link carries its invite code; keep it for the join page too.
-  const inviteParam = (await searchParams).invite
+  const { invite: inviteParam, applied } = await searchParams
   const invite = typeof inviteParam === "string" ? inviteParam : undefined
   const { locale, t } = await getDictionary()
   const view = await getCircleView(id, invite)
@@ -83,6 +83,8 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
+  // Without an invite link, a public circle takes applications instead of direct joins.
+  const seatCta = access.isMember ? null : access.visibility === "PUBLIC" && !invite ? t.circle.applyCta : t.circle.joinCta
   // Managers share the standing invite link (it carries the code); a public circle is shared by its page.
   const shareUrl = access.inviteUrl
     ? localizedInviteUrl(access.inviteUrl, locale)
@@ -148,12 +150,14 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
           <div className="flex shrink-0 flex-wrap items-center gap-3">
             {shareUrl && <ShareDialog url={shareUrl} circleName={circle.name} t={t.share} />}
             {circle.status === "OPEN" ? (
-              <Link
-                href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
-                className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
-              >
-                {t.circle.joinCta}
-              </Link>
+              seatCta && (
+                <Link
+                  href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
+                  className="inline-flex h-11 items-center justify-center rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[transform,background-color] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0"
+                >
+                  {seatCta}
+                </Link>
+              )
             ) : (
               round && <RoundStatusBadge status={round.status} label={t.circle.states[round.status]} className="text-sm px-3.5 py-1.5" />
             )}
@@ -193,6 +197,12 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
           </div>
         </div>
       </header>
+
+      {applied === "1" && !access.isMember && (
+        <p role="status" className="oc-fade-in mt-6 rounded-2xl bg-brand-mint/40 p-4 text-sm font-medium text-brand-navy">
+          {t.circle.applicationSent}
+        </p>
+      )}
 
       {access.canInvite && (
         <div className="mt-8">

@@ -11,11 +11,13 @@ import { amount, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { evaluateCoverage } from "@/lib/domain/rounds"
 import type { Circle, GrantMode } from "@/lib/domain/types"
 import { cn } from "@/lib/utils"
-import { joinCircleAction, type JoinState } from "./actions"
+import { applyCircleAction, joinCircleAction, type JoinState } from "./actions"
 
 type Props = {
   locale: Locale
   circle: Circle
+  /** `join` takes the seat; `apply` asks the circle's members for one (public circles without a link). */
+  mode: "join" | "apply"
   /** From a private circle's link; sent with the join. */
   invite?: string | undefined
   t: Dictionary["join"]
@@ -23,15 +25,12 @@ type Props = {
   tc: Pick<Dictionary["circle"], "owes" | "collateral" | "grant" | "uncovered" | "threshold" | "eligible">
   notCovered: string
 }
-export function JoinCircleForm({ locale, circle, invite, t, tErr, tc, notCovered }: Props) {
+export function JoinCircleForm({ locale, circle, mode, invite, t, tErr, tc, notCovered }: Props) {
   const [grant, setGrant] = useState<GrantMode>("RECURRING")
   const [collateral, setCollateral] = useState("")
+  const seat = { id: circle.id, assetScale: circle.contribution.assetScale }
   const [state, action, pending] = useActionState<JoinState, FormData>(
-    joinCircleAction.bind(null, locale, {
-      id: circle.id,
-      assetScale: circle.contribution.assetScale,
-      ...(invite ? { invite } : {}),
-    }),
+    mode === "apply" ? applyCircleAction.bind(null, locale, seat) : joinCircleAction.bind(null, locale, { ...seat, ...(invite ? { invite } : {}) }),
     { errors: {}, form: null },
   )
   const errors = {
@@ -139,7 +138,7 @@ export function JoinCircleForm({ locale, circle, invite, t, tErr, tc, notCovered
             ) : (
               <Wallet className="size-4 shrink-0" aria-hidden="true" />
             )}
-            <span>{pending ? t.joining : t.submit}</span>
+            <span>{mode === "apply" ? (pending ? t.applying : t.applySubmit) : pending ? t.joining : t.submit}</span>
           </Button>
 
         </form>
