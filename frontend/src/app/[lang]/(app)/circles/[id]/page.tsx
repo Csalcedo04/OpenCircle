@@ -22,7 +22,7 @@ import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { getCircle, listCircles, listMembers, listReviews } from "@/lib/data"
+import { getCircleView } from "@/lib/data"
 import { amount, formatAmount, percent } from "@/lib/domain/money"
 import {
   collectedFor,
@@ -40,14 +40,9 @@ import type { ContributionStatus, RoundState, RoundStatus } from "@/lib/domain/t
 import { cn } from "@/lib/utils"
 import { firstName, formatBps, formatDate, ringSeats } from "@/lib/view"
 
-export async function generateStaticParams() {
-  const circles = await listCircles()
-  return circles.map((c) => ({ id: c.id }))
-}
-
 export async function generateMetadata({ params }: PageProps<"/[lang]/circles/[id]">): Promise<Metadata> {
-  const circle = await getCircle((await params).id)
-  return { title: circle?.name ?? "OpenCircle" }
+  const view = await getCircleView((await params).id)
+  return { title: view?.circle.name ?? "OpenCircle" }
 }
 
 const PATH: RoundState[] = ["COLLECTING", "FUNDED", "RISK_CHECK", "PAYING_OUT", "PAID_OUT"]
@@ -63,8 +58,9 @@ const contributionIcon: Record<ContributionStatus, typeof CircleCheck> = {
 export default async function CirclePage({ params }: PageProps<"/[lang]/circles/[id]">) {
   const { id } = await params
   const { locale, t } = await getDictionary()
-  const [circle, members, reviews] = await Promise.all([getCircle(id), listMembers(), listReviews()])
-  if (!circle) notFound()
+  const view = await getCircleView(id)
+  if (!view) notFound()
+  const { circle, members, reviews: circleReviews } = view
 
   const byId = new Map(members.map((m) => [m.id, m]))
   const nameOf = (memberId: string) => byId.get(memberId)?.name ?? memberId
@@ -73,7 +69,6 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
   const pot = potFor(circle)
   const balance = poolBalance(circle)
   const seats = [...circle.seats].sort((a, b) => a.payoutRound - b.payoutRound)
-  const circleReviews = reviews.filter((r) => r.circleId === circle.id)
   const beneficiarySeat = round ? seatFor(circle, round.beneficiaryId) : undefined
   const coverage = beneficiarySeat ? evaluateCoverage(circle, beneficiarySeat) : undefined
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
@@ -437,7 +432,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
               {seats.map((seat) => {
                 const m = byId.get(seat.memberId)
                 if (!m) return null
-                const trust = trustFor(m, reviews)
+                const trust = trustFor(m)
                 return (
                   <li key={m.id} className="flex items-center gap-4 rounded-2xl border border-brand-line/70 bg-brand-canvas p-4">
                     <TrustDial trust={trust} label={t.member.trustScore} />
@@ -473,7 +468,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
                     </div>
                     <p className="mt-2 text-sm leading-relaxed text-brand-navy/90 italic">“{r.comment}”</p>
                     <p className="mt-3 text-xs text-brand-slate">
-                      {nameOf(r.authorId)} · {formatDate(r.date, locale)}
+                      {r.authorName} · {formatDate(r.date, locale)}
                     </p>
                   </li>
                 ))}

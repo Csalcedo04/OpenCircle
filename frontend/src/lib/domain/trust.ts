@@ -1,4 +1,4 @@
-import type { Member, Review } from "./types"
+import type { Member } from "./types"
 
 export type TrustSummary = {
   /** 0–100. 70% on-time payment rate, 30% average review rating. */
@@ -10,16 +10,14 @@ export type TrustSummary = {
   level: "NEW" | "BUILDING" | "TRUSTED" | "EXEMPLARY"
 }
 
-export function trustFor(member: Member, reviews: readonly Review[]): TrustSummary {
-  const received = reviews.filter((r) => r.subjectId === member.id)
+export function trustFor(member: Member): TrustSummary {
   const { onTime, late, missed } = member.payments
   const total = onTime + late + missed
   const onTimeRate = total === 0 ? 0 : Math.floor((onTime * 100) / total)
-  const stars = received.reduce((acc, r) => acc + r.rating, 0)
-  const ratingTenths = received.length === 0 ? 0 : Math.round((stars * 10) / received.length)
+  const { count: reviewCount, tenths: ratingTenths } = member.ratings
   // Rating 1–5 mapped to 0–100 before weighting.
-  const ratingScore = received.length === 0 ? onTimeRate : Math.round(((ratingTenths - 10) * 100) / 40)
+  const ratingScore = reviewCount === 0 ? onTimeRate : Math.round(((ratingTenths - 10) * 100) / 40)
   const score = total === 0 ? 0 : Math.round((onTimeRate * 70 + ratingScore * 30) / 100)
   const level = total < 3 ? "NEW" : score >= 90 ? "EXEMPLARY" : score >= 75 ? "TRUSTED" : "BUILDING"
-  return { score, onTimeRate, reviewCount: received.length, ratingTenths, level }
+  return { score, onTimeRate, reviewCount, ratingTenths, level }
 }
