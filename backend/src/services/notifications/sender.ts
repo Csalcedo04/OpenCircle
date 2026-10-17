@@ -67,3 +67,8 @@ export function createLogSender(log: (message: string, data: Record<string, stri
     },
   };
 }
+
+/** One sender per channel, e.g. Resend for EMAIL and the log for the rest until those providers exist. */
+export function createChannelSender(byChannel: Record<NotificationChannel, NotificationSender>): NotificationSender {
+  return { send: (n) => byChannel[n.channel].send(n) };
+}

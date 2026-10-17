@@ -1,7 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "../../db/client";
 import { circles } from "../../db/schema";
-import type { ApplicationNotices } from "./application-notices";
 import type { PeriodEngine } from "./period-engine";
 import type { RemindersService } from "./reminders.service";
 import type { ScoringService } from "./scoring.service";
@@ -30,15 +29,20 @@ export function createCircleCycle(deps: {
 export interface TickResult {
   circles: number;
   failed: number;
-  // Application emails re-sent because an earlier send failed.
+  // Emails (applications, invitations) re-sent because an earlier send failed.
   noticesResent: number;
+}
+
+/** Re-sends the emails of the last `since` that failed; returns how many went out. */
+export interface NoticeRetry {
+  retryRecent(since: Date): Promise<number>;
 }
 
 const NOTICE_RETRY_MS = 7 * 86_400_000;
 
 /**
  * Runs the cycle for every active real-time circle (test-clock circles move with their clock),
- * then re-sends application emails of the last 7 days that failed.
+ * then re-sends the emails of the last 7 days that failed.
  */
 export function createCircleTick({
   db,
@@ -48,7 +52,7 @@ export function createCircleTick({
 }: {
   db: Db;
   cycle: CircleCycle;
-  notices: Pick<ApplicationNotices, "retryRecent">;
+  notices: readonly NoticeRetry[];
   now?: () => Date;
 }) {
   return {
@@ -67,10 +71,14 @@ export function createCircleTick({
           console.error("Circle tick failed", id, err instanceof Error ? err.name : "unknown");
         }
       }
-      const noticesResent = await notices.retryRecent(new Date(now().getTime() - NOTICE_RETRY_MS)).catch((err: unknown) => {
-        console.error("Application notice retry failed", err instanceof Error ? err.name : "unknown");
-        return 0;
-      });
+      // Each kind of notice retries on its own; one failing doesn't stop the others.
+      let noticesResent = 0;
+      for (const n of notices) {
+        noticesResent += await n.retryRecent(new Date(now().getTime() - NOTICE_RETRY_MS)).catch((err: unknown) => {
+          console.error("Notice retry failed", err instanceof Error ? err.name : "unknown");
+          return 0;
+        });
+      }
       return { circles: active.length, failed, noticesResent };
     },
   };

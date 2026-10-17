@@ -1361,7 +1361,7 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       const tick = createCircleTick({
         db,
         now: () => now,
-        notices: { retryRecent: async () => 0 },
+        notices: [{ retryRecent: async () => 0 }],
         cycle: {
           advanceCircle: async (id, t) => {
             assert.equal(t.getTime(), now.getTime());
