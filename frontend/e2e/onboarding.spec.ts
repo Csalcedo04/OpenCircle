@@ -62,7 +62,7 @@ test.describe("sign-in and onboarding", () => {
     await signIn(page, user)
     await expect(page.locator('li[aria-current="step"]')).toContainText("Tus datos")
     expect(await motion()).toBe("oc-fill")
-    expect(await page.locator("section.oc-step-in").evaluate((el) => getComputedStyle(el).animationName)).toBe("oc-rise")
+    expect(await page.locator(".oc-step-in").evaluate((el) => getComputedStyle(el).animationName)).toBe("oc-rise")
 
     // Reduced motion: nothing moves, the current bar is simply full.
     await page.emulateMedia({ reducedMotion: "reduce" })
