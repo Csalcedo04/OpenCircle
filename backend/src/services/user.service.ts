@@ -2,7 +2,7 @@ import { and, eq, exists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "../db/client";
 import { uniqueViolation } from "../db/errors";
-import { circleApplications, circleInvites, circleMembers, creditProfiles, documentType, users, wallets } from "../db/schema";
+import { circleApplications, circleInvites, circleMembers, creditProfiles, documentType, friendships, users, wallets } from "../db/schema";
 import type { Tx } from "./wallet.service";
 import { AppError } from "../errors/app-error";
 import { icsFromStored } from "./credit/credit-score";
@@ -87,7 +87,24 @@ export function profileVisibleTo(db: Db | Tx, viewerId: string) {
     .select({ one: sql`1` })
     .from(circleInvites)
     .where(and(eq(circleInvites.userId, viewerId), eq(circleInvites.createdBy, users.id), eq(circleInvites.status, "ACTIVE")));
-  return or(eq(users.id, viewerId), exists(sharesCircle), exists(appliedToViewersCircle), exists(invitedToViewersCircle), exists(invitedViewer));
+  // Friends, and people with a friend request pending between them (to see who is asking).
+  const friendsWithViewer = db
+    .select({ one: sql`1` })
+    .from(friendships)
+    .where(
+      or(
+        and(eq(friendships.requesterId, viewerId), eq(friendships.addresseeId, users.id)),
+        and(eq(friendships.requesterId, users.id), eq(friendships.addresseeId, viewerId)),
+      ),
+    );
+  return or(
+    eq(users.id, viewerId),
+    exists(sharesCircle),
+    exists(appliedToViewersCircle),
+    exists(invitedToViewersCircle),
+    exists(invitedViewer),
+    exists(friendsWithViewer),
+  );
 }
 
 /** The id of the account with this email (stored lowercase), or null. */

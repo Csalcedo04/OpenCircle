@@ -62,6 +62,7 @@ export function fakeServices(overrides: Partial<Services> = {}): Services {
     },
     applications: { apply: notUsed, list: notUsed, vote: notUsed, setApprovers: notUsed },
     invites: { create: notUsed, list: notUsed, revoke: notUsed, listMine: notUsed },
+    friends: { list: notUsed, requests: notUsed, request: notUsed, accept: notUsed, cancel: notUsed, remove: notUsed },
     circleTick: { run: notUsed },
     testClocks: null,
     ...overrides,

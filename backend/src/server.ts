@@ -14,6 +14,7 @@ import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
+import { createFriendService } from "./services/friend.service";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./services/open-payments/client";
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
       circles,
       applications: createApplicationService({ db, circles, notices }),
       invites: createInviteService({ db, circles, notices: inviteNotices, frontendUrl: env.FRONTEND_URL }),
+      friends: createFriendService({ db }),
       members: createMemberService({ db, circles }),
       testClocks,
       circleTick: createCircleTick({ db, cycle, notices }),

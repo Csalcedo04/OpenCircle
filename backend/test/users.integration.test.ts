@@ -124,6 +124,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       circles: fakeServices().circles,
       applications: fakeServices().applications,
       invites: fakeServices().invites,
+      friends: fakeServices().friends,
       members: fakeServices().members,
       testClocks: null,
       circleTick: fakeServices().circleTick,
