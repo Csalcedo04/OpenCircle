@@ -4,7 +4,7 @@ Branch `feat/internal-accounts`, one commit per section, PR against `main` (draf
 
 ## 1. Schema and ledger
 
-- [x] 1.1 Add `ledger_accounts`, `ledger_transfers`, `account_deposits`; make `audit_events.wallet_id` nullable and add `account_id`; add `circle_members.funding_source` (default `EXTERNAL_WALLET`). Migration `0012` idempotent, no DROP, with a `CIRCLE_POOL` backfill per existing circle. Verify: `tsc` passes, the migration has no DROP.
+- [x] 1.1 Add `ledger_accounts`, `ledger_transfers`, `account_deposits`; make `audit_events.wallet_id` nullable and add `account_id`; add `circle_members.funding_source` (default `EXTERNAL_WALLET`). Migration `0014` idempotent, no DROP, with a `CIRCLE_POOL` backfill per existing circle. Verify: `tsc` passes, the migration has no DROP.
 - [x] 1.2 `services/money.ts` (`Money`, `AmountDto`, `toAmountDto`, `sameAsset`, `minorUnitsSchema`) and `services/ledger/ledger.service.ts` (`systemAccountInTx`, `transferInTx`, `movementsOf`). Verify: `test/ledger.integration.test.ts` covers exact amounts, idempotent repeat, conflicting repeat, insufficient funds, asset mismatch, SYSTEM negative / USER not, 20 concurrent transfers with funds for 10, balance = Σ transfers.
 - [x] 1.3 `circle.service.create` inserts the pool account in the same transaction. Verify: circles integration test sees a pool account with the circle's asset.
 - [x] 1.4 Frontend: `profileSchema.internalAccount` tolerant; `lib/flows/onboarding.ts` with `isOnboarded`; replace `walletAddress` onboarded checks in `lib/auth/landing.ts`, `components/kyc-gate.tsx`, `(app)/onboarding/page.tsx`. Verify: unit tests for the helper; typecheck, lint, tests green; behaviour unchanged while `internalAccount` is null.
