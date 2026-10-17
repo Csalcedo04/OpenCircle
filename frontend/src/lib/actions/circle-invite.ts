@@ -5,6 +5,8 @@ import { hasLocale } from "@/i18n/config"
 import { BackendError } from "@/lib/api/backend"
 import { rotateCircleInvite, setCircleVisibility } from "@/lib/api/circle-invite"
 import { CIRCLE_VISIBILITIES, inviteErrorKey, type CircleVisibility, type InviteErrorKey } from "@/lib/flows/circle-invite"
+import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export type InviteActionState = {
   error: InviteErrorKey | null
@@ -39,4 +41,51 @@ export async function updateInviteAction(
     console.error("Circle invite update failed", code)
     return { ...prev, error: inviteErrorKey(code) }
   }
+}
+
+export type EmailSearchResult = {
+  email: string
+  found: boolean
+  fullName: string | null
+}
+
+export async function searchUserByEmailAction(email: string): Promise<EmailSearchResult> {
+  const cleanEmail = email.trim().toLowerCase()
+  if (!cleanEmail.includes("@") || cleanEmail.length < 5) {
+    return { email: cleanEmail, found: false, fullName: null }
+  }
+
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from("users")
+      .select("full_name, email")
+      .eq("email", cleanEmail)
+      .maybeSingle()
+
+    if (data) {
+      return { email: cleanEmail, found: true, fullName: (data as { full_name?: string | null }).full_name ?? null }
+    }
+  } catch {
+    // client lookup fallback
+  }
+
+  try {
+    if (process.env.SUPABASE_SECRET_KEY) {
+      const admin = createAdminClient()
+      const { data } = await admin
+        .from("users")
+        .select("full_name, email")
+        .eq("email", cleanEmail)
+        .maybeSingle()
+
+      if (data) {
+        return { email: cleanEmail, found: true, fullName: (data as { full_name?: string | null }).full_name ?? null }
+      }
+    }
+  } catch {
+    // admin lookup fallback
+  }
+
+  return { email: cleanEmail, found: false, fullName: null }
 }

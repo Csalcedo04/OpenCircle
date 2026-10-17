@@ -218,22 +218,24 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
 
       {/* Main Interactive Round Arena */}
       {circle.status === "OPEN" || !round ? (
-        <section className="mt-8 grid items-center gap-8 rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs md:grid-cols-2 sm:p-10">
-          <CircleRing
-            className="mx-auto max-w-md"
-            seats={seats.map((s) => ({
-              id: s.memberId,
-              initials: initials(nameOf(s.memberId)),
-              label: nameOf(s.memberId),
-              state: "verified",
-              beneficiary: false,
-            }))}
-            progress={percent(BigInt(circle.seats.length), BigInt(circle.size))}
-            amount={money(pot)}
-            caption={t.circle.potLabel}
-            title={circle.name}
-          />
-          <div>
+        <section className="mt-8 grid items-center gap-8 rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs lg:grid-cols-12 sm:p-10">
+          <div className="flex items-center justify-center lg:col-span-8">
+            <CircleRing
+              className="mx-auto max-w-md"
+              seats={seats.map((s) => ({
+                id: s.memberId,
+                initials: initials(nameOf(s.memberId)),
+                label: nameOf(s.memberId),
+                state: "verified",
+                beneficiary: false,
+              }))}
+              progress={percent(BigInt(circle.seats.length), BigInt(circle.size))}
+              amount={money(pot)}
+              caption={t.circle.potLabel}
+              title={circle.name}
+            />
+          </div>
+          <div className="lg:col-span-4">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-mint px-3 py-1 text-xs font-semibold text-brand-navy">
               <span className="size-1.5 rounded-full bg-brand-navy" />
               <span>{t.circles.status.OPEN}</span>

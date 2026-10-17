@@ -15,7 +15,7 @@ export async function createCircleAction(locale: string, _prev: CreateState, for
   if (!hasLocale(locale)) return { errors: {}, form: "generic" }
   const parsed = parseCreateForm({
     name: text(formData.get("name")),
-    city: text(formData.get("city")),
+    city: text(formData.get("city")) || "Medellín",
     amount: text(formData.get("amount")),
     size: text(formData.get("size")),
     cadence: text(formData.get("cadence")),

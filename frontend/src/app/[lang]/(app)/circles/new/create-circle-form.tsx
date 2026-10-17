@@ -1,7 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { useActionState, useState } from "react"
-import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Sparkles, Users, Zap } from "lucide-react"
+import { CheckCircle2, Coins, Globe, LoaderCircle, Lock, Minus, Plus, Sparkles, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,7 +17,6 @@ import { createCircleAction, type CreateState } from "./actions"
 const COP = { assetCode: "COP", assetScale: CIRCLE_ASSET_SCALE } as const
 // Shown in the projection; the API applies the real fee.
 const FEE_BPS = 200
-const SIZES = ["3", "5", "8", "10", "12"]
 
 type Props = { locale: Locale; t: Dictionary["create"]; tErr: Dictionary["circleErrors"] }
 
@@ -43,6 +43,12 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
   const err = (field: keyof CreateState["errors"]) => {
     const key = state.errors[field]
     return key ? tErr[key] : undefined
+  }
+
+  const updateSize = (newSize: number) => {
+    const bounded = Math.max(3, Math.min(12, newSize))
+    setSize(bounded.toString())
+    if (payoutRound > bounded) setPayoutRound(1)
   }
 
   const contribution = parseWholeUnits(amountInput, COP.assetScale)
@@ -75,18 +81,6 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
             />
           </FormField>
 
-          <FormField id="city" label={t.city} error={err("city")}>
-            <Input
-              id="city"
-              name="city"
-              autoComplete="address-level2"
-              placeholder={t.cityPlaceholder}
-              aria-invalid={err("city") ? true : undefined}
-              aria-describedby={describedBy("city", err("city"))}
-              className="h-11 rounded-xl text-base"
-            />
-          </FormField>
-
           <FormField id="amount" label={t.amount} help={t.amountHelp} error={err("amount")}>
             <div className="relative">
               <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-sm text-brand-slate">$</span>
@@ -105,21 +99,29 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
 
           <fieldset>
             <legend className="mb-2 block text-sm font-semibold text-brand-navy">{t.size}</legend>
-            <div className="flex flex-wrap gap-2">
-              {SIZES.map((s) => (
-                <button
-                  type="button"
-                  key={s}
-                  aria-pressed={size === s}
-                  onClick={() => {
-                    setSize(s)
-                    if (payoutRound > Number(s)) setPayoutRound(1)
-                  }}
-                  className={chip(size === s)}
-                >
-                  {s}
-                </button>
-              ))}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-label={t.decreaseMembers}
+                disabled={Number(size) <= 3}
+                onClick={() => updateSize(Number(size) - 1)}
+                className="flex size-11 items-center justify-center rounded-2xl border border-brand-line bg-brand-canvas text-brand-navy transition-all hover:bg-brand-white hover:border-brand-navy/30 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Minus className="size-4 shrink-0" aria-hidden="true" />
+              </button>
+              <div className="flex h-11 min-w-[72px] items-center justify-center rounded-2xl border border-brand-line bg-brand-canvas px-4 font-mono text-lg font-bold tabular-nums text-brand-navy shadow-2xs">
+                {size}
+              </div>
+              <button
+                type="button"
+                aria-label={t.increaseMembers}
+                disabled={Number(size) >= 12}
+                onClick={() => updateSize(Number(size) + 1)}
+                className="flex size-11 items-center justify-center rounded-2xl border border-brand-line bg-brand-canvas text-brand-navy transition-all hover:bg-brand-white hover:border-brand-navy/30 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <Plus className="size-4 shrink-0" aria-hidden="true" />
+              </button>
+              <span className="text-xs font-medium text-brand-slate">{t.sizeHelp}</span>
             </div>
             {err("size") && <p className="oc-fade-in mt-1.5 text-sm font-medium text-brand-violet-ink">{err("size")}</p>}
           </fieldset>
@@ -174,18 +176,26 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
             </p>
           )}
 
-          <Button
-            type="submit"
-            disabled={pending}
-            className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
-          >
-            {pending ? (
-              <LoaderCircle className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
-            ) : (
-              <Sparkles className="size-4 shrink-0" aria-hidden="true" />
-            )}
-            <span>{pending ? t.creating : t.submit}</span>
-          </Button>
+          <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-start">
+            <Link
+              href={`/${locale}/circles`}
+              className="inline-flex h-12 w-full items-center justify-center rounded-full border border-brand-line bg-brand-white px-6 text-sm font-semibold text-brand-navy transition-all hover:border-brand-navy/30 hover:bg-brand-canvas active:scale-95 sm:w-auto"
+            >
+              {t.cancel}
+            </Link>
+            <Button
+              type="submit"
+              disabled={pending}
+              className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
+            >
+              {pending ? (
+                <LoaderCircle className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="size-4 shrink-0" aria-hidden="true" />
+              )}
+              <span>{pending ? t.creating : t.submit}</span>
+            </Button>
+          </div>
         </form>
       </div>
 
