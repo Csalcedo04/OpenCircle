@@ -5,6 +5,7 @@ import { uniqueViolation } from "../db/errors";
 import { friendships, users } from "../db/schema";
 import { AppError } from "../errors/app-error";
 import { displayName } from "./display-name";
+import type { NotificationService } from "./notification.service";
 import { findUserIdByEmail, profileVisibleTo } from "./user.service";
 
 export interface PersonDto {
@@ -32,7 +33,12 @@ const requestNotFound = () => new AppError(404, "FRIEND_REQUEST_NOT_FOUND", "Fri
  * Friends: one row per pair of users, PENDING until the addressee accepts. Rejecting, withdrawing
  * or removing deletes the row, so a new request can follow. Nobody is told who declined.
  */
-export function createFriendService({ db }: { db: Db }) {
+export interface FriendServiceDeps {
+  db: Db;
+  notifications: Pick<NotificationService, "friendRequested">;
+}
+
+export function createFriendService({ db, notifications }: FriendServiceDeps) {
   const requester = alias(users, "requester");
   const addressee = alias(users, "addressee");
 
@@ -128,6 +134,8 @@ export function createFriendService({ db }: { db: Db }) {
         }
         throw err;
       }
+      // The request stands even if telling the addressee fails; they still see it in their list.
+      await notifications.friendRequested(id).catch((err: unknown) => console.error("Friend request notification failed", err instanceof Error ? err.name : "unknown"));
       const request = (await rowsFor(userId)).find((r) => r.id === id);
       if (!request) throw requestNotFound();
       return toRequest(request);

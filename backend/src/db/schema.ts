@@ -505,6 +505,40 @@ export const circleInvites = pgTable(
   ],
 ).enableRLS();
 
+// ── In-app notifications ─────────────────────────────────────────────────────
+
+export const NOTIFICATION_KINDS = ["FRIEND_REQUEST", "CIRCLE_INVITE"] as const;
+
+// Something that happened to the user and waits for them in the app: a friend request, or a
+// direct invite to a circle. One row per source event (the request or the invite), which also
+// takes the notification with it when it goes away. Goes with the user.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<(typeof NOTIFICATION_KINDS)[number]>().notNull(),
+    // Who caused it (the requester, the inviter); kept as null if that account is deleted.
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    friendshipId: uuid("friendship_id").references(() => friendships.id, { onDelete: "cascade" }),
+    inviteId: uuid("invite_id").references(() => circleInvites.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("notifications_user_id_created_at_idx").on(t.userId, t.createdAt),
+    uniqueIndex("notifications_friendship_unique").on(t.friendshipId).where(sql`${t.friendshipId} is not null`),
+    uniqueIndex("notifications_invite_unique").on(t.inviteId).where(sql`${t.inviteId} is not null`),
+    check("notifications_kind", sql`${t.kind} in (${inList(NOTIFICATION_KINDS)})`),
+    check(
+      "notifications_source",
+      sql`(${t.kind} = 'FRIEND_REQUEST' and ${t.friendshipId} is not null and ${t.inviteId} is null) or (${t.kind} = 'CIRCLE_INVITE' and ${t.inviteId} is not null and ${t.friendshipId} is null)`,
+    ),
+  ],
+).enableRLS();
+
 // All rounds are created when the circle starts: round 1 COLLECTING, the rest UPCOMING.
 export const rounds = pgTable(
   "rounds",

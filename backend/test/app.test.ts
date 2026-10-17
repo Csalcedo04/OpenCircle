@@ -441,3 +441,27 @@ test("GET /api/users/me/debts and POST .../:contributionId/pay: signed in; 404 f
     await debtServer.close();
   }
 });
+
+test("notification routes require a token → 401, and validate ids and queries", async () => {
+  const id = "22222222-2222-4222-8222-222222222222";
+  for (const [method, path] of [
+    ["GET", "/api/notifications"],
+    ["POST", `/api/notifications/${id}/read`],
+    ["POST", "/api/notifications/read-all"],
+  ] as const) {
+    const res = await server.request(path, { method });
+    assert.equal(res.status, 401, `${method} ${path}`);
+  }
+  const token = await auth.token("88888888-8888-4888-8888-888888888888");
+  for (const [method, path, status, code] of [
+    ["GET", "/api/notifications?unread=maybe", 400, "VALIDATION_ERROR"],
+    ["GET", "/api/notifications?limit=0", 400, "VALIDATION_ERROR"],
+    ["GET", "/api/notifications?limit=101", 400, "VALIDATION_ERROR"],
+    ["GET", "/api/notifications?extra=1", 400, "VALIDATION_ERROR"],
+    ["POST", "/api/notifications/not-a-uuid/read", 404, "NOTIFICATION_NOT_FOUND"],
+  ] as const) {
+    const res = await server.request(path, { method, token });
+    assert.equal(res.status, status, `${method} ${path}`);
+    assert.equal(errorCode(res.body), code);
+  }
+});

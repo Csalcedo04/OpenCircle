@@ -19,6 +19,7 @@ import { createPoolAccess } from "./services/circles/pool-access";
 import { createPeriodEngine } from "./services/circles/period-engine";
 import { createDiditClient } from "./services/didit/client";
 import { createFriendService } from "./services/friend.service";
+import { createNotificationService } from "./services/notification.service";
 import { createKycService } from "./services/kyc.service";
 import { loadPrivateKey } from "./services/open-payments/client-key";
 import { createOpenPaymentsAuthClient, createOpenPaymentsPublicClient } from "./services/open-payments/client";
@@ -64,6 +65,7 @@ async function main(): Promise<void> {
       : log;
   const notices = createApplicationNotices({ db, sender });
   const inviteNotices = createInviteNotices({ db, sender, frontendUrl: env.FRONTEND_URL });
+  const notifications = createNotificationService({ db, frontendUrl: env.FRONTEND_URL });
   // Periods, then payouts, then scores (ICS), then payment reminders. The scheduler runs it for
   // real-time circles (POST /api/internal/circles/tick); test clocks run it for theirs.
   const cycle = createCircleCycle({
@@ -99,8 +101,9 @@ async function main(): Promise<void> {
       }),
       circles,
       applications: createApplicationService({ db, circles, notices }),
-      invites: createInviteService({ db, circles, notices: inviteNotices, frontendUrl: env.FRONTEND_URL }),
-      friends: createFriendService({ db }),
+      invites: createInviteService({ db, circles, notices: inviteNotices, notifications, frontendUrl: env.FRONTEND_URL }),
+      friends: createFriendService({ db, notifications }),
+      notifications,
       members: createMemberService({ db, circles }),
       testClocks,
       circleTick: createCircleTick({ db, cycle, notices: [notices, inviteNotices] }),
