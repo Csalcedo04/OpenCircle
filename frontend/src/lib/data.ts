@@ -1,6 +1,6 @@
 import "server-only"
 
-import { fetchCircle, fetchCircles, fetchMember } from "@/lib/api/backend"
+import { fetchCircle, fetchCircles, fetchMember, getMyCircles } from "@/lib/api/backend"
 import { membersOf, toCircle, toMember, toReview } from "@/lib/circles/from-api"
 import type { Circle, Member, Review } from "@/lib/domain/types"
 import type { CircleVisibility } from "@/lib/flows/circle-invite"
@@ -40,6 +40,11 @@ export async function getCircleView(id: string, invite?: string): Promise<Circle
 /** Every listed circle with its details (the list page shows trust and the current round). */
 export async function listCircleViews(): Promise<CircleView[]> {
   return detailed((await fetchCircles()).map((c) => c.id))
+}
+
+/** The circles the signed-in user has a seat in, private ones included. */
+export async function listMyCircleViews(): Promise<CircleView[]> {
+  return detailed((await getMyCircles()).map((c) => c.id))
 }
 
 export async function getMemberView(id: string): Promise<MemberView | undefined> {

@@ -18,7 +18,9 @@ export const apiCircleSchema = z.object({
   seatsTaken: z.int(),
   cadence: z.enum(CIRCLE_CADENCES),
   startedAt: z.string().nullable(),
-  testClockId: z.uuid().nullable(),
+  testClockId: z.uuid().nullable().optional(),
+  inviteUrl: z.string().nullable().optional(),
+  visibility: z.enum(["PRIVATE", "PUBLIC"]).optional(),
   seats: z.array(z.object({ memberId: z.uuid(), displayName: z.string(), payoutRound: z.int() })),
 })
 
@@ -64,6 +66,7 @@ export interface NewCircle {
   size: number
   cadence: CircleCadence
   payoutRound: number
-  testClockId: string
+  testClockId?: string | undefined
+  visibility?: "PRIVATE" | "PUBLIC" | undefined
 }
 

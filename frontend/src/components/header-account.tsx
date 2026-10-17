@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server"
 
 type Props = {
   locale: Locale
-  t: Pick<Dictionary["nav"], "signIn" | "signOut">
+  t: Pick<Dictionary["nav"], "signIn" | "signOut" | "account">
   linkClass: string
 }
 
@@ -31,10 +31,13 @@ export async function HeaderAccount({ locale, t, linkClass }: Props) {
 
   return (
     <>
-      <span className="hidden max-w-40 items-center gap-1.5 truncate px-2 text-sm text-brand-on-navy sm:inline-flex">
-        <UserRound className="size-4 shrink-0" aria-hidden="true" />
+      <Link
+        href={`/${locale}/account`}
+        className="hidden max-w-44 items-center gap-1.5 truncate px-2 text-sm font-medium text-brand-mint hover:text-brand-white transition-colors sm:inline-flex"
+      >
+        <UserRound className="size-4 shrink-0 text-brand-mint" aria-hidden="true" />
         <span className="truncate">{name}</span>
-      </span>
+      </Link>
       <form action={signOut.bind(null, locale)}>
         <button type="submit" className={linkClass}>
           <LogOut className="size-4 sm:mr-1.5" aria-hidden="true" />

@@ -42,6 +42,7 @@ export function toCircle(dto: CircleDto): Circle {
     size: dto.size,
     seats: dto.seats.map((s) => ({
       memberId: s.userId,
+      displayName: s.displayName,
       payoutRound: s.payoutRound,
       collateralValue: s.collateral.value,
       grant: s.grantMode,
@@ -55,6 +56,8 @@ export function toCircle(dto: CircleDto): Circle {
     })),
     // The UI's "no current round" is 0.
     currentRound: dto.currentRound ?? 0,
+    visibility: dto.visibility,
+    cadence: dto.cadence,
   }
 }
 

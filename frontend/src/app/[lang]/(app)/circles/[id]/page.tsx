@@ -10,6 +10,7 @@ import {
   Coins,
   Lock,
   MapPin,
+  Receipt,
   ShieldCheck,
   Undo2,
   Users,
@@ -20,10 +21,13 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Avatar, PEOPLE } from "@/components/landing/shared"
 import { Stars, TrustDial, initials } from "@/components/trust"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ShareInviteDialog } from "./share-invite-dialog"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
 import { InviteLink } from "@/components/invite-link"
 import { getCircleView } from "@/lib/data"
+import { localizedInviteUrl } from "@/lib/flows/circle-invite"
+import { siteUrl } from "@/lib/site"
 import { amount, formatAmount, percent } from "@/lib/domain/money"
 import {
   collectedFor,
@@ -78,6 +82,12 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
   const beneficiaryName = round ? firstName(nameOf(round.beneficiaryId)) : ""
   const pathIndex = round ? PATH.indexOf(round.status === "BLOCKED" ? "RISK_CHECK" : (round.status as RoundState)) : -1
   const openSeats = circle.size - circle.seats.length
+  // The creator shares the invite link (it carries the code); a public circle is shared by its page.
+  const shareUrl = access.inviteUrl
+    ? localizedInviteUrl(access.inviteUrl, locale)
+    : access.visibility === "PUBLIC"
+      ? new URL(`/${locale}/circles/${circle.id}`, siteUrl).toString()
+      : null
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
@@ -103,12 +113,22 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
               )}
               <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
                 <Calendar className="size-3 text-brand-slate" aria-hidden="true" />
-                <span>{circle.roundLengthDays}d {locale === "es" ? "por turno" : "per round"}</span>
+                <span>{fill(t.circles.perRoundDuration, { days: circle.roundLengthDays })}</span>
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-line bg-brand-canvas px-3 py-1 text-xs font-semibold text-brand-slate">
                 <Users className="size-3 text-brand-slate" aria-hidden="true" />
                 <span>{fill(t.circles.members, { count: circle.size })}</span>
               </span>
+              {access.visibility === "PRIVATE" ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-violet/20 bg-brand-violet/10 px-3 py-1 text-xs font-semibold text-brand-violet">
+                  <Lock className="size-3" aria-hidden="true" />
+                  <span>{t.circles.inviteBadge}</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-mint/40 bg-brand-mint/20 px-3 py-1 text-xs font-semibold text-brand-navy">
+                  <span>{t.circles.publicBadge}</span>
+                </span>
+              )}
             </div>
 
             <h1 className="mt-4 text-3xl font-bold tracking-tight text-brand-navy sm:text-4xl">
@@ -124,7 +144,8 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
             </div>
           </div>
 
-          <div className="shrink-0">
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
+            {shareUrl && <ShareInviteDialog url={shareUrl} circleName={circle.name} t={t.circle} locale={locale} />}
             {circle.status === "OPEN" ? (
               <Link
                 href={`/${locale}/circles/${circle.id}/join${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`}
@@ -399,6 +420,48 @@ export default async function CirclePage({ params, searchParams }: PageProps<"/[
                 <p className="mt-2 text-xs text-brand-slate">{t.circle.noEngine}</p>
               )}
             </div>
+
+            {/* Pot payout receipt */}
+            {(round.status === "PAYING_OUT" || round.status === "PAID_OUT" || coverage?.eligible) && (
+              <div className="animate-in fade-in rounded-[32px] border border-brand-mint/60 bg-brand-mint/10 p-6 shadow-2xs sm:p-7">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-8 items-center justify-center rounded-full bg-brand-mint text-brand-navy">
+                      <Receipt className="size-4.5" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <h3 className="text-base font-bold text-brand-navy">
+                        {locale === "es" ? "Comprobante de desembolso del pozo" : "Pot payout receipt"}
+                      </h3>
+                      <p className="text-xs text-brand-slate">
+                        {locale === "es" ? "Liquidación verificable vía Open Payments / STREAM" : "Verifiable settlement via Open Payments / STREAM"}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-brand-mint px-2.5 py-0.5 text-xs font-semibold text-brand-navy">
+                    <CheckCircle2 className="size-3 text-brand-navy" aria-hidden="true" />
+                    <span>{t.circle.legend.verified}</span>
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border border-brand-line/60 bg-brand-white p-4 sm:grid-cols-3">
+                  <div>
+                    <span className="block text-[11px] font-medium text-brand-slate">{t.circle.collectedAmount}</span>
+                    <span className="font-mono text-base font-bold text-brand-navy tabular-nums">{money(pot)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] font-medium text-brand-slate">{fill(t.circle.fee, { rate: formatBps(circle.feeBps, locale) })}</span>
+                    <span className="font-mono text-base font-bold text-brand-slate tabular-nums">− {money(feeFor(circle))}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] font-medium text-brand-slate">
+                      {t.circle.payout} · {beneficiaryName}
+                    </span>
+                    <span className="font-mono text-lg font-extrabold text-brand-violet tabular-nums">{money(payoutFor(circle))}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
