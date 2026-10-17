@@ -468,6 +468,7 @@ const dashboardSchema = z.object({
           deadline: isoDate,
           mine: z.boolean().nullable().optional().transform((v) => v ?? false),
           verified: z.number().int().nullable().optional().transform((v) => v ?? 0),
+          myContributionId: z.uuid().nullable().optional().transform((v) => v ?? null),
           myStatus: contributionStatusSchema.nullable(),
           myFailureCode: z.string().nullable(),
         }),
@@ -511,3 +512,34 @@ export async function getMyDashboard(): Promise<Dashboard | null> {
     throw err
   }
 }
+
+const retryContributionSchema = z.object({
+  contributionId: z.uuid(),
+  status: contributionStatusSchema,
+  failureCode: z.string().nullable().optional().transform((v) => v ?? null),
+})
+
+export type RetryContributionResult = z.infer<typeof retryContributionSchema>
+
+/** Retries a failed contribution while its round is still COLLECTING before the deadline. */
+export function retryContribution(contributionId: string): Promise<RetryContributionResult> {
+  return backendFetch(`/users/me/contributions/${encodeURIComponent(contributionId)}/retry`, retryContributionSchema, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+const payDebtResponseSchema = z.object({
+  status: z.enum(["PAID", "PAYING", "OWED"]),
+})
+
+export type PayDebtResult = z.infer<typeof payDebtResponseSchema>
+
+/** Pays an open defaulted contribution after the round closed. */
+export function payDebt(contributionId: string): Promise<PayDebtResult> {
+  return backendFetch(`/users/me/debts/${encodeURIComponent(contributionId)}/pay`, payDebtResponseSchema, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+

@@ -13,6 +13,7 @@ import { createResendSender } from "./services/notifications/resend-sender";
 import { createChannelSender, createLogSender } from "./services/notifications/sender";
 import { createMemberService } from "./services/member.service";
 import { createMemberAccess } from "./services/circles/member-access";
+import { createContributionRetry } from "./services/circles/contribution-retry.service";
 import { createDebtService } from "./services/circles/debt.service";
 import { createPayouts } from "./services/circles/payout.service";
 import { createPoolAccess } from "./services/circles/pool-access";
@@ -81,6 +82,10 @@ async function main(): Promise<void> {
   });
   const testClocks = env.TEST_CLOCKS_ENABLED ? createTestClockService({ db, engine: cycle }) : null;
   const circleTick = createCircleTick({ db, cycle, notices: [notices, inviteNotices] });
+  const contributionRetry = createContributionRetry({
+    db,
+    run: (id) => (testClocks ? testClocks.runCircle(id).then(() => circleTick.runCircle(id)) : circleTick.runCircle(id)),
+  });
   const circles = createCircleService({
     db,
     // Every pot is OpenCircle's own wallet for now; circles are told apart in the database.
@@ -101,6 +106,7 @@ async function main(): Promise<void> {
       wallets: createWalletService(db),
       account: createAccountService({ db }),
       debts,
+      contributionRetry,
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,
