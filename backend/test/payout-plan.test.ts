@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { afterFee, planFinalPayouts, planRoundPayouts, type PlanContribution, type PlanRound } from "../src/services/circles/payout-plan";
+import { afterFee, expectedPayouts, payoutPerMember, planFinalPayouts, planRoundPayouts, type PlanContribution, type PlanRound } from "../src/services/circles/payout-plan";
 
 // 20.000,00 COP per contribution, 5 members: a full round collects 100.000,00.
 const C = 2_000_000n;
@@ -115,5 +115,48 @@ describe("planFinalPayouts (END)", () => {
       ["FINAL", "ana", 4_000_000n],
       ["FINAL", "cata", 2_000_000n],
     ]);
+  });
+});
+
+describe("payoutPerMember", () => {
+  test("PER_ROUND: the pot (contribution × members) less the fee, rounded down", () => {
+    const perRound = (contributionValue: bigint, size: number, feeBps: number) =>
+      payoutPerMember({ payoutMode: "PER_ROUND", goalValue: null, contributionValue, size, feeBps });
+    assert.equal(perRound(5000n, 5, 200), 24_500n);
+    assert.equal(perRound(333n, 3, 150), 985n);
+    assert.equal(perRound(100n, 2, 0), 200n);
+  });
+
+  test("END: what a member puts in over every round (500k goal, 5 members → 100k each) less the fee", () => {
+    assert.equal(payoutPerMember({ payoutMode: "END", goalValue: 50_000_000n, contributionValue: 2_000_000n, size: 5, feeBps: 200 }), 9_800_000n);
+    // 3 rounds of 20k with 2 members: 60k each, whatever the number of members.
+    assert.equal(payoutPerMember({ payoutMode: "END", goalValue: 12_000_000n, contributionValue: 2_000_000n, size: 2, feeBps: 0 }), 6_000_000n);
+  });
+});
+
+describe("expectedPayouts", () => {
+  const project = (rounds: PlanRound[], payoutMode: "PER_ROUND" | "END" = "PER_ROUND", memberIds = MEMBERS) =>
+    expectedPayouts({ circleId: "c", payoutMode, feeBps: 0, contributionValue: C, memberIds, rounds });
+  const upcoming = (number: number, beneficiaryMemberId: string | null): PlanRound => ({ id: `r${number}`, number, beneficiaryMemberId, contributions: [] });
+
+  test("everyone paying from now on: each member expects a full pot", () => {
+    const rounds = [round(1, "ana", { bob: "PENDING", cata: "PROCESSING" }), ...MEMBERS.slice(1).map((m, i) => upcoming(i + 2, m))];
+    assert.deepEqual([...project(rounds).values()], MEMBERS.map(() => 10_000_000n));
+  });
+
+  test("a past miss: the defaulter expects less and who received less expects the compensation", () => {
+    const rounds = [round(1, "ana", { bob: "FAILED" }), ...MEMBERS.slice(1).map((m, i) => upcoming(i + 2, m))];
+    const expected = project(rounds);
+    // ana: 80k from her round + 20k back from bob; bob: 100k − 20k.
+    assert.equal(expected.get("ana"), 10_000_000n);
+    assert.equal(expected.get("bob"), 8_000_000n);
+    assert.equal(expected.get("cata"), 10_000_000n);
+  });
+
+  test("END: each member expects what they will have put in; misses stay missed", () => {
+    const rounds = [round(1, null, { bob: "FAILED" }), upcoming(2, null)];
+    const expected = project(rounds, "END", ["ana", "bob"]);
+    assert.equal(expected.get("ana"), 4_000_000n);
+    assert.equal(expected.get("bob"), 2_000_000n);
   });
 });

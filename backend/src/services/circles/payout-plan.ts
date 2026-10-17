@@ -1,4 +1,5 @@
 import type { CONTRIBUTION_STATUSES, PAYOUT_KINDS } from "../../db/schema";
+import { roundsTotal, type CircleTerms, type PayoutMode } from "./circle-plan";
 
 type ContributionStatus = (typeof CONTRIBUTION_STATUSES)[number];
 export type PayoutKind = (typeof PAYOUT_KINDS)[number];
@@ -72,6 +73,44 @@ export function planRoundPayouts(round: PlanRound, earlier: readonly PlanRound[]
   });
 
   return [...payout({ key: `payout:round:${round.id}`, kind: "ROUND", roundId: round.id, memberId: beneficiary }, left, feeBps), ...compensations];
+}
+
+/**
+ * What each member receives if everyone pays, after the fee: PER_ROUND their round's pot
+ * (contribution × members), END what they put in over every round (contribution × rounds).
+ * Both are contribution × roundsTotal, since a PER_ROUND circle has one round per member.
+ */
+export function payoutPerMember(c: CircleTerms & { feeBps: number }): bigint {
+  return afterFee(c.contributionValue * BigInt(roundsTotal(c)), c.feeBps).net;
+}
+
+/**
+ * Each member's total payout (round or final, plus compensations) of a started circle if
+ * everyone pays from now on: contributions not settled yet count as paid, and rounds not
+ * opened yet as fully paid; missed ones stay missed. The same planner as the real payouts.
+ */
+export function expectedPayouts(input: {
+  circleId: string;
+  payoutMode: PayoutMode;
+  feeBps: number;
+  contributionValue: bigint;
+  memberIds: readonly string[];
+  rounds: readonly PlanRound[];
+}): Map<string, bigint> {
+  const projected: PlanRound[] = input.rounds.map((r) => ({
+    ...r,
+    contributions:
+      r.contributions.length === 0
+        ? input.memberIds.map((memberId) => ({ id: `projected:${r.id}:${memberId}`, memberId, value: input.contributionValue, status: "COMPLETED" }))
+        : r.contributions.map((c) => (c.status === "PENDING" || c.status === "PROCESSING" ? { ...c, status: "COMPLETED" } : c)),
+  }));
+  const planned =
+    input.payoutMode === "END"
+      ? planFinalPayouts(input.circleId, input.memberIds, projected, input.feeBps)
+      : projected.flatMap((r) => planRoundPayouts(r, projected, input.feeBps));
+  const totals = new Map(input.memberIds.map((id) => [id, 0n]));
+  for (const p of planned) totals.set(p.memberId, (totals.get(p.memberId) ?? 0n) + p.value);
+  return totals;
 }
 
 /** END: once every round has closed, each member gets back what they paid in, after the fee. */

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { AppError } from "../src/errors/app-error";
-import { createCircleSchema } from "../src/routes/circles";
+import { createCircleSchema, planCircleSchema } from "../src/routes/circles";
 import { circleGoal, MAX_ROUNDS, planGoal, roundsTotal } from "../src/services/circles/circle-plan";
 
 // 500.000,00 COP in minor units (scale 2).
@@ -117,6 +117,28 @@ describe("createCircleSchema payout terms", () => {
       const r = parse(body);
       assert.equal(r.success, false, JSON.stringify(body));
       assert.ok(r.error?.issues.some((i) => i.path.join(".") === path), `${JSON.stringify(body)} → ${JSON.stringify(r.error?.issues)}`);
+    }
+  });
+});
+
+describe("planCircleSchema", () => {
+  test("the funding terms and the size, validated like creating", () => {
+    const r = planCircleSchema.safeParse({ payoutMode: "END", goalValue: "50000000", roundsTotal: 5, size: 5 });
+    assert.ok(r.success);
+    assert.deepEqual(r.data, { size: 5, payoutMode: "END", goalValue: 50_000_000n, roundsTotal: 5 });
+    const perRound = planCircleSchema.safeParse({ contributionValue: "2000000", size: 3 });
+    assert.ok(perRound.success);
+    assert.deepEqual(perRound.data, { size: 3, payoutMode: "PER_ROUND", contributionValue: 2_000_000n });
+  });
+
+  test("anything else, or a wrong combination, is rejected", () => {
+    for (const body of [
+      { contributionValue: "2000000", size: 3, name: "Natillera" },
+      { contributionValue: "2000000" },
+      { payoutMode: "END", goalValue: "50000000", size: 5 },
+      { contributionValue: "2000000", goalValue: "50000000", size: 5 },
+    ]) {
+      assert.equal(planCircleSchema.safeParse(body).success, false, JSON.stringify(body));
     }
   });
 });

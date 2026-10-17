@@ -4,6 +4,7 @@ import { after, before, describe, test } from "node:test";
 import { and, asc, eq, inArray, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
 import { auditEvents, circleMembers, circles, contributions, payouts, rounds, users, wallets } from "../src/db/schema";
+import { createCircleService } from "../src/services/circle.service";
 import { createPayouts } from "../src/services/circles/payout.service";
 import { NoPoolGrantError } from "../src/services/circles/pool-access";
 import { PaymentRefusedError, type Amount, type PayoutPayments, type SentPayout } from "../src/services/open-payments/payments";
@@ -325,6 +326,29 @@ describe("payouts against Supabase", { skip: databaseUrl ? false : "DATABASE_URL
         ].sort(),
       );
       assert.deepEqual(await roundStates(c.id), ["PAID_OUT", "PAID_OUT", "UPCOMING"]);
+    });
+
+    test("the circle shows what was collected and, per seat, what was received and what is still expected", async () => {
+      const c = await circleWith({
+        members: ["ana", "bob", "cata"],
+        rounds: [{ state: "BLOCKED", statuses: { bob: "FAILED" } }, { state: "COLLECTING", statuses: { cata: "PENDING" } }, { state: "UPCOMING" }],
+      });
+      await createPayouts({ db, payments: fakePayouts(), pool: fakePool() }).payCircle(c.id, NOW);
+      const view = await createCircleService({
+        db,
+        resolvePoolWallet: async () => ({ id: POOL_URL, assetCode: "COP", assetScale: 2 }),
+        frontendUrl: "http://localhost:3001",
+      }).get(c.id, { userId: (await db.select({ userId: circleMembers.userId }).from(circleMembers).where(eq(circleMembers.id, c.memberIds["ana"] ?? "")))[0]?.userId });
+
+      const money = (value: bigint | string) => ({ value: String(value), assetCode: "COP", assetScale: 2 });
+      // Round 1: 2 of 3 paid; round 2: 2 of 3 so far.
+      assert.deepEqual(view.poolCollected, money(4n * C));
+      const seat = (name: string) => view.seats.find((s) => s.memberId === c.memberIds[name])?.payout;
+      // ana: her short round (40k) is paid; bob's debt comes back to her when his round pays.
+      assert.deepEqual(seat("ana"), { expected: money(3n * C), saved: money(2n * C), payoutAt: view.rounds[0]?.deadline, status: "COMPLETED", received: money(2n * C) });
+      // bob: his round's pot (60k if cata pays) less the 20k he owes ana.
+      assert.deepEqual(seat("bob"), { expected: money(2n * C), saved: money(C), payoutAt: view.rounds[1]?.deadline, status: "SCHEDULED", received: null });
+      assert.deepEqual(seat("cata")?.expected, money(3n * C));
     });
 
     test("the cap: never plans more than the circle collected", async () => {

@@ -53,6 +53,7 @@ export function fakeServices(overrides: Partial<Services> = {}): Services {
       list: notUsed,
       listForUser: notUsed,
       create: notUsed,
+      plan: notUsed,
       join: notUsed,
       takeSeat: notUsed,
       afterStarted: notUsed,
