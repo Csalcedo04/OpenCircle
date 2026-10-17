@@ -226,6 +226,8 @@ const es: Dictionary = {
     lead: "Para crear o unirte a un círculo necesitamos confirmar que eres quien dices ser. Toma unos dos minutos con tu documento y una selfie, con nuestro aliado de verificación Didit.",
     start: "Verificar mi identidad",
     starting: "Abriendo la verificación…",
+    checking: "Estamos comprobando tu verificación. Esta página se actualiza sola apenas haya un resultado. Si no terminaste, puedes continuar donde la dejaste.",
+    resume: "Continuar verificación",
     pending: "Estamos revisando tu verificación. Te daremos acceso apenas sea aprobada.",
     declined: "No pudimos verificar tu identidad. Puedes intentarlo de nuevo con una foto clara de tu documento.",
     needsOnboarding: "Primero termina de configurar tu cuenta.",

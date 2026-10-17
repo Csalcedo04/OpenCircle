@@ -29,6 +29,14 @@ test.describe("KYC gate on create and join", () => {
     await expect(page.getByRole("button", { name: "Verificar mi identidad" })).toHaveCount(0)
   })
 
+  test("unfinished session → a checking message and a way to continue", async ({ page, user }) => {
+    await seedProfile(user, { wallet: true, kyc: "In Progress" })
+    await signIn(page, user, { lands: "circles" })
+    await page.goto("/es/circles/new")
+    await expect(page.getByText("Estamos comprobando tu verificación.")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Continuar verificación" })).toBeVisible()
+  })
+
   test("declined → can try again", async ({ page, user }) => {
     await seedProfile(user, { wallet: true, kyc: "Declined" })
     await signIn(page, user, { lands: "circles" })
