@@ -74,14 +74,19 @@ export function scoreStatus(score: number, config: ScoreStatusConfig = DEFAULT_S
   return "poor";
 }
 
-export function calculateCreditScore(
-  currentScore: number,
-  payments: RoundPaymentSummary,
-  config: ScoreConfig = DEFAULT_SCORE_CONFIG,
-): ScoreResult {
-  const { expectedPayments, paidOnTime, paidLate, missedPayments } = payments;
+/** Converts a 0..100 score back to the stored 0..1 fraction (4 decimals). */
+export function fractionFromScore(score: number, config: ScoreBounds = DEFAULT_SCORE_CONFIG): number {
+  assertValidScore(score, config);
+  return Math.round(((score - config.minScore) / (config.maxScore - config.minScore)) * 10_000) / 10_000;
+}
 
-  assertValidScore(currentScore, config);
+/** Keeps a score within bounds, rounded to 2 decimals. */
+export const clampScore = (score: number, config: ScoreBounds = DEFAULT_SCORE_CONFIG): number =>
+  round2(Math.min(config.maxScore, Math.max(config.minScore, score)));
+
+/** How much one round's payments move the score, before clamping. */
+export function roundScoreChange(payments: RoundPaymentSummary, config: ScoreConfig = DEFAULT_SCORE_CONFIG): number {
+  const { expectedPayments, paidOnTime, paidLate, missedPayments } = payments;
 
   const counts = [paidOnTime, paidLate, missedPayments];
   if (!Number.isInteger(expectedPayments) || expectedPayments <= 0 || counts.some((c) => !Number.isInteger(c) || c < 0)) {
@@ -97,9 +102,18 @@ export function calculateCreditScore(
   // costs more than not paying at all for the same number of payments.
   const missedPenalty = config.missedPaymentPenalty * (missedPayments / expectedPayments);
   const latePenalty = Math.min(config.latePaymentPenalty * paidLate, config.missedPaymentPenalty * (paidLate / expectedPayments));
-  const change = paidOnTime === expectedPayments ? config.perfectRoundBonus : -config.baseFailurePenalty - missedPenalty - latePenalty;
+  return paidOnTime === expectedPayments ? config.perfectRoundBonus : -config.baseFailurePenalty - missedPenalty - latePenalty;
+}
 
-  const newScore = round2(Math.min(config.maxScore, Math.max(config.minScore, currentScore + change)));
+export function calculateCreditScore(
+  currentScore: number,
+  payments: RoundPaymentSummary,
+  config: ScoreConfig = DEFAULT_SCORE_CONFIG,
+): ScoreResult {
+  const { expectedPayments, paidOnTime, paidLate } = payments;
+
+  assertValidScore(currentScore, config);
+  const newScore = clampScore(currentScore + roundScoreChange(payments, config), config);
 
   return {
     previousScore: currentScore,

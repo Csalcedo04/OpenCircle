@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createApp } from "../../src/app";
+import { createApp, type AppOptions } from "../../src/app";
 import type { Services } from "../../src/routes";
 
 export interface ApiResponse {
@@ -23,7 +23,7 @@ export interface TestServer {
 
 export async function startServer(
   services: Services,
-  options: { diditWebhookSecret: string | undefined } = { diditWebhookSecret: undefined },
+  options: AppOptions = { diditWebhookSecret: undefined },
 ): Promise<TestServer> {
   const server: Server = createApp(services, options).listen(0);
   await new Promise<void>((resolve) => server.once("listening", resolve));

@@ -125,6 +125,7 @@ describe("users API against Supabase", { skip: databaseUrl ? false : "DATABASE_U
       applications: fakeServices().applications,
       members: fakeServices().members,
       testClocks: null,
+      circleTick: fakeServices().circleTick,
     });
   });
 

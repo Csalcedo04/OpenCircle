@@ -152,6 +152,43 @@ test("circle application routes validate ids and bodies before reaching the serv
   }
 });
 
+test("POST /api/internal/circles/tick without CRON_SECRET configured → 503 CRON_DISABLED", async () => {
+  const res = await server.request("/api/internal/circles/tick", { method: "POST" });
+  assert.equal(res.status, 503);
+  assert.equal(errorCode(res.body), "CRON_DISABLED");
+});
+
+test("POST /api/internal/circles/tick checks x-cron-secret and returns the run summary", async () => {
+  const secret = "s".repeat(40);
+  let runs = 0;
+  const cron = await startServer(
+    fakeServices({ circleTick: { run: async () => (runs++, { circles: 3, failed: 1 }) } }),
+    { diditWebhookSecret: undefined, cronSecret: secret },
+  );
+  try {
+    const tick = (headers: Record<string, string>) =>
+      fetch(`${cron.baseUrl}/api/internal/circles/tick`, { method: "POST", headers });
+
+    for (const headers of [{}, { "x-cron-secret": "wrong" }, { "x-cron-secret": secret.slice(1) }, { authorization: `Bearer ${secret}` }]) {
+      const res = await tick(headers);
+      assert.equal(res.status, 401, JSON.stringify(headers));
+      assert.equal(errorCode(await res.json()), "UNAUTHORIZED");
+    }
+    assert.equal(runs, 0);
+
+    const ok = await tick({ "x-cron-secret": secret });
+    assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { circles: 3, failed: 1 });
+    assert.equal(runs, 1);
+
+    // Only POST: other methods don't reach the job.
+    const get = await fetch(`${cron.baseUrl}/api/internal/circles/tick`, { headers: { "x-cron-secret": secret } });
+    assert.equal(get.status, 404);
+  } finally {
+    await cron.close();
+  }
+});
+
 test("PUT /api/users/me/wallet is gone: wallets are linked only through consent", async () => {
   const token = await auth.token("33333333-3333-4333-8333-333333333333");
   const res = await server.request("/api/users/me/wallet", { method: "PUT", token, body: { walletAddress: "$wallet.test/x" } });

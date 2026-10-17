@@ -13,9 +13,15 @@ import {
   creditProfiles,
   reviews,
   rounds,
+  testClocks,
   users,
   wallets,
 } from "../src/db/schema";
+import { createCircleTick } from "../src/services/circles/circle-cycle";
+import { createReminders } from "../src/services/circles/reminders.service";
+import { createScoring } from "../src/services/circles/scoring.service";
+import { scoreFromFraction } from "../src/services/credit/credit-score";
+import type { Notification } from "../src/services/notifications/sender";
 import type { Services } from "../src/routes";
 import { createCircleService, displayName, type CircleDto } from "../src/services/circle.service";
 import { createApplicationService, type ApplicationDto } from "../src/services/circles/application.service";
@@ -68,6 +74,7 @@ async function deleteTestData(): Promise<void> {
     (w) => w.id,
   );
   if (testWallets.length > 0) await db.delete(auditEvents).where(inArray(auditEvents.walletId, testWallets));
+  if (createdUserIds.length > 0) await db.delete(testClocks).where(inArray(testClocks.ownerUserId, createdUserIds));
   await db.delete(users).where(or(like(users.fullName, `${PREFIX}%`), createdUserIds.length > 0 ? inArray(users.id, createdUserIds) : undefined));
   if (testWallets.length > 0) await db.delete(wallets).where(inArray(wallets.id, testWallets));
 }
@@ -1147,6 +1154,185 @@ describe("circles API against Supabase", { skip: databaseUrl ? false : "DATABASE
       // Once rejected, the applicant is no longer visible.
       await voteOn(circle.id, carolApp.id, owner.token, "REJECT");
       assert.equal((await publicProfile(carol.id, bob.token)).status, 404);
+    });
+  });
+
+  describe("scores, reminders and the scheduler tick", () => {
+    // A weekly circle of two, started: round 1 collects until `deadline`; round 2 ends a week later,
+    // so round 1's penalty time is 5 days before that: deadline + 2 days.
+    async function startedCircle(options: { bobScore?: number } = {}) {
+      const owner = await member();
+      const bob = await member(options.bobScore === undefined ? {} : { score: options.bobScore });
+      const circle = await createCircle(owner.token, { size: 2 });
+      await seated(circle.id, owner, bob);
+      const [round1] = await db.select().from(rounds).where(and(eq(rounds.circleId, circle.id), eq(rounds.number, 1)));
+      assert.ok(round1);
+      const seats = await db
+        .select({ id: circleMembers.id, userId: circleMembers.userId })
+        .from(circleMembers)
+        .where(eq(circleMembers.circleId, circle.id));
+      const contributionOf = async (m: Member) => {
+        const seat = seats.find((s) => s.userId === m.id);
+        const [c] = await db
+          .select()
+          .from(contributions)
+          .where(and(eq(contributions.roundId, round1.id), eq(contributions.memberId, seat?.id ?? "")));
+        assert.ok(c);
+        return c;
+      };
+      return { circle, owner, bob, deadline: round1.deadline, contributionOf };
+    }
+
+    const DAY = 86_400_000;
+    const at = (base: Date, days: number) => new Date(base.getTime() + days * DAY);
+    const complete = (contributionId: string, completedAt: Date) =>
+      db.update(contributions).set({ status: "COMPLETED", completedAt }).where(eq(contributions.id, contributionId));
+    const failUnpaid = (contributionId: string) =>
+      db.update(contributions).set({ status: "FAILED", failureCode: "DEADLINE_MISSED" }).where(eq(contributions.id, contributionId));
+
+    async function scoreOf(m: Member): Promise<number | null> {
+      const [u] = await db.select({ walletId: users.opWallet }).from(users).where(eq(users.id, m.id));
+      const [p] = await db.select().from(creditProfiles).where(eq(creditProfiles.walletId, u?.walletId ?? ""));
+      return p ? scoreFromFraction(p.internalCreditScore) : null;
+    }
+
+    const events = (externalId: string) => db.select().from(auditEvents).where(eq(auditEvents.externalId, externalId));
+
+    test("a payment on time adds the bonus once; a new member starts from the initial score", async () => {
+      const { circle, owner, bob, deadline, contributionOf } = await startedCircle();
+      const ownerPayment = await contributionOf(owner);
+      await complete(ownerPayment.id, at(deadline, -0.5));
+
+      const scoring = createScoring({ db });
+      assert.equal(await scoring.scoreCircle(circle.id, at(deadline, 0.1)), 1);
+      assert.equal(await scoreOf(owner), 55);
+      // Bob hasn't paid but his penalty time hasn't come: nothing yet.
+      assert.equal(await scoreOf(bob), null);
+
+      assert.equal(await scoring.scoreCircle(circle.id, at(deadline, 0.2)), 0);
+      assert.equal(await scoreOf(owner), 55);
+      const recorded = await events(`score.on_time:${ownerPayment.id}`);
+      assert.equal(recorded.length, 1);
+      assert.equal(recorded[0]?.eventType, "score.on_time");
+    });
+
+    test("unpaid at the penalty time counts as missed; paying afterwards re-scores it as late", async () => {
+      const { circle, bob, deadline, contributionOf } = await startedCircle({ bobScore: 0.9 });
+      const bobPayment = await contributionOf(bob);
+      await failUnpaid(bobPayment.id);
+      const scoring = createScoring({ db });
+
+      await scoring.scoreCircle(circle.id, at(deadline, 1));
+      assert.equal(await scoreOf(bob), 90, "penalised before the penalty time");
+
+      await scoring.scoreCircle(circle.id, at(deadline, 2));
+      assert.equal(await scoreOf(bob), 75);
+      await scoring.scoreCircle(circle.id, at(deadline, 2.5));
+      assert.equal(await scoreOf(bob), 75, "missed applied twice");
+
+      await complete(bobPayment.id, at(deadline, 3));
+      await scoring.scoreCircle(circle.id, at(deadline, 3));
+      assert.equal(await scoreOf(bob), 86, "late should replace missed: 90 − 4");
+      await scoring.scoreCircle(circle.id, at(deadline, 4));
+      assert.equal(await scoreOf(bob), 86);
+
+      const [missed] = await events(`score.missed:${bobPayment.id}`);
+      const [late] = await events(`score.late:${bobPayment.id}`);
+      const [bobUser] = await db.select({ walletId: users.opWallet }).from(users).where(eq(users.id, bob.id));
+      assert.equal(missed?.walletId, bobUser?.walletId);
+      assert.equal(late?.walletId, bobUser?.walletId);
+    });
+
+    test("members without a wallet are skipped, not failed", async () => {
+      const { circle, bob, deadline, contributionOf } = await startedCircle();
+      await db.update(users).set({ opWallet: null }).where(eq(users.id, bob.id));
+      const bobPayment = await contributionOf(bob);
+      assert.equal(await createScoring({ db }).scoreCircle(circle.id, at(deadline, 3)), 1, "only the owner's miss is scored");
+      assert.equal((await events(`score.missed:${bobPayment.id}`)).length, 0);
+    });
+
+    test("reminders: due soon, due today and late, by email and WhatsApp, once each, only to who hasn't paid", async () => {
+      const { circle, owner, deadline, contributionOf } = await startedCircle();
+      const sent: Notification[] = [];
+      const reminders = createReminders({ db, sender: { send: async (n) => void sent.push(n) } });
+
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -4)), 0);
+
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 4);
+      assert.deepEqual([...new Set(sent.map((n) => n.kind))], ["DUE_SOON"]);
+      assert.deepEqual(sent.map((n) => n.channel).sort(), ["EMAIL", "EMAIL", "WHATSAPP", "WHATSAPP"]);
+      assert.ok(sent.every((n) => n.circleName === circle.name && n.amount.value === "2000000" && n.deadline.getTime() === deadline.getTime()));
+      assert.ok(sent.some((n) => n.to === `${owner.id}@example.test`));
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -1.5)), 0, "due soon sent twice");
+
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -0.5)), 4);
+      assert.ok(sent.slice(4).every((n) => n.kind === "DUE_TODAY"));
+
+      const ownerPayment = await contributionOf(owner);
+      await complete(ownerPayment.id, at(deadline, -0.2));
+      sent.length = 0;
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, 1)), 2);
+      assert.ok(sent.every((n) => n.kind === "LATE" && n.contributionId !== ownerPayment.id));
+
+      // After the penalty time the score speaks; no more reminders.
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, 2)), 0);
+
+      // Audit rows identify the reminder only: no email or phone.
+      const rows = await db.select().from(auditEvents).where(like(auditEvents.externalId, `notification.sent:%:${ownerPayment.id}:%`));
+      assert.equal(rows.length, 4);
+      assert.ok(rows.every((r) => !r.externalId?.includes("@") && !r.externalId?.includes("+57")));
+    });
+
+    test("a reminder that fails to send is retried on the next run", async () => {
+      const { circle, deadline } = await startedCircle();
+      let failures = 1;
+      const sent: Notification[] = [];
+      const reminders = createReminders({
+        db,
+        sender: {
+          send: async (n) => {
+            if (failures-- > 0) throw new Error("provider down");
+            sent.push(n);
+          },
+        },
+      });
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 3);
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 1);
+      assert.equal(await reminders.remindCircle(circle.id, at(deadline, -2)), 0);
+      assert.equal(sent.length, 4);
+    });
+
+    test("the tick runs the cycle for active real-time circles only, and survives one circle failing", async () => {
+      const { circle: running } = await startedCircle();
+      const { circle: onClock, owner } = await startedCircle();
+      const owner2 = await member();
+      const waiting = await createCircle(owner2.token, { size: 3 });
+      const [clock] = await db
+        .insert(testClocks)
+        .values({ name: `${PREFIX}clock`, ownerUserId: owner.id, frozenTime: new Date() })
+        .returning({ id: testClocks.id });
+      await db.update(circles).set({ testClockId: clock?.id ?? null }).where(eq(circles.id, onClock.id));
+
+      const now = new Date("2026-05-01T00:00:00Z");
+      const seen: string[] = [];
+      const tick = createCircleTick({
+        db,
+        now: () => now,
+        cycle: {
+          advanceCircle: async (id, t) => {
+            assert.equal(t.getTime(), now.getTime());
+            seen.push(id);
+            if (id === running.id) throw new Error("boom");
+          },
+        },
+      });
+      const result = await tick.run();
+
+      assert.ok(seen.includes(running.id));
+      assert.ok(!seen.includes(onClock.id), "test-clock circle ticked in real time");
+      assert.ok(!seen.includes(waiting.id), "open circle ticked");
+      assert.equal(result.circles, seen.length);
+      assert.ok(result.failed >= 1);
     });
   });
 });

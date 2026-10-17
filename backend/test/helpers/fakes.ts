@@ -60,6 +60,7 @@ export function fakeServices(overrides: Partial<Services> = {}): Services {
       visibleIds: notUsed,
     },
     applications: { apply: notUsed, list: notUsed, vote: notUsed, setApprovers: notUsed },
+    circleTick: { run: notUsed },
     testClocks: null,
     ...overrides,
   };

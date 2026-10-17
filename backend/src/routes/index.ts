@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { WalletAddressService } from "../services/open-payments/wallet-address.service";
+import type { CircleTickService } from "../services/circles/circle-cycle";
 import type { MemberService } from "../services/member.service";
 import type { TestClockService } from "../services/test-clock.service";
 import { circleRoutes, type CircleRouteServices } from "./circles";
@@ -14,6 +15,8 @@ export interface Services extends UserRouteServices, CircleRouteServices {
   members: MemberService;
   /** Null unless TEST_CLOCKS_ENABLED: the routes are then not mounted at all. */
   testClocks: TestClockService | null;
+  /** Mounted by the app at /api/internal (scheduler only). */
+  circleTick: Pick<CircleTickService, "run">;
 }
 
 export function apiRoutes(services: Services): Router {
