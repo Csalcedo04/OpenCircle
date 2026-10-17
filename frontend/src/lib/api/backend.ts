@@ -74,15 +74,34 @@ export interface BackendFetchOptions extends RequestInit {
 export async function backendFetch<T>(path: string, schema: z.ZodType<T>, options: BackendFetchOptions = {}): Promise<T> {
   const { auth = "required", ...init } = options
   const supabase = await createClient()
-  // getSession() reads the cookie without re-verifying it; that's fine here
-  // because the API verifies the token itself before trusting it.
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  if (auth === "required" && !session) throw new BackendError(401, "UNAUTHORIZED", "Not signed in")
+  let token: string | undefined = undefined
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    token = session?.access_token
+  } catch {
+    // getSession can fail or return empty on some server component environments
+  }
+
+  if (!token) {
+    try {
+      const { data } = await supabase.auth.getClaims()
+      if (data?.claims) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        token = session?.access_token
+      }
+    } catch {
+      // getClaims fallback
+    }
+  }
+
+  if (auth === "required" && !token) throw new BackendError(401, "UNAUTHORIZED", "Not signed in")
 
   const headers = new Headers(init.headers)
-  if (session) headers.set("authorization", `Bearer ${session.access_token}`)
+  if (token) headers.set("authorization", `Bearer ${token}`)
   if (init.body !== undefined) headers.set("content-type", "application/json")
 
   const base = backendUrl.safeParse(process.env.BACKEND_API_URL)

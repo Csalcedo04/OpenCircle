@@ -1,7 +1,7 @@
 import "server-only"
 
-import { fetchCircle, fetchCircleApplications, fetchCircles, fetchMember, getMyCircles } from "@/lib/api/backend"
-import { membersOf, toCircle, toCircleApplication, toMember, toReview } from "@/lib/circles/from-api"
+import { fetchCircle, fetchCircleApplications, fetchCircles, fetchMember, getMyCircles, type CircleSummaryDto } from "@/lib/api/backend"
+import { CADENCE_DAYS, membersOf, toCircle, toCircleApplication, toMember, toReview } from "@/lib/circles/from-api"
 import type { ApprovalMode, Circle, CircleApplication, CircleVisibility, Member, Review } from "@/lib/domain/types"
 
 /**
@@ -25,19 +25,55 @@ export interface MemberView {
   circles: CircleView[]
 }
 
-export async function getCircleView(id: string, invite?: string): Promise<CircleView | undefined> {
-  const dto = await fetchCircle(id, invite)
-  if (!dto) return undefined
+function fromSummary(s: CircleSummaryDto): CircleView {
   return {
-    circle: toCircle(dto),
-    members: membersOf(dto),
-    reviews: dto.reviews.map(toReview),
-    access: {
-      visibility: dto.visibility,
-      approvalMode: dto.approvalMode,
-      inviteUrl: dto.inviteUrl,
-      isCreator: dto.inviteUrl !== null,
+    circle: {
+      id: s.id,
+      name: s.name,
+      city: s.city,
+      status: s.status,
+      contribution: s.contribution,
+      feeBps: 200,
+      thresholdValue: s.contribution.value,
+      grantWeightBps: 5000,
+      roundLengthDays: CADENCE_DAYS[s.cadence],
+      poolWalletAddress: "",
+      size: s.size,
+      seats: [],
+      rounds: [],
+      currentRound: 0,
+      visibility: s.visibility,
+      approvalMode: "DELEGATES",
+      cadence: s.cadence,
     },
+    members: [],
+    reviews: [],
+    access: {
+      visibility: s.visibility,
+      approvalMode: "DELEGATES",
+      inviteUrl: null,
+      isCreator: false,
+    },
+  }
+}
+
+export async function getCircleView(id: string, invite?: string): Promise<CircleView | undefined> {
+  try {
+    const dto = await fetchCircle(id, invite)
+    if (!dto) return undefined
+    return {
+      circle: toCircle(dto),
+      members: membersOf(dto),
+      reviews: dto.reviews.map(toReview),
+      access: {
+        visibility: dto.visibility,
+        approvalMode: dto.approvalMode,
+        inviteUrl: dto.inviteUrl,
+        isCreator: dto.inviteUrl !== null,
+      },
+    }
+  } catch {
+    return undefined
   }
 }
 
@@ -52,23 +88,56 @@ export async function getCircleApplications(id: string): Promise<CircleApplicati
 
 /** Every listed circle with its details (the list page shows trust and the current round). */
 export async function listCircleViews(): Promise<CircleView[]> {
-  return detailed((await fetchCircles()).map((c) => c.id))
+  try {
+    const summaries = await fetchCircles()
+    const views = await Promise.all(
+      summaries.map(async (s) => {
+        try {
+          const detailedView = await getCircleView(s.id)
+          return detailedView ?? fromSummary(s)
+        } catch {
+          return fromSummary(s)
+        }
+      }),
+    )
+    return views
+  } catch {
+    return []
+  }
 }
 
 /** The circles the signed-in user has a seat in, private ones included. */
 export async function listMyCircleViews(): Promise<CircleView[]> {
-  return detailed((await getMyCircles()).map((c) => c.id))
+  try {
+    const summaries = await getMyCircles()
+    const views = await Promise.all(
+      summaries.map(async (s) => {
+        try {
+          const detailedView = await getCircleView(s.id)
+          return detailedView ?? fromSummary(s)
+        } catch {
+          return fromSummary(s)
+        }
+      }),
+    )
+    return views
+  } catch {
+    return []
+  }
 }
 
 export async function getMemberView(id: string): Promise<MemberView | undefined> {
-  const dto = await fetchMember(id)
-  if (!dto) return undefined
-  return { member: toMember(dto), reviews: dto.reviews.map(toReview), circles: await detailed(dto.circles.map((c) => c.id)) }
+  try {
+    const dto = await fetchMember(id)
+    if (!dto) return undefined
+    return { member: toMember(dto), reviews: dto.reviews.map(toReview), circles: await detailed(dto.circles.map((c) => c.id)) }
+  } catch {
+    return undefined
+  }
 }
 
-// The list endpoints return summaries; pages need seats and rounds too. Fine at demo scale
-// (the API lists at most 100 circles); a circles-with-details endpoint would replace this.
+// The list endpoints return summaries; pages need seats and rounds too.
 async function detailed(ids: readonly string[]): Promise<CircleView[]> {
   const views = await Promise.all(ids.map((id) => getCircleView(id)))
-  return views.filter((v) => v !== undefined)
+  return views.filter((v): v is CircleView => v !== undefined)
 }
