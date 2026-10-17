@@ -203,7 +203,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
           </div>
         </section>
       ) : (
-        <section className="mt-8 grid gap-8 lg:grid-cols-12">
+        <section className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-12">
           {/* Left Column: Ring Dial & Pool Vault */}
           <div className="space-y-6 lg:col-span-5">
             <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs text-center">
@@ -302,7 +302,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
               </div>
 
               {/* Cards Grid for Participants */}
-              <div className="mt-4 grid gap-2.5">
+              <div className="mt-4 grid grid-cols-1 gap-2.5">
                 {round.contributions.map((c, idx) => {
                   const Icon = contributionIcon[c.status]
                   const personName = nameOf(c.memberId)
@@ -392,14 +392,14 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
       {/* Tabs for Order, Members and Reviews */}
       <Tabs defaultValue="order" className="mt-12">
         <div className="flex justify-center sm:justify-start">
-          <TabsList className="rounded-full bg-brand-white p-1 border border-brand-line shadow-2xs">
-            <TabsTrigger value="order" className="rounded-full px-5 py-2 text-xs font-semibold">
+          <TabsList className="max-w-full rounded-full bg-brand-white p-1 border border-brand-line shadow-2xs">
+            <TabsTrigger value="order" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
               {t.circle.tabs.order}
             </TabsTrigger>
-            <TabsTrigger value="members" className="rounded-full px-5 py-2 text-xs font-semibold">
+            <TabsTrigger value="members" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
               {t.circle.tabs.members}
             </TabsTrigger>
-            <TabsTrigger value="reviews" className="rounded-full px-5 py-2 text-xs font-semibold">
+            <TabsTrigger value="reviews" className="rounded-full px-2.5 py-2 text-xs font-semibold sm:px-5">
               {t.circle.tabs.reviews} ({circleReviews.length})
             </TabsTrigger>
           </TabsList>
@@ -407,7 +407,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
 
         <TabsContent value="order" className="mt-6">
           <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
-            <ol className="grid gap-3 sm:grid-cols-2">
+            <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {seats.map((seat) => {
                 const r = circle.rounds.find((x) => x.number === seat.payoutRound)
                 return (
@@ -433,7 +433,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
 
         <TabsContent value="members" className="mt-6">
           <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8">
-            <ul className="grid gap-4 sm:grid-cols-2">
+            <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {seats.map((seat) => {
                 const m = byId.get(seat.memberId)
                 if (!m) return null
@@ -462,7 +462,7 @@ export default async function CirclePage({ params }: PageProps<"/[lang]/circles/
             {circleReviews.length === 0 ? (
               <p className="text-center text-sm text-brand-slate py-8">{t.circle.noReviews}</p>
             ) : (
-              <ul className="grid gap-4 md:grid-cols-2">
+              <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {circleReviews.map((r) => (
                   <li key={r.id} className="rounded-2xl border border-brand-line/70 bg-brand-canvas p-5">
                     <div className="flex items-center justify-between gap-3">

@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { isInAppPath } from "@/lib/return-path"
 import { isSupabaseConfigured, supabasePublicEnv } from "./env"
 
 /**
@@ -37,7 +38,9 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   if (protectedMatch && !data?.claims) {
     const login = request.nextUrl.clone()
     login.pathname = `/${protectedMatch[1]}/login`
-    login.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search)
+    // Path only: return paths are in-app paths without a query (see isInAppPath).
+    login.search = ""
+    login.searchParams.set("next", request.nextUrl.pathname)
     return NextResponse.redirect(login)
   }
 
@@ -46,7 +49,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
   if (loginMatch && data?.claims) {
     const nextParam = request.nextUrl.searchParams.get("next")
     const target = request.nextUrl.clone()
-    target.pathname = nextParam && nextParam.startsWith("/") ? nextParam : `/${loginMatch[1]}/circles`
+    target.pathname = isInAppPath(nextParam) ? nextParam : `/${loginMatch[1]}/circles`
     target.search = ""
     return NextResponse.redirect(target)
   }

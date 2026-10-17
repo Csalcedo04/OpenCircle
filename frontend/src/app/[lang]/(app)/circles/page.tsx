@@ -58,7 +58,7 @@ export default async function CirclesPage() {
           </Link>
         </div>
       ) : (
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
+        <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
           {circles.map((circle) => {
             const round = currentRound(circle)
             const seatMembers = circle.seats.map((s) => byId.get(s.memberId)).filter((m) => m !== undefined)

@@ -66,7 +66,7 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-12 items-start">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
       {/* Configuration Form Bento Card */}
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
         <form onSubmit={onSubmit} noValidate className="space-y-6">
@@ -122,7 +122,7 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
           {/* Grant Mode Options */}
           <div>
             <label className="text-sm font-semibold text-brand-navy block mb-2">{t.approval}</label>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(
                 [
                   ["RECURRING", t.recurring, t.recurringHelp],
