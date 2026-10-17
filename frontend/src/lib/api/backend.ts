@@ -481,6 +481,38 @@ export async function getMyInternalAccount(): Promise<InternalAccount | null> {
   }
 }
 
+// A deposit: a real incoming payment on OpenCircle's wallet, one per deposit, credited once received.
+export const DEPOSIT_STATUSES = ["PENDING", "COMPLETED", "FAILED"] as const
+
+export const depositSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(DEPOSIT_STATUSES),
+  failureCode: z.string().nullable(),
+  amount: amountSchema,
+  incomingPaymentUrl: z.url(),
+  receiverWalletAddress: z.string(),
+  expiresAt: z.string(),
+  completedAt: z.string().nullable(),
+  createdAt: z.string(),
+})
+
+export type Deposit = z.infer<typeof depositSchema>
+
+/** Opens a deposit for `value` minor units of the account's asset. */
+export function createDeposit(value: string): Promise<Deposit> {
+  return backendFetch("/users/me/internal-account/deposits", depositSchema, { method: "POST", body: JSON.stringify({ value }) })
+}
+
+/** The deposit as it stands; the API checks a PENDING one against the incoming payment. */
+export function getDeposit(id: string): Promise<Deposit> {
+  return backendFetch(`/users/me/internal-account/deposits/${encodeURIComponent(id)}`, depositSchema)
+}
+
+/** Pays the deposit from the user's linked wallet through their standing grant. */
+export function payDepositWithWallet(id: string): Promise<Deposit> {
+  return backendFetch(`/users/me/internal-account/deposits/${encodeURIComponent(id)}/pay`, depositSchema, { method: "POST" })
+}
+
 // ── The account page: one read of the user's money, circles and record ─────
 
 const contributionStatusSchema = z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])

@@ -1,6 +1,7 @@
 import Link from "next/link"
 import {
   AlertTriangle,
+  ArrowDownToLine,
   ArrowRight,
   Ban,
   CalendarClock,
@@ -846,6 +847,10 @@ export function InternalAccountCard({
         {i.idLabel} · <code className="font-mono font-semibold text-brand-navy">{account.id.slice(0, 8).toUpperCase()}</code>
       </p>
       <p className="mt-3 text-xs leading-relaxed text-brand-slate">{i.custody}</p>
+      <Link href={`/${locale}/account/deposit`} className={cn(primaryLink, "mt-5")}>
+        <ArrowDownToLine className="size-4" aria-hidden="true" />
+        {i.deposit}
+      </Link>
 
       <h3 className="mt-6 text-xs font-semibold uppercase tracking-[0.08em] text-brand-slate">{i.movementsTitle}</h3>
       {account.movements.length === 0 ? (

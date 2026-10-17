@@ -34,7 +34,7 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   // Signed-in-only pages: redirect before rendering, so it's a real 307 rather
   // than a client-side redirect from a streamed page.
-  const protectedMatch = request.nextUrl.pathname.match(/^\/([a-z]{2})\/(circles|members|onboarding|friends)(\/|$)/)
+  const protectedMatch = request.nextUrl.pathname.match(/^\/([a-z]{2})\/(circles|members|onboarding|friends|account)(\/|$)/)
   if (protectedMatch && !data?.claims) {
     const login = request.nextUrl.clone()
     login.pathname = `/${protectedMatch[1]}/login`

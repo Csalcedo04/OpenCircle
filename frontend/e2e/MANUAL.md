@@ -41,6 +41,16 @@ https://wallet.interledger-test.dev that is **not** OpenCircle's own.
 - [ ] Didit console → webhook destination `https://<public>/api/webhooks/didit`; its secret is `DIDIT_WEBHOOK_SECRET`.
 - [ ] Change a session's status in the console → `kyc_verifications.status` follows within seconds.
 
-## 5. Return to where you started
+## 5. Deposit into an OpenCircle account (Interledger test network)
+- [ ] With an OpenCircle account: `/es/account` → "Recargar" → amount → "Crear solicitud de pago".
+- [ ] The deposit page shows a payment request URL on `ilp.interledger-test.dev` (an incoming payment
+      on OpenCircle's wallet) and "Esperando el pago".
+- [ ] From your own test wallet, send exactly that amount to the URL. Within seconds the page flips to
+      "Recibido" and `/es/account` shows the new balance and a "Depósito" movement from
+      "Billetera de OpenCircle".
+- [ ] With a linked wallet: "Pagar con mi billetera" pays it through your grant; the result is the same.
+- [ ] Create a request and don't pay it: after 30 minutes it shows "Vencido" and nothing is credited.
+
+## 6. Return to where you started
 - [ ] Signed out, open a circle's join page → "Iniciar sesión" → finish sign-in, onboarding and
       wallet consent in the same browser → you land back on that join page.

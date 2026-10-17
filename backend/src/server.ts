@@ -27,6 +27,7 @@ import { createUserService } from "./services/user.service";
 import { createWalletConsentService } from "./services/wallet-consent.service";
 import { createWalletService } from "./services/wallet.service";
 import { createAccountService } from "./services/account.service";
+import { createDepositService } from "./services/ledger/deposit.service";
 import { createInternalAccountService } from "./services/ledger/internal-account.service";
 
 async function main(): Promise<void> {
@@ -44,7 +45,8 @@ async function main(): Promise<void> {
 
   // Contributions: the pool (OpenCircle's wallet) charges each member through their standing grant.
   const payments = createContributionPayments({ client: openPaymentsAuth, poolWalletAddressUrl: env.OP_CLIENT_WALLET_ADDRESS });
-  const engine = createPeriodEngine({ db, payments, memberAccess: createMemberAccess({ db, cipher, payments }) });
+  const memberAccess = createMemberAccess({ db, cipher, payments });
+  const engine = createPeriodEngine({ db, payments, memberAccess });
   // Emails through Resend when configured; SMS and WhatsApp (and everything else, otherwise) are only logged.
   const log = createLogSender();
   const sender =
@@ -81,6 +83,8 @@ async function main(): Promise<void> {
         resolveAsset: () => walletAddresses.getByUrl(env.OP_CLIENT_WALLET_ADDRESS),
         seedValue: env.DEMO_SEED_VALUE,
       }),
+      // Deposits are incoming payments on OpenCircle's wallet; a linked wallet can pay them.
+      deposits: createDepositService({ db, payments, memberAccess, receiverWalletAddress: env.OP_CLIENT_WALLET_ADDRESS }),
       walletAddresses,
       walletConsent: createWalletConsentService({
         db,

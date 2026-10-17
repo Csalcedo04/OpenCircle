@@ -3,14 +3,16 @@ import { randomInt, randomUUID } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import { eq, inArray, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
-import { auditEvents, kycVerifications, ledgerAccounts, ledgerTransfers, users } from "../src/db/schema";
+import { accountDeposits, auditEvents, kycVerifications, ledgerAccounts, ledgerTransfers, users } from "../src/db/schema";
 import { createAccountService } from "../src/services/account.service";
+import { NoGrantError } from "../src/services/circles/member-access";
 import type { DiditClient } from "../src/services/didit/client";
 import { createKycService } from "../src/services/kyc.service";
+import { createDepositService } from "../src/services/ledger/deposit.service";
 import { createInternalAccountService } from "../src/services/ledger/internal-account.service";
 import { createUserService } from "../src/services/user.service";
 import { setupTestAuth, type TestAuth } from "./helpers/auth";
-import { fakeServices } from "./helpers/fakes";
+import { fakePayments, fakeServices, TEST_WALLET_HOST, type FakePayments } from "./helpers/fakes";
 import { errorCode, startServer, type TestServer } from "./helpers/server";
 
 // Runs against the database in DATABASE_URL (Supabase). Accounts use a test-only asset so they
@@ -27,6 +29,12 @@ let seeded: TestServer;
 let unseeded: TestServer;
 const createdUserIds: string[] = [];
 let diditSessions = 0;
+// Each test may swap `payments`; the deposit service always calls the current one.
+let payments: FakePayments = fakePayments({ settle: "later" });
+let realClock = Date.parse("2026-10-17T12:00:00Z");
+// Users in this set have a linked, authorized wallet; others get NoGrantError.
+const authorizedWallets = new Set<string>();
+const RECEIVER = `https://${TEST_WALLET_HOST}/opencircle`;
 
 const fakeDidit: DiditClient = {
   async createSession() {
@@ -42,6 +50,7 @@ async function deleteTestData(): Promise<void> {
   if (createdUserIds.length === 0) return;
   const accounts = (await db.select({ id: ledgerAccounts.id }).from(ledgerAccounts).where(inArray(ledgerAccounts.ownerUserId, createdUserIds))).map((a) => a.id);
   if (accounts.length > 0) {
+    await db.delete(accountDeposits).where(inArray(accountDeposits.accountId, accounts));
     const touching = or(inArray(ledgerTransfers.fromAccountId, accounts), inArray(ledgerTransfers.toAccountId, accounts));
     const keys = (await db.select({ key: ledgerTransfers.idempotencyKey }).from(ledgerTransfers).where(touching)).map((r) => r.key);
     if (keys.length > 0) {
@@ -79,13 +88,37 @@ async function newUser(server: TestServer, withProfile = true): Promise<{ id: st
 
 function services(seedValue: bigint) {
   const userService = createUserService(db);
+  const current = {
+    createIncomingPayment: (a: Parameters<FakePayments["createIncomingPayment"]>[0]) => payments.createIncomingPayment(a),
+    readIncomingPayment: (url: string) => payments.readIncomingPayment(url),
+    payFromMember: (a: Parameters<FakePayments["payFromMember"]>[0], b: Parameters<FakePayments["payFromMember"]>[1]) => payments.payFromMember(a, b),
+  };
   return {
     ...fakeServices(),
     users: userService,
     account: createAccountService({ db }),
     internalAccounts: createInternalAccountService({ db, resolveAsset: async () => ASSET, seedValue }),
+    deposits: createDepositService({
+      db,
+      payments: current,
+      memberAccess: {
+        async withAccess(userId, call) {
+          if (!authorizedWallets.has(userId)) throw new NoGrantError();
+          return call({ walletAddressUrl: `https://${TEST_WALLET_HOST}/${userId}`, accessToken: "token" });
+        },
+      },
+      receiverWalletAddress: RECEIVER,
+      realNow: () => new Date(realClock),
+    }),
     kyc: createKycService({ db, didit: fakeDidit, frontendUrl: FRONTEND_URL }),
   };
+}
+
+const DEPOSIT = "/api/users/me/internal-account/deposits";
+type DepositBody = { id: string; status: string; failureCode: string | null; amount: { value: string }; incomingPaymentUrl: string; receiverWalletAddress: string };
+
+async function balanceOf(token: string, server: TestServer): Promise<string> {
+  return ((await server.request("/api/users/me/internal-account", { token })).body as { balance: { value: string } }).balance.value;
 }
 
 describe("internal accounts API against Supabase", { skip: databaseUrl ? false : "DATABASE_URL is not set" }, () => {
@@ -183,6 +216,80 @@ describe("internal accounts API against Supabase", { skip: databaseUrl ? false :
     assert.equal(dashboard.wallet, null);
     assert.equal(dashboard.internalAccount?.id, created.id);
     assert.equal(dashboard.internalAccount?.movements.length, 1);
+  });
+
+  test("a deposit is an incoming payment on OpenCircle's wallet; it credits the account once, when received", async () => {
+    payments = fakePayments({ settle: "later" });
+    const { token } = await newUser(unseeded);
+    await unseeded.request("/api/users/me/internal-account", { method: "POST", token });
+
+    const created = await unseeded.request(DEPOSIT, { method: "POST", token, body: { value: "25000" } });
+    assert.equal(created.status, 201, created.text);
+    const deposit = created.body as DepositBody;
+    assert.equal(deposit.status, "PENDING");
+    assert.equal(deposit.receiverWalletAddress, RECEIVER);
+    const incoming = payments.incoming.get(deposit.incomingPaymentUrl);
+    assert.deepEqual([incoming?.key, incoming?.value], [`deposit:${deposit.id}`, 25_000n]);
+
+    // Not paid yet: still PENDING, nothing credited.
+    const pending = await unseeded.request(`${DEPOSIT}/${deposit.id}`, { token });
+    assert.equal((pending.body as DepositBody).status, "PENDING");
+    assert.equal(await balanceOf(token, unseeded), "0");
+
+    // The payer sends the money; OpenCircle reads it as received and credits exactly once.
+    if (incoming) incoming.received = incoming.value;
+    for (let i = 0; i < 2; i++) {
+      const done = await unseeded.request(`${DEPOSIT}/${deposit.id}`, { token });
+      assert.equal((done.body as DepositBody).status, "COMPLETED");
+      assert.equal(await balanceOf(token, unseeded), "25000");
+    }
+    const movements = (await unseeded.request("/api/users/me/internal-account/movements", { token })).body as Array<{ kind: string; counterparty: unknown }>;
+    assert.deepEqual(movements.map((m) => [m.kind, m.counterparty]), [["DEPOSIT", { kind: "SYSTEM", code: "OP_WALLET" }]]);
+  });
+
+  test("an unpaid deposit expires; a stranger or a bad id gets 404; the amount must be a positive integer", async () => {
+    payments = fakePayments({ settle: "later" });
+    const owner = await newUser(unseeded);
+    const stranger = await newUser(unseeded);
+    await unseeded.request("/api/users/me/internal-account", { method: "POST", token: owner.token });
+
+    for (const body of [{ value: "0" }, { value: "12.5" }, { value: 100 }, {}]) {
+      const bad = await unseeded.request(DEPOSIT, { method: "POST", token: owner.token, body });
+      assert.equal(bad.status, 400, JSON.stringify(body));
+    }
+
+    const deposit = (await unseeded.request(DEPOSIT, { method: "POST", token: owner.token, body: { value: "1000" } })).body as DepositBody;
+    assert.equal((await unseeded.request(`${DEPOSIT}/${deposit.id}`, { token: stranger.token })).status, 404);
+    assert.equal((await unseeded.request(`${DEPOSIT}/not-a-uuid`, { token: owner.token })).status, 404);
+
+    realClock += 31 * 60_000;
+    const expired = (await unseeded.request(`${DEPOSIT}/${deposit.id}`, { token: owner.token })).body as DepositBody;
+    assert.deepEqual([expired.status, expired.failureCode], ["FAILED", "EXPIRED"]);
+    // Money arriving late is not credited: the deposit is closed.
+    const incoming = payments.incoming.get(deposit.incomingPaymentUrl);
+    if (incoming) incoming.received = incoming.value;
+    assert.equal(((await unseeded.request(`${DEPOSIT}/${deposit.id}`, { token: owner.token })).body as DepositBody).status, "FAILED");
+    assert.equal(await balanceOf(owner.token, unseeded), "0");
+    assert.equal((await unseeded.request(`${DEPOSIT}/${deposit.id}/pay`, { method: "POST", token: owner.token })).status, 409);
+  });
+
+  test("a linked wallet pays the deposit through its grant; without one the API says so", async () => {
+    payments = fakePayments({ settle: "now" });
+    const { id, token } = await newUser(unseeded);
+    await unseeded.request("/api/users/me/internal-account", { method: "POST", token });
+    const deposit = (await unseeded.request(DEPOSIT, { method: "POST", token, body: { value: "7000" } })).body as DepositBody;
+
+    const unauthorized = await unseeded.request(`${DEPOSIT}/${deposit.id}/pay`, { method: "POST", token });
+    assert.equal(unauthorized.status, 409);
+    assert.equal(errorCode(unauthorized.body), "WALLET_NOT_AUTHORIZED");
+
+    authorizedWallets.add(id);
+    const paid = await unseeded.request(`${DEPOSIT}/${deposit.id}/pay`, { method: "POST", token });
+    assert.equal(paid.status, 200, paid.text);
+    assert.equal((paid.body as DepositBody).status, "COMPLETED");
+    assert.equal(payments.outgoing.length, 1);
+    assert.equal(payments.outgoing[0]?.key, `deposit:${deposit.id}`);
+    assert.equal(await balanceOf(token, unseeded), "7000");
   });
 
   test("an internal account counts as onboarded for KYC, and the KYC audit lands on the account", async () => {

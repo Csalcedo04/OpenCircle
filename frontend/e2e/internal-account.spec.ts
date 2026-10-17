@@ -56,6 +56,20 @@ test.describe("OpenCircle internal account", () => {
     await expect(page.getByText("Paga desde su cuenta OpenCircle").first()).toBeVisible()
   })
 
+  test("a deposit creates a payment request on the test network and waits for it", async ({ page, user }) => {
+    test.skip(process.env.E2E_OP !== "1", "creates a real incoming payment on OpenCircle's test wallet; run with E2E_OP=1")
+    await seedProfile(user, { internalAccount: true })
+    await signIn(page, user, { lands: "circles" })
+    await page.goto("/es/account/deposit")
+    await page.getByLabel("Monto (COP)").fill("20.000")
+    await page.getByRole("button", { name: "Crear solicitud de pago" }).click()
+    await expect(page).toHaveURL(/\/es\/account\/deposits\/[0-9a-f-]{36}$/)
+    await expect(page.getByRole("status")).toHaveText("Esperando el pago")
+    await expect(page.locator("code", { hasText: /^https:\/\/ilp\.interledger-test\.dev\// })).toBeVisible()
+    // No wallet linked: only the manual path is offered.
+    await expect(page.getByRole("button", { name: "Pagar con mi billetera" })).toHaveCount(0)
+  })
+
   test("opening the account returns to where sign-in started", async ({ page, user }) => {
     await seedProfile(user)
     await page.goto("/es/login?next=/es/circles/new")
