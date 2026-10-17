@@ -5,6 +5,7 @@ import { PaymentRefusedError, type Amount, type PayoutPayments } from "../open-p
 import type { Tx } from "../wallet.service";
 import { planFinalPayouts, planRoundPayouts, type PlannedPayout, type PlanRound } from "./payout-plan";
 import { NoPoolGrantError, type PoolAccessService } from "./pool-access";
+import { defaultable } from "./scoring.service";
 
 export type PayoutFailureCode = "NO_WALLET" | "QUOTE_FAILED" | "PAYMENT_REFUSED" | "PAYMENT_FAILED";
 
@@ -282,11 +283,34 @@ export function createPayouts({ db, payments, pool, realNow = () => new Date() }
     }
   }
 
+  async function owesAfterOwnRound(roundRows: readonly { id: string; number: number; beneficiaryMemberId: string | null }[]): Promise<boolean> {
+    if (roundRows.length === 0) return false;
+    const failed = await db
+      .select({ memberId: contributions.memberId, roundId: contributions.roundId })
+      .from(contributions)
+      .where(
+        and(
+          // Owed, or being paid late (debt.service): either way not settled yet.
+          inArray(contributions.status, ["FAILED", "PROCESSING"]),
+          inArray(
+            contributions.roundId,
+            roundRows.map((r) => r.id),
+          ),
+        ),
+      );
+    const numberOf = new Map(roundRows.map((r) => [r.id, r.number]));
+    const ownRound = new Map(roundRows.flatMap((r) => (r.beneficiaryMemberId ? [[r.beneficiaryMemberId, r.number] as const] : [])));
+    return failed.some((c) => defaultable(numberOf.get(c.roundId) ?? 0, ownRound.get(c.memberId) ?? null));
+  }
+
   async function settle(circleId: string): Promise<void> {
     const [circle] = await db.select().from(circles).where(eq(circles.id, circleId)).limit(1);
     if (!circle || circle.status !== "ACTIVE") return;
     const all = await db.select({ roundId: payouts.roundId, kind: payouts.kind, status: payouts.status }).from(payouts).where(eq(payouts.circleId, circleId));
-    const roundRows = await db.select({ id: rounds.id, state: rounds.state }).from(rounds).where(eq(rounds.circleId, circleId));
+    const roundRows = await db
+      .select({ id: rounds.id, number: rounds.number, state: rounds.state, beneficiaryMemberId: rounds.beneficiaryMemberId })
+      .from(rounds)
+      .where(eq(rounds.circleId, circleId));
 
     // A round is paid out when the payouts of its pot are (compensations don't hold it back).
     const finalsDone = all.filter((p) => p.kind === "FINAL").every((p) => p.status === "COMPLETED");
@@ -307,6 +331,9 @@ export function createPayouts({ db, payments, pool, realNow = () => new Date() }
     // Done when every round is paid out and nothing is owed to anyone (no FAILED payout left).
     const finished = roundRows.length > 0 && roundRows.every((r) => r.state === "PAID_OUT") && all.every((p) => p.status === "COMPLETED");
     if (!finished) return;
+    // Nor while a member owes a round after their own (a default): the cycle keeps visiting the
+    // circle so the default is scored and, once paid, the others are compensated.
+    if (await owesAfterOwnRound(roundRows)) return;
     const [completed] = await db
       .update(circles)
       .set({ status: "COMPLETED" })

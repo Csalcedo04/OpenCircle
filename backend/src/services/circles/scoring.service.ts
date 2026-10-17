@@ -8,18 +8,31 @@ const DAY_MS = 86_400_000;
 const LATE_GRACE_DAYS = 14;
 const BEFORE_NEXT_CYCLE_DAYS = 5;
 
-export type PaymentOutcome = "ON_TIME" | "LATE" | "MISSED";
+// DEFAULTED: missed after the member already received their round's pot, so the debt can't be
+// netted from it and the others bear it.
+export type PaymentOutcome = "ON_TIME" | "LATE" | "MISSED" | "DEFAULTED";
+const OUTCOMES: readonly PaymentOutcome[] = ["ON_TIME", "LATE", "MISSED", "DEFAULTED"];
+// On top of the missed payment's penalty; the score never goes below 0 (clampScore).
+const DEFAULTED_EXTRA_PENALTY = 35;
 type ContributionStatus = (typeof CONTRIBUTION_STATUSES)[number];
 
 // One contribution is one expected payment of the member in that round.
-const SUMMARIES: Record<PaymentOutcome, RoundPaymentSummary> = {
+const SUMMARIES: Record<Exclude<PaymentOutcome, "DEFAULTED">, RoundPaymentSummary> = {
   ON_TIME: { expectedPayments: 1, paidOnTime: 1, paidLate: 0, missedPayments: 0 },
   LATE: { expectedPayments: 1, paidOnTime: 0, paidLate: 1, missedPayments: 0 },
   MISSED: { expectedPayments: 1, paidOnTime: 0, paidLate: 0, missedPayments: 1 },
 };
 
-/** Score change of one contribution's outcome (+5 on time, −4 late, −15 missed with the default config). */
-export const outcomeChange = (outcome: PaymentOutcome): number => roundScoreChange(SUMMARIES[outcome]);
+/** Score change of one contribution's outcome (+5 on time, −4 late, −15 missed, −50 defaulted with the default config). */
+export const outcomeChange = (outcome: PaymentOutcome): number =>
+  outcome === "DEFAULTED" ? roundScoreChange(SUMMARIES.MISSED) - DEFAULTED_EXTRA_PENALTY : roundScoreChange(SUMMARIES[outcome]);
+
+/**
+ * PER_ROUND: whether missing a payment in `roundNumber` hurts the others for good. Misses before
+ * the member's own round are netted from their pot (and in it, their pot is just smaller); after
+ * it, they have been paid already. END circles (no own round) never default.
+ */
+export const defaultable = (roundNumber: number, ownRound: number | null): boolean => ownRound !== null && ownRound < roundNumber;
 
 /**
  * When an unpaid contribution counts as missed: 14 days after the deadline or 5 days before
@@ -37,6 +50,8 @@ export interface ScoredContribution {
   completedAt: Date | null;
   deadline: Date;
   penaltyAt: Date;
+  /** See `defaultable`: a miss then counts as DEFAULTED. */
+  defaultable: boolean;
 }
 
 /**
@@ -53,11 +68,12 @@ export function scoreAction(
   if (c.status === "COMPLETED" && c.completedAt) {
     const outcome: PaymentOutcome = c.completedAt.getTime() <= c.deadline.getTime() ? "ON_TIME" : "LATE";
     if (recorded.has("ON_TIME") || recorded.has("LATE")) return null;
-    const undo = recorded.has("MISSED") ? outcomeChange("MISSED") : 0;
-    return { outcome, change: outcomeChange(outcome) - undo };
+    const missed = (["DEFAULTED", "MISSED"] as const).find((o) => recorded.has(o));
+    return { outcome, change: outcomeChange(outcome) - (missed ? outcomeChange(missed) : 0) };
   }
   if (recorded.size > 0 || now.getTime() < c.penaltyAt.getTime()) return null;
-  return { outcome: "MISSED", change: outcomeChange("MISSED") };
+  const outcome: PaymentOutcome = c.defaultable ? "DEFAULTED" : "MISSED";
+  return { outcome, change: outcomeChange(outcome) };
 }
 
 const externalId = (outcome: PaymentOutcome, contributionId: string) => `score.${outcome.toLowerCase()}:${contributionId}`;
@@ -68,16 +84,18 @@ export function createScoring({ db }: { db: Db }) {
     /** At circle time `now`. Safe to repeat or to run twice at once: each outcome is recorded once. */
     async scoreCircle(circleId: string, now: Date): Promise<number> {
       const roundRows = await db
-        .select({ number: rounds.number, deadline: rounds.deadline })
+        .select({ number: rounds.number, deadline: rounds.deadline, beneficiaryMemberId: rounds.beneficiaryMemberId })
         .from(rounds)
         .where(eq(rounds.circleId, circleId));
       const deadlineOf = new Map(roundRows.map((r) => [r.number, r.deadline]));
+      const ownRoundOf = new Map(roundRows.flatMap((r) => (r.beneficiaryMemberId ? [[r.beneficiaryMemberId, r.number] as const] : [])));
 
       const rows = await db
         .select({
           id: contributions.id,
           status: contributions.status,
           completedAt: contributions.completedAt,
+          memberId: contributions.memberId,
           roundNumber: rounds.number,
           deadline: rounds.deadline,
           walletId: users.opWallet,
@@ -89,7 +107,7 @@ export function createScoring({ db }: { db: Db }) {
         .where(and(eq(rounds.circleId, circleId), ne(rounds.state, "UPCOMING")));
       if (rows.length === 0) return 0;
 
-      const ids = rows.flatMap((r) => (["ON_TIME", "LATE", "MISSED"] as const).map((o) => externalId(o, r.id)));
+      const ids = rows.flatMap((r) => OUTCOMES.map((o) => externalId(o, r.id)));
       const done = new Set(
         (await db.select({ id: auditEvents.externalId }).from(auditEvents).where(inArray(auditEvents.externalId, ids))).map((e) => e.id),
       );
@@ -98,9 +116,13 @@ export function createScoring({ db }: { db: Db }) {
       for (const r of rows) {
         const { walletId } = r;
         if (walletId === null) continue;
-        const recorded = new Set((["ON_TIME", "LATE", "MISSED"] as const).filter((o) => done.has(externalId(o, r.id))));
+        const recorded = new Set(OUTCOMES.filter((o) => done.has(externalId(o, r.id))));
         const action = scoreAction(
-          { ...r, penaltyAt: penaltyAt(r.deadline, deadlineOf.get(r.roundNumber + 1) ?? null) },
+          {
+            ...r,
+            penaltyAt: penaltyAt(r.deadline, deadlineOf.get(r.roundNumber + 1) ?? null),
+            defaultable: defaultable(r.roundNumber, ownRoundOf.get(r.memberId) ?? null),
+          },
           recorded,
           now,
         );
