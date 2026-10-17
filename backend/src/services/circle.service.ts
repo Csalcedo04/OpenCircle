@@ -178,9 +178,11 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
     return seat !== undefined;
   }
 
+  const holdsCode = (given: string | undefined, code: string | null) => code !== null && sameSecret(given, code);
+
   // Public, or a member, or holding the current invite code. Anyone else can't tell it exists.
-  async function canSee(circle: { id: string; visibility: CircleVisibility; inviteCode: string }, viewer: CircleViewer): Promise<boolean> {
-    return circle.visibility === "PUBLIC" || sameSecret(viewer.invite, circle.inviteCode) || (await isMember(circle.id, viewer.userId));
+  async function canSee(circle: { id: string; visibility: CircleVisibility; inviteCode: string | null }, viewer: CircleViewer): Promise<boolean> {
+    return circle.visibility === "PUBLIC" || holdsCode(viewer.invite, circle.inviteCode) || (await isMember(circle.id, viewer.userId));
   }
   const summaryColumns = {
     id: circles.id,
@@ -291,7 +293,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
       poolWalletAddress: circle.poolWalletAddress,
       startedAt: circle.startedAt?.toISOString() ?? null,
       testClockId: testClocksEnabled ? circle.testClockId : null,
-      inviteUrl: viewer.userId === circle.createdBy ? inviteUrl(circle.id, circle.inviteCode) : null,
+      inviteUrl: viewer.userId === circle.createdBy && circle.inviteCode !== null ? inviteUrl(circle.id, circle.inviteCode) : null,
       currentRound: roundRows.find((r) => ACTIVE_ROUND_STATES.includes(r.state))?.number ?? null,
       seats: seats.map((s) => ({
         memberId: s.memberId,
@@ -548,7 +550,7 @@ export function createCircleService({ db, resolvePoolWallet, testClocksEnabled =
         if (!circle || !(await canSee(circle, { userId, invite }))) throw notFound();
         // Public circles are semi-public: without the creator's invite link, applicants are
         // accepted by the creator and their delegates (POST /circles/:id/applications).
-        if (circle.visibility === "PUBLIC" && !sameSecret(invite, circle.inviteCode)) {
+        if (circle.visibility === "PUBLIC" && !holdsCode(invite, circle.inviteCode)) {
           throw new AppError(403, "APPLICATION_REQUIRED", "Apply to join this circle; its approvers decide");
         }
         return takeSeat(tx, circle, userId, input);

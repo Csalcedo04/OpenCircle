@@ -5,6 +5,7 @@ import { and, asc, eq, inArray, like, or } from "drizzle-orm";
 import { createDb, type Db } from "../src/db/client";
 import {
   auditEvents,
+  circleInvites,
   circleMembers,
   circles,
   contributions,
@@ -71,6 +72,7 @@ async function deleteTestData(): Promise<void> {
     const roundIds = (await db.select({ id: rounds.id }).from(rounds).where(inArray(rounds.circleId, circleIds))).map((r) => r.id);
     if (roundIds.length > 0) await db.delete(contributions).where(inArray(contributions.roundId, roundIds));
     await db.delete(rounds).where(inArray(rounds.circleId, circleIds));
+    await db.delete(circleInvites).where(inArray(circleInvites.circleId, circleIds));
     await db.delete(circleMembers).where(inArray(circleMembers.circleId, circleIds));
     await db.delete(circles).where(inArray(circles.id, circleIds));
   }

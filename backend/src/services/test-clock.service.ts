@@ -25,7 +25,8 @@ export interface TestClockCircleDto {
   size: number;
   seatsTaken: number;
   // For the join link: the clock (and its circles) belong to the viewer, who created them.
-  inviteCode: string;
+  // Null until the circle gets a standing invite code (migration 0010 moves codes to circle_invites).
+  inviteCode: string | null;
   // The period being collected; null before the circle starts or once every period has closed.
   currentPeriod: {
     number: number;

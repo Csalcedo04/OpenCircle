@@ -7,10 +7,12 @@ import {
   applicationVotes,
   auditEvents,
   circleApplications,
+  circleInvites,
   circleMembers,
   circles,
   contributions,
   creditProfiles,
+  friendships,
   reviews,
   rounds,
   testClocks,
@@ -61,13 +63,14 @@ async function deleteTestData(): Promise<void> {
     .where(or(like(circles.name, `${PREFIX}%`), userFilter));
   const circleIds = testCircles.map((c) => c.id);
 
-  // FK order: votes → applications → contributions → rounds → seats → reviews → circles; nothing cascades.
+  // FK order: votes → applications → invites → contributions → rounds → seats → reviews → circles; nothing cascades.
   if (circleIds.length > 0) {
     const appIds = (
       await db.select({ id: circleApplications.id }).from(circleApplications).where(inArray(circleApplications.circleId, circleIds))
     ).map((a) => a.id);
     if (appIds.length > 0) await db.delete(applicationVotes).where(inArray(applicationVotes.applicationId, appIds));
     await db.delete(circleApplications).where(inArray(circleApplications.circleId, circleIds));
+    await db.delete(circleInvites).where(inArray(circleInvites.circleId, circleIds));
     const roundIds = (await db.select({ id: rounds.id }).from(rounds).where(inArray(rounds.circleId, circleIds))).map((r) => r.id);
     if (roundIds.length > 0) await db.delete(contributions).where(inArray(contributions.roundId, roundIds));
     await db.delete(rounds).where(inArray(rounds.circleId, circleIds));
@@ -81,6 +84,9 @@ async function deleteTestData(): Promise<void> {
   );
   if (testWallets.length > 0) await db.delete(auditEvents).where(inArray(auditEvents.walletId, testWallets));
   if (createdUserIds.length > 0) await db.delete(testClocks).where(inArray(testClocks.ownerUserId, createdUserIds));
+  if (createdUserIds.length > 0) {
+    await db.delete(friendships).where(or(inArray(friendships.requesterId, createdUserIds), inArray(friendships.addresseeId, createdUserIds)));
+  }
   await db.delete(users).where(or(like(users.fullName, `${PREFIX}%`), createdUserIds.length > 0 ? inArray(users.id, createdUserIds) : undefined));
   if (testWallets.length > 0) await db.delete(wallets).where(inArray(wallets.id, testWallets));
 }
