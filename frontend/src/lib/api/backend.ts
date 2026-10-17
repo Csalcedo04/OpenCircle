@@ -3,6 +3,7 @@ import "server-only"
 import { z } from "zod"
 import { DOCUMENT_TYPES, type DocumentType } from "@/lib/domain/identity"
 import { createClient } from "@/lib/supabase/server"
+import type { CircleVisibility } from "@/lib/flows/circle-invite"
 import { apiCircleSchema, testClockSchema, type ApiCircle, type TestClock } from "@/lib/api/test-clocks"
 
 /**
@@ -305,6 +306,8 @@ export interface NewCircleRequest extends SeatRequest {
   contributionValue: string
   size: number
   cadence: Cadence
+  /** Private (invite link only) unless set to PUBLIC; the API defaults to PRIVATE. */
+  visibility?: CircleVisibility
   /** Dev only (TEST_CLOCKS_ENABLED): run the circle on this test clock. */
   testClockId?: string
 }
