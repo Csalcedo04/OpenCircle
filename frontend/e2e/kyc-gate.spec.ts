@@ -1,5 +1,5 @@
 import { expect, test } from "./fixtures"
-import { seedProfile, signIn } from "./helpers/users"
+import { seedCircle, seedProfile, signIn } from "./helpers/users"
 
 // Creating or joining a circle: signed in → onboarded → KYC approved → form.
 test.describe("KYC gate on create and join", () => {
@@ -21,10 +21,13 @@ test.describe("KYC gate on create and join", () => {
     await expect(page.getByLabel("Nombre del círculo")).toHaveCount(0)
   })
 
-  test("verification in review → a waiting message, no button", async ({ page, user }) => {
+  test("verification in review → a waiting message, no button", async ({ page, user, newUser }) => {
+    const owner = await newUser()
+    await seedProfile(owner, { wallet: true, kyc: "Approved" })
+    const circle = await seedCircle(owner)
     await seedProfile(user, { wallet: true, kyc: "In Review" })
     await signIn(page, user, { lands: "circles" })
-    await page.goto("/es/circles/natillera-laureles/join")
+    await page.goto(`/es/circles/${circle.id}/join`)
     await expect(page.getByText("Estamos revisando tu verificación.")).toBeVisible()
     await expect(page.getByRole("button", { name: "Verificar mi identidad" })).toHaveCount(0)
   })
@@ -45,13 +48,16 @@ test.describe("KYC gate on create and join", () => {
     await expect(page.getByRole("button", { name: "Verificar mi identidad" })).toBeVisible()
   })
 
-  test("approved → the create and join forms appear", async ({ page, user }) => {
+  test("approved → the create and join forms appear", async ({ page, user, newUser }) => {
+    const owner = await newUser()
+    await seedProfile(owner, { wallet: true, kyc: "Approved" })
+    const circle = await seedCircle(owner)
     await seedProfile(user, { wallet: true, kyc: "Approved" })
     await signIn(page, user, { lands: "circles" })
     await page.goto("/es/circles/new")
     await expect(page.getByLabel("Nombre del círculo")).toBeVisible()
-    await page.goto("/es/circles/natillera-laureles/join")
-    await expect(page.getByText("Tu ronda de entrega")).toBeVisible()
+    await page.goto(`/es/circles/${circle.id}/join`)
+    await expect(page.getByText("Tu ronda de entrega", { exact: true })).toBeVisible()
   })
 
   test("the verify button opens Didit's real verification page", async ({ page, user }) => {

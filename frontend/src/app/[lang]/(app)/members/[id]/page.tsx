@@ -6,37 +6,24 @@ import { RoundStatusBadge } from "@/components/round-status"
 import { Stars, TrustDial, formatTenths } from "@/components/trust"
 import { fill } from "@/i18n/config"
 import { getDictionary } from "@/i18n/get-dictionary"
-import { circlesForMember, getMember, listCircles, listMembers, listReviews } from "@/lib/data"
+import { getMemberView } from "@/lib/data"
 import { currentRound } from "@/lib/domain/rounds"
 import { trustFor } from "@/lib/domain/trust"
 import { formatDate } from "@/lib/view"
 
-export async function generateStaticParams() {
-  const members = await listMembers()
-  return members.map((m) => ({ id: m.id }))
-}
-
 export async function generateMetadata({ params }: PageProps<"/[lang]/members/[id]">): Promise<Metadata> {
-  const member = await getMember((await params).id)
-  return { title: member?.name ?? "OpenCircle" }
+  const view = await getMemberView((await params).id)
+  return { title: view?.member.name ?? "OpenCircle" }
 }
 
 export default async function MemberPage({ params }: PageProps<"/[lang]/members/[id]">) {
   const { id } = await params
   const { locale, t } = await getDictionary()
-  const [member, members, reviews, circles, allCircles] = await Promise.all([
-    getMember(id),
-    listMembers(),
-    listReviews(),
-    circlesForMember(id),
-    listCircles(),
-  ])
-  if (!member) notFound()
-
-  const byId = new Map(members.map((m) => [m.id, m]))
-  const circleName = new Map(allCircles.map((c) => [c.id, c.name]))
-  const trust = trustFor(member, reviews)
-  const received = reviews.filter((r) => r.subjectId === member.id)
+  const view = await getMemberView(id)
+  if (!view) notFound()
+  const { member, reviews: received } = view
+  const circles = view.circles.map((v) => v.circle)
+  const trust = trustFor(member)
   const stats = [
     { label: t.member.onTime, value: member.payments.onTime, color: "text-brand-violet-ink" },
     { label: t.member.late, value: member.payments.late, color: "text-brand-slate" },
@@ -70,9 +57,11 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
             <div className="mt-3 flex items-center gap-2 text-xs text-brand-slate">
               <Wallet className="size-3.5 shrink-0 text-brand-violet" />
               <code className="rounded-md bg-brand-canvas px-2 py-0.5 font-mono text-[11px] text-brand-navy break-all border border-brand-line/60">
-                {member.walletAddress}
+                {member.walletAddress ?? "—"}
               </code>
-              <span>· {fill(t.member.memberSince, { date: formatDate(member.memberSince, locale) })}</span>
+              {member.memberSince && (
+                <span>· {fill(t.member.memberSince, { date: formatDate(member.memberSince, locale) })}</span>
+              )}
             </div>
           </div>
         </div>
@@ -115,11 +104,11 @@ export default async function MemberPage({ params }: PageProps<"/[lang]/members/
                     <Stars rating={r.rating} label={fill(t.member.rating, { rating: r.rating })} />
                     <span className="text-[11px] text-brand-slate">{formatDate(r.date, locale)}</span>
                   </div>
-                  <p className="mt-2 text-sm leading-relaxed text-brand-navy italic">“{r.comment}”</p>
+                  {r.comment && <p className="mt-2 text-sm leading-relaxed text-brand-navy italic">“{r.comment}”</p>}
                   <p className="mt-2 text-xs font-medium text-brand-slate">
                     {fill(t.member.by, {
-                      name: byId.get(r.authorId)?.name ?? r.authorId,
-                      circle: circleName.get(r.circleId) ?? r.circleId,
+                      name: r.authorName,
+                      circle: r.circleName,
                     })}
                   </p>
                 </div>

@@ -8,8 +8,11 @@ try {
   // Missing file: the helpers throw a clear error when they need the variables.
 }
 
-/** `user`: a fresh Supabase user for this test, deleted with everything it created afterwards. */
-export const test = base.extend<{ user: TestUser }>({
+/**
+ * `user`: a fresh Supabase user for this test. `newUser()`: more users when a test needs several.
+ * All are deleted with everything they created afterwards.
+ */
+export const test = base.extend<{ user: TestUser; newUser: () => Promise<TestUser> }>({
   // `provide` is Playwright's fixture callback (named so React's hook lint rule leaves it alone).
   user: async ({}, provide) => {
     const user = await createTestUser()
@@ -17,6 +20,18 @@ export const test = base.extend<{ user: TestUser }>({
       await provide(user)
     } finally {
       await deleteTestUser(user)
+    }
+  },
+  newUser: async ({}, provide) => {
+    const extra: TestUser[] = []
+    try {
+      await provide(async () => {
+        const u = await createTestUser()
+        extra.push(u)
+        return u
+      })
+    } finally {
+      for (const u of extra) await deleteTestUser(u)
     }
   },
 })

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, type FormEvent } from "react"
-import { CheckCircle2, CircleCheck, Lock, ShieldCheck, Wallet } from "lucide-react"
+import { useActionState, useState } from "react"
+import { CheckCircle2, LoaderCircle, Lock, ShieldCheck, Wallet } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,51 +11,42 @@ import { amount, formatAmount, parseWholeUnits } from "@/lib/domain/money"
 import { evaluateCoverage } from "@/lib/domain/rounds"
 import type { Circle, GrantMode } from "@/lib/domain/types"
 import { cn } from "@/lib/utils"
+import { joinCircleAction, type JoinState } from "./actions"
 
 type Props = {
   locale: Locale
   circle: Circle
+  /** From a private circle's link; sent with the join. */
+  invite?: string | undefined
   t: Dictionary["join"]
+  tErr: Dictionary["circleErrors"]
   tc: Pick<Dictionary["circle"], "owes" | "collateral" | "grant" | "uncovered" | "threshold" | "eligible" | "seat">
   notCovered: string
 }
-type Field = "wallet" | "seat" | "collateral"
-
-export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
+export function JoinCircleForm({ locale, circle, invite, t, tErr, tc, notCovered }: Props) {
   const taken = new Set(circle.seats.map((s) => s.payoutRound))
   const free = Array.from({ length: circle.size }, (_, i) => i + 1).filter((n) => !taken.has(n))
-  const [wallet, setWallet] = useState("")
   const [seat, setSeat] = useState<number | null>(free[0] ?? null)
   const [grant, setGrant] = useState<GrantMode>("RECURRING")
   const [collateral, setCollateral] = useState("")
-  const [errors, setErrors] = useState<Partial<Record<Field, string>>>({})
-  const [submitted, setSubmitted] = useState(false)
+  const [state, action, pending] = useActionState<JoinState, FormData>(
+    joinCircleAction.bind(null, locale, {
+      id: circle.id,
+      size: circle.size,
+      assetScale: circle.contribution.assetScale,
+      ...(invite ? { invite } : {}),
+    }),
+    { errors: {}, form: null },
+  )
+  const errors = {
+    seat: state.errors.seat ? tErr[state.errors.seat] : undefined,
+    collateral: state.errors.collateral ? tErr[state.errors.collateral] : undefined,
+  }
 
   const collateralValue = collateral.trim() === "" ? 0n : (parseWholeUnits(collateral, circle.contribution.assetScale) ?? 0n)
   const coverage = seat ? evaluateCoverage(circle, { payoutRound: seat, collateralValue: collateralValue.toString(), grant }) : null
   const money = (v: bigint) => formatAmount(amount(v, circle.contribution), locale)
   const weight = `${Math.floor(circle.grantWeightBps / 100)}%`
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const next: Partial<Record<Field, string>> = {}
-
-    const isValidWallet = /^\$[\w.-]+(\/[\w./-]*)?$/.test(wallet.trim()) || wallet.trim().startsWith("https://")
-    if (!isValidWallet) next.wallet = t.errors.wallet
-    if (!seat || !free.includes(seat)) next.seat = t.errors.seat
-    if (collateral.trim() !== "" && parseWholeUnits(collateral, circle.contribution.assetScale) === null) {
-      next.collateral = t.errors.collateral
-    }
-
-    if (Object.keys(next).length > 0) {
-      setErrors(next)
-      setSubmitted(false)
-      return
-    }
-
-    setErrors({})
-    setSubmitted(true)
-  }
 
   if (free.length === 0) {
     return (
@@ -69,25 +60,10 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
     <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 items-start">
       {/* Configuration Form Bento Card */}
       <div className="rounded-[32px] border border-brand-line bg-brand-white p-6 shadow-2xs sm:p-8 lg:col-span-7">
-        <form onSubmit={onSubmit} noValidate className="space-y-6">
-          <FormField id="wallet" label={t.wallet} help={t.walletHelp} error={errors.wallet}>
-            <div className="relative">
-              <Wallet className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-brand-slate" />
-              <Input
-                id="wallet"
-                type="text"
-                autoComplete="off"
-                spellCheck={false}
-                value={wallet}
-                onChange={(e) => setWallet(e.target.value)}
-                placeholder={t.walletPlaceholder}
-                aria-invalid={errors.wallet ? true : undefined}
-                aria-describedby={describedBy("wallet", errors.wallet)}
-                className="h-11 rounded-xl pl-10 text-base font-mono"
-              />
-            </div>
-          </FormField>
-
+        <form action={action} noValidate className="space-y-6">
+          {/* The seat and approval pickers are buttons; their choice travels in hidden fields. */}
+          <input type="hidden" name="payoutRound" value={seat ?? ""} />
+          <input type="hidden" name="grantMode" value={grant} />
           {/* Seat Picker Grid with Bento Buttons */}
           <div>
             <label className="text-sm font-semibold text-brand-navy block mb-2">{t.seat}</label>
@@ -162,6 +138,7 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
               </span>
               <Input
                 id="collateral"
+                name="collateral"
                 inputMode="numeric"
                 value={collateral}
                 onChange={(e) => setCollateral(e.target.value)}
@@ -173,23 +150,25 @@ export function JoinCircleForm({ locale, circle, t, tc, notCovered }: Props) {
             </div>
           </FormField>
 
+          {state.form && (
+            <p role="alert" className="oc-fade-in rounded-xl bg-brand-mist p-3 text-sm font-medium text-brand-violet-ink">
+              {tErr[state.form]}
+            </p>
+          )}
+
           <Button
             type="submit"
+            disabled={pending || seat === null}
             className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
           >
-            <Wallet className="size-4 shrink-0" aria-hidden="true" />
-            <span>{t.submit}</span>
+            {pending ? (
+              <LoaderCircle className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
+            ) : (
+              <Wallet className="size-4 shrink-0" aria-hidden="true" />
+            )}
+            <span>{pending ? t.joining : t.submit}</span>
           </Button>
 
-          {submitted && (
-            <div
-              role="status"
-              className="flex items-start gap-3 rounded-2xl bg-brand-mint/40 border border-brand-mint p-4 text-xs font-semibold text-brand-navy animate-in fade-in zoom-in-95"
-            >
-              <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              <span>{t.submitted}</span>
-            </div>
-          )}
         </form>
       </div>
 

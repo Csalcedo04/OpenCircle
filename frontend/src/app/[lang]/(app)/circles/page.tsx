@@ -62,7 +62,8 @@ export default async function CirclesPage() {
         <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
           {circles.map((circle) => {
             const round = currentRound(circle)
-            const scores = (membersByCircle.get(circle.id) ?? []).map((m) => trustFor(m).score)
+            const seatMembers = membersByCircle.get(circle.id) ?? []
+            const scores = seatMembers.map((m) => trustFor(m).score)
             const avg = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0
             const open = circle.size - circle.seats.length
             const pot = potFor(circle)
