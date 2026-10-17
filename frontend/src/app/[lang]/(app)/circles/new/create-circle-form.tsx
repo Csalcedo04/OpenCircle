@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useState } from "react"
+import Link from "next/link"
 import { CheckCircle2, ChevronDown, Coins, Globe, LoaderCircle, Lock, Sparkles, Users, Zap } from "lucide-react"
 import { FormField, describedBy } from "@/components/form-field"
 import { Button } from "@/components/ui/button"
@@ -164,18 +165,30 @@ export function CreateCircleForm({ locale, t, tErr }: Props) {
             </p>
           )}
 
-          <Button
-            type="submit"
-            disabled={pending}
-            className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
-          >
-            {pending ? (
-              <LoaderCircle className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
-            ) : (
-              <Sparkles className="size-4 shrink-0" aria-hidden="true" />
-            )}
-            <span>{pending ? t.creating : t.submit}</span>
-          </Button>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Link
+              href={`/${locale}/circles`}
+              aria-disabled={pending}
+              className={cn(
+                "inline-flex h-12 w-full items-center justify-center rounded-full border border-brand-line bg-brand-white px-6 text-sm font-semibold text-brand-navy outline-none transition-[transform,border-color] hover:-translate-y-0.5 hover:border-brand-navy/30 focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 motion-reduce:hover:translate-y-0 sm:w-auto",
+                pending && "pointer-events-none opacity-50",
+              )}
+            >
+              {t.cancel}
+            </Link>
+            <Button
+              type="submit"
+              disabled={pending}
+              className="h-12 w-full rounded-full bg-brand-violet px-6 text-sm font-semibold text-brand-white shadow-[0_6px_20px_-8px_var(--color-brand-violet)] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-violet-ink focus-visible:ring-4 focus-visible:ring-brand-violet/30 active:translate-y-0 sm:w-auto"
+            >
+              {pending ? (
+                <LoaderCircle className="size-4 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="size-4 shrink-0" aria-hidden="true" />
+              )}
+              <span>{pending ? t.creating : t.submit}</span>
+            </Button>
+          </div>
         </form>
       </div>
 

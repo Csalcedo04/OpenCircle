@@ -152,6 +152,7 @@ const es: Dictionary = {
     payoutHelp: "Monto neto que recibe cada participante en su turno",
     creating: "Creando…",
     submit: "Crear círculo",
+    cancel: "Cancelar",
   },
   join: {
     title: "Unirme a {circle}",

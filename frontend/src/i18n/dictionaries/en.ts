@@ -151,6 +151,7 @@ const en = {
     payoutHelp: "Net amount each member receives on their round",
     creating: "Creating…",
     submit: "Create circle",
+    cancel: "Cancel",
   },
   join: {
     title: "Join {circle}",
